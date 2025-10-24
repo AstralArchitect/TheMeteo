@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme.Compose">
+        <activity
+            android:name=".forecastViewer.DayGraphsActivity"
+            android:exported="false"
+            android:label="@string/title_activity_day_graphs"
+            android:theme="@style/AppTheme.Compose" />
+        <activity
+            android:name=".forecastViewer.ForecastMainActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.Compose">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".forecastViewer.DayChooserActivity"
+            android:exported="true"
+            android:label="@string/title_activity_temp_graphs"
+            android:theme="@style/AppTheme.Compose" />
+        <activity
+            android:name=".satImgs.FullScreenSatImage"
+            android:exported="false"
+            android:label="@string/title_activity_full_screen_sat_image"
+            android:theme="@style/AppTheme" />
+        <activity
+            android:name=".satImgs.MainSatActivity"
+            android:exported="true"
+            android:label="@string/title_activity_sat_main"
+            android:theme="@style/AppTheme" />
+    </application>
+
+</manifest>

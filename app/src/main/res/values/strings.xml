@@ -1,0 +1,38 @@
+<resources>
+    <string name="app_name" translatable="false">The meteo</string>
+    <string name="title_activity_full_screen_sat_image" translatable="false">FullScreenSatImage</string>
+    <string name="title_activity_forecast_main" translatable="false">ForecastMainActivity</string>
+    <string name="title_activity_sat_main" translatable="false">MainSatActivity</string>
+    <string name="title_activity_temp_graphs" translatable="false">TempGraphsActivity</string>
+    <string name="title_activity_day_graphs" translatable="false">DayGraphsActivity</string>
+    <string name="temperature_forecast">Temperature Forecast</string>
+    <string name="precipitation_forecast">Precipitation Forecast</string>
+    <string name="wind_forecast">Wind Forecast</string>
+    <string name="actual_situation">Actual Situation</string>
+    <string name="open_satellite_view">Open Satellite View</string>
+    <string name="loc_unavaiable">Location unavailable, using Paris\' location</string>
+    <string name="temperature">Temperature</string>
+    <string name="apparent_temperature">Apparent Temperature</string>
+    <string name="dew_point">Dew Point</string>
+    <string name="humidity">Humidity</string>
+    <string name="rain">Rain</string>
+    <string name="rain_prob">Rain Probability</string>
+    <string name="wind_speed">Wind Speed</string>
+    <string name="pressure">Pressure</string>
+    <string name="cloud_cover">Cloud Cover</string>
+    <string name="forecast_for_the">"Forecast for the "</string>
+    <string name="next_24h_forecast">"Next 24h forecast "</string>
+    <string name="mid_clouds">Medium clouds :</string>
+    <string name="high_clouds">High clouds :</string>
+    <string name="close">Close</string>
+    <string name="ceiling">Cloud base height :</string>
+    <string name="opacity">Opacity :</string>
+    <string name="diffuse_radiation">Diffuse radiation :</string>
+    <string name="direct_radiation">Direct radiation :</string>
+    <string name="total_radiation">Total radiation :</string>
+    <string name="low_clouds">Low clouds :</string>
+    <string name="total">Total cloud cover :</string>
+    <string name="sky_details">Sky details :</string>
+    <string name="search_city">Search for a city...</string>
+    <string name="add_city">Add a city</string>
+</resources>

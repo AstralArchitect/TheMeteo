@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="temperature_forecast">Prévision de température</string>
+    <string name="precipitation_forecast">Prévision de pluie</string>
+    <string name="wind_forecast">Prévision du vent</string>
+    <string name="actual_situation">Situation Actuelle</string>
+    <string name="open_satellite_view">Ouvrir les vues Satellites</string>
+    <string name="loc_unavaiable">Localisation non disponible. Utilisation de Paris par défaut.</string>
+    <string name="temperature">Température</string>
+    <string name="apparent_temperature">Température Ressentie</string>
+    <string name="dew_point">Point de rosée</string>
+    <string name="humidity">Humidité</string>
+    <string name="rain">Pluie</string>
+    <string name="rain_prob">Probabilité de pluie</string>
+    <string name="wind_speed">Vitesse du vent</string>
+    <string name="pressure">Pression</string>
+    <string name="cloud_cover">Couverture nuageuse</string>
+    <string name="forecast_for_the">"Prévision pour le "</string>
+    <string name="next_24h_forecast">"Prévisions pour les prochaines 24 heures "</string>
+    <string name="mid_clouds">Nuages moyens :</string>
+    <string name="high_clouds">Nuages hauts :</string>
+    <string name="close">Fermer</string>
+    <string name="ceiling">Plafond :</string>
+    <string name="opacity">Opacité :</string>
+    <string name="diffuse_radiation">Radiation diffuse :</string>
+    <string name="direct_radiation">Radiation directe :</string>
+    <string name="total_radiation">Radiation totale :</string>
+    <string name="low_clouds">Nuages bas :</string>
+    <string name="total">Totale :</string>
+    <string name="sky_details">Détails du ciel</string>
+    <string name="search_city">Rechercher une ville...</string>
+    <string name="add_city">Ajouter une ville</string>
+</resources>

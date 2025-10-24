@@ -1,0 +1,107 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20" // Utilisez la même version que votre Kotlin
+    id("kotlin-parcelize")
+}
+
+android {
+    namespace = "fr.matthstudio.themeteo"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "fr.matthstudio.themeteo"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.1.1 (Preview)"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+
+    buildFeatures {
+        compose = true
+    }
+    ndkVersion = "27.3.13750724"
+
+    packagingOptions {
+        resources {
+            excludes.add("META-INF/DEPENDENCIES")
+            excludes.add("META-INF/AL2.0")
+            excludes.add("META-INF/LGPL2.1")
+            excludes.add("META-INF/third-party-licenses/**")
+            // You might encounter similar issues with other META-INF files.
+            // Common ones to exclude if they cause conflicts:
+            //excludes.add("META-INF/LICENSE")
+            // excludes.add("META-INF/LICENSE.txt")
+            // excludes.add("META-INF/NOTICE")
+            // excludes.add("META-INF/NOTICE.txt")
+            // excludes.add("META-INF/*.kotlin_module") // If using libraries not yet fully compatible with AGP
+        }
+    }
+}
+
+dependencies {
+    // Localisation GPS
+    // Google Play Services Location API
+    implementation(libs.play.services.location)
+    // Pour la gestion des permissions avec Compose
+    implementation(libs.accompanist.permissions)
+
+    // Ktor pour les requêtes réseau
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio) // Moteur HTTP pour Ktor
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+
+    // Kotlinx Serialization
+    implementation(libs.kotlinx.serialization.json)
+
+    // UI
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.google.material)
+    implementation(libs.androidx.constraintlayout)
+    implementation(libs.photoview)
+    implementation(libs.ycharts)
+
+    // Data store
+    implementation("androidx.datastore:datastore-core:1.1.7") // ou la version explicite
+    implementation("androidx.datastore:datastore-preferences:1.1.7") // Alternative plus simple pour clé-valeur
+    implementation("com.google.protobuf:protobuf-kotlin-lite:4.33.0") // Nécessaire pour la sérialisation d'objets
+
+
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
