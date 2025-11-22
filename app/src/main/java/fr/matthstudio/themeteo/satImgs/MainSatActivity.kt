@@ -11,6 +11,7 @@ import androidx.core.net.toUri
 import fr.matthstudio.themeteo.satImgs.FileUtils
 import fr.matthstudio.themeteo.R
 import java.io.File
+import android.content.Context
 
 class MainSatActivity : ComponentActivity() {
     lateinit var imageCloudType: ImageView
@@ -28,7 +29,9 @@ class MainSatActivity : ComponentActivity() {
         seekBar = findViewById(R.id.seekBar)
         dateText = findViewById(R.id.date_text_view)
 
-        dates.addAll(FileUtils.Companion.downloadSatMaps(filesDir.absolutePath + "/sat_imgs/", 10, 720))
+        val context = this
+
+        dates.addAll(FileUtils.Companion.downloadSatMaps(context.cacheDir.absolutePath + "/sat_imgs/", 10, 720))
 
         //removeOldImgs(filesDir.absolutePath + "/sat_imgs/")
 
@@ -54,12 +57,12 @@ class MainSatActivity : ComponentActivity() {
 
         imageCloudType.setImageURI(
             File(
-                filesDir.absolutePath + "/sat_imgs/",
+                context.cacheDir.absolutePath + "/sat_imgs/",
                 "mtg_fd_rgb_cloudtype_${dates[0].replace(":", "_")}.jpg"
             ).toUri() as Uri?)
         imageFog.setImageURI(
             File(
-                filesDir.absolutePath + "/sat_imgs/",
+                context.cacheDir.absolutePath + "/sat_imgs/",
                 "mtg_fd_rgb_fog_${dates[0].replace(":", "_")}.jpg"
             ).toUri() as Uri?)
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -74,12 +77,12 @@ class MainSatActivity : ComponentActivity() {
                 // For now, it will update with the same image as in your original code.
                 imageCloudType.setImageURI(
                     File(
-                        filesDir.absolutePath + "/sat_imgs/",
+                        context.cacheDir.absolutePath + "/sat_imgs/",
                         "mtg_fd_rgb_cloudtype_${dates[imageId].replace(":", "_")}.jpg"
                     ).toUri() as Uri?)
                 imageFog.setImageURI(
                     File(
-                        filesDir.absolutePath + "/sat_imgs/",
+                        context.cacheDir.absolutePath + "/sat_imgs/",
                         "mtg_fd_rgb_fog_${dates[imageId].replace(":", "_")}.jpg"
                     ).toUri() as Uri?)
             }

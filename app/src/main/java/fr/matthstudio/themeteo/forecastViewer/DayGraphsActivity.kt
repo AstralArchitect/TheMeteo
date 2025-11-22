@@ -393,7 +393,7 @@ fun GenericGraph(
                 times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
         }
-        val roundToInt = viewModel.userSettings.collectAsState().value.roundToInt ?: false
+        val roundToInt = viewModel.userSettings.collectAsState().value.roundToInt ?: true
 
         // 1. Définir une largeur totale pour le contenu du graphique, plus grande que la fenêtre
         val contentWidth = 1000.dp
