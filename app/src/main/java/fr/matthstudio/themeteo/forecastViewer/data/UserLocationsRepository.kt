@@ -1,21 +1,24 @@
 package fr.matthstudio.themeteo.data
 
+import android.os.Parcelable
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+@Parcelize
 @Serializable // Pour pouvoir le convertir en JSON et le stocker
 data class SavedLocation(
     val name: String,
     val latitude: Double,
     val longitude: Double,
     val country: String // Utile pour l'affichage
-)
+) : Parcelable
 
 class UserLocationsRepository(private val dataStore: DataStore<Preferences>) {
     // Clé pour stocker la liste en JSON
