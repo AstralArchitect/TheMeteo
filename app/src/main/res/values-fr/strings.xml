@@ -20,7 +20,7 @@
     <string name="mid_clouds">Nuages moyens :</string>
     <string name="high_clouds">Nuages hauts :</string>
     <string name="close">Fermer</string>
-    <string name="ceiling">Plafond :</string>
+    <string name="ceiling">Plafond estimé:</string>
     <string name="opacity">Opacité :</string>
     <string name="diffuse_radiation">Radiation diffuse :</string>
     <string name="direct_radiation">Radiation directe :</string>

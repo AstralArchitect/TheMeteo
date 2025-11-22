@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.data
+package fr.matthstudio.themeteo.forecastViewer.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
@@ -16,11 +16,15 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  */
 interface AppContainer {
     val userLocationsRepository: UserLocationsRepository
+    val userSettingsRepository: UserSettingsRepository
 }
 
 class AppDataContainer(private val context: Context) : AppContainer {
     override val userLocationsRepository: UserLocationsRepository by lazy {
         UserLocationsRepository(context.dataStore)
+    }
+    override val userSettingsRepository: UserSettingsRepository by lazy {
+        UserSettingsRepository(context.dataStore)
     }
 }
 
@@ -39,7 +43,10 @@ object WeatherViewModelFactory : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WeatherViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WeatherViewModel(appContainer.userLocationsRepository) as T
+            return WeatherViewModel(
+                appContainer.userLocationsRepository,
+                appContainer.userSettingsRepository
+            ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

@@ -10,9 +10,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.appcompat.graphics.drawable.DrawerArrowDrawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,7 +51,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -62,32 +63,54 @@ import androidx.compose.ui.zIndex
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import fr.matthstudio.themeteo.R
-import fr.matthstudio.themeteo.data.WeatherViewModelFactory
+import fr.matthstudio.themeteo.forecastViewer.data.WeatherViewModelFactory
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.satImgs.MainSatActivity
 import java.io.IOException
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
-import fr.matthstudio.themeteo.data.SavedLocation
+import coil.compose.AsyncImage
+import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
+import io.ktor.util.collections.getValue
+import io.ktor.utils.io.InternalAPI
+import kotlin.collections.get
+import kotlin.math.max
 
+/**
+ * Énumération pour représenter les conditions météo de manière simple et robuste.
+ * Chaque cas peut être associé à une icône et à un niveau de "priorité".
+ *
+ * @param priority Plus le chiffre est élevé, plus le phénomène est important.
+ */
 enum class SimpleWeatherWord {
-    SUNNY, SUNNY_CLOUDY, CLOUDY, RAINY, STORMY
+    STORMY,       // Orageux
+    HAIL,         // Grêle
+    SNOWY,        // Neigeux
+    SNOWY_MIX,    // Neige et pluie
+    RAINY2,       // Pluvieux
+    RAINY1,       // Pluvieux
+    DRIZZLY,      // Bruine
+    DUST,         // Dust storm
+    FOGGY,        // Brouillard
+    CLOUDY,       // Nuageux
+    SUNNY_CLOUDY, // Partiellement nuageux
+    SUNNY,        // Ensoleillé
 }
 
 data class SimpleWeather (
     var sentence: String,
-    var word: SimpleWeatherWord
+    var word: SimpleWeatherWord,
+    var image: ImageBitmap? = null
 )
 
 fun loadImageBitmapFromAssets(context: Context, fileName: String): ImageBitmap? {
@@ -129,12 +152,13 @@ class ForecastMainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(InternalAPI::class)
 @Composable
 fun WeatherScreen(viewModel: WeatherViewModel) {
     val tempForecast by viewModel.temperatureForecast.collectAsState()
-    val precipitationForecast by viewModel.precipitationForecast.collectAsState()
-    val isDaytime by viewModel.isDaytime.collectAsState()
+    val isDaytime: Boolean = (viewModel.skyInfoForecast.collectAsState().value.firstOrNull()?.shortwave_radiation ?: 1.0) >= 1.0
 
+    val userSettings by viewModel.userSettings.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
     val context = LocalContext.current
@@ -149,20 +173,32 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     // Elle demande la localisation uniquement si "Position Actuelle" est sélectionné.
     GetPermissionAndLoadWeather(viewModel, null)
 
-    val iconWeatherFolder = "icons/weather/${if(isDaytime) "day" else "night"}/"
-    val imagesFolder = "images/${if(isDaytime) "day" else "night"}/"
+    // Charger les images
+    val imagesFolder = "images/"
+    val sunnyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "clear.jpg")) }
+    val sunnyCloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "mid-cloudy.jpg")) }
+    val cloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "overcast.jpg")) }
+    val rainyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainy.jpg")) }
 
-    val sunnyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "sunnyImage.jpg")) }
-    val sunnyCloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "sunny_cloudyImage.jpg")) }
-    val cloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "cloudyImage.jpg")) }
-    val rainyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainyImage.jpg")) }
-    // val stormyIconBitmap: ImageBitmap? = loadImageBitmapFromAssets(context, "stormyImage.png")
-
-    val sunnyIconBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, iconWeatherFolder + "sunnyIcon.png")) }
-    val sunnyCloudyIconBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, iconWeatherFolder + "sunny_cloudyIcon.png")) }
-    val cloudyIconBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, iconWeatherFolder + "cloudyIcon.png")) }
-    val rainyIconBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, iconWeatherFolder + "rainyIcon.png")) }
-    // val stormyIconBitmap: ImageBitmap? = loadImageBitmapFromAssets(context, "stormyIcon.png")
+    // icons paths
+    val iconWeatherFolder = "file:///android_asset/icons/weather/"
+    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
+    val sunnyNightIconPath: String = iconWeatherFolder + "clear-night.svg"
+    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
+    val sunnyCloudyNightIconPath: String = iconWeatherFolder + "cloudy-3-night.svg"
+    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
+    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
+    val dustIconPath: String = iconWeatherFolder + "dust.svg"
+    val drizzleDayIconPath: String = iconWeatherFolder + "rainy-1-day.svg"
+    val drizzleNightIconPath: String = iconWeatherFolder + "rainy-1-night.svg"
+    val rainy1DayIconPath: String = iconWeatherFolder + "rainy-2-day.svg"
+    val rainy1NightIconPath: String = iconWeatherFolder + "rainy-2-night.svg"
+    val rainy2DayIconPath: String = iconWeatherFolder + "rainy-3-day.svg"
+    val rainy2NightIconPath: String = iconWeatherFolder + "rainy-3-night.svg"
+    val hailIconPath: String = iconWeatherFolder + "hail.svg"
+    val snowyIconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
+    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
 
     val simpleWeather = getSimpleWeather(viewModel)
 
@@ -190,12 +226,13 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         )
     }
 
+    // --- LA COLONE DE CONTENU ---
     Column (
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
-        // 1. Section de l'image de fond et de la température actuelle, et de la selection du lieu
+        // Section de l'image de fond et de la température actuelle, et de la selection du lieu
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -210,64 +247,75 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 }
                 return@Box
             }
-            when (simpleWeather.word) {
-                SimpleWeatherWord.SUNNY -> Image(
-                    bitmap = sunnyImageBitmap ?: ImageBitmap(1, 1),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop // L'image remplit la Box sans déformation
-                )
-                SimpleWeatherWord.SUNNY_CLOUDY -> Image(
-                    bitmap = sunnyCloudyImageBitmap ?: ImageBitmap(1, 1),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                SimpleWeatherWord.CLOUDY -> Image(
-                    bitmap = cloudyImageBitmap ?: ImageBitmap(1, 1),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                SimpleWeatherWord.RAINY -> Image(
-                    bitmap = rainyImageBitmap ?: ImageBitmap(1, 1),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+            val bitmap = when (simpleWeather.word) {
+                SimpleWeatherWord.SUNNY -> sunnyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.CLOUDY -> cloudyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.RAINY1 -> rainyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.RAINY2 -> rainyImageBitmap ?: ImageBitmap(1, 1)
 
-                SimpleWeatherWord.STORMY -> TODO("Image pour orage non implémentée")
+                SimpleWeatherWord.STORMY -> null
+                else -> null
             }
 
-            // --- SÉLECTEUR DE LIEU PAR-DESSUS L'IMAGE ---
-            Row (
+            Image(
+                bitmap = bitmap ?: ImageBitmap(1, 1),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            Box (
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .padding(WindowInsets.safeDrawing.asPaddingValues())
-                    .clickable { showLocationSheet = true }, // OUVRE LE PANNEAU
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                    .padding(WindowInsets.safeDrawing.asPaddingValues()),
+                //verticalAlignment = Alignment.CenterVertically,
+                //horizontalArrangement = Arrangement.Center
             ) {
-                Icon(
-                    Icons.Default.LocationOn,
-                    contentDescription = "Lieu actuel",
-                    tint = Color.White
-                )
-                Spacer(Modifier.width(8.dp))
-                // Affiche le nom du lieu actuellement sélectionné
-                Text(
-                    text = when (val loc = selectedLocation) {
-                        is LocationIdentifier.CurrentUserLocation -> "Position Actuelle"
-                        is LocationIdentifier.Saved -> loc.location.name
+                // --- SÉLECTEUR DE LIEU PAR-DESSUS L'IMAGE ---
+                Row (
+                    modifier = Modifier
+                        .align (Alignment.Center)
+                        .clickable { showLocationSheet = true }, // OUVRE LE PANNEAU
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = "Lieu actuel",
+                        tint = Color.White
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    // Affiche le nom du lieu actuellement sélectionné
+                    Text(
+                        text = when (val loc = selectedLocation) {
+                            is LocationIdentifier.CurrentUserLocation -> "Position Actuelle"
+                            is LocationIdentifier.Saved -> loc.location.name
+                        },
+                        style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
+                    )
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = "Changer de lieu",
+                        tint = Color.White
+                    )
+                }
+
+                // --- BOUTON POUR LES PARAMÈTRES ---
+                IconButton(
+                    onClick = {
+                        val intent = Intent(context, SettingsActivity::class.java)
+                        context.startActivity(intent)
                     },
-                    style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
-                )
-                Icon(
-                    Icons.Default.ArrowDropDown,
-                    contentDescription = "Changer de lieu",
-                    tint = Color.White
-                )
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        //.padding(WindowInsets.safeDrawing.asPaddingValues()) // Respecte les zones système
+                        //.padding(8.dp) // Ajoute un peu d'espace autour
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Ouvrir les paramètres",
+                        tint = Color.White // Assure une bonne visibilité sur l'image
+                    )
+                }
             }
 
             // Icone de temps simpliste avec température actuelle
@@ -276,42 +324,30 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     .align(Alignment.BottomStart) // Aligne le texte en bas à gauche
                     .padding(start = 24.dp, bottom = 50.dp)
             ) {
-                when (simpleWeather.word) {
-                    SimpleWeatherWord.SUNNY -> Image(
-                        bitmap = sunnyIconBitmap ?: ImageBitmap(1, 1),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(40.dp)
-                            .height(40.dp),
-                        contentScale = ContentScale.Crop
-                    )
-                    SimpleWeatherWord.SUNNY_CLOUDY -> Image(
-                        bitmap = sunnyCloudyIconBitmap ?: ImageBitmap(1, 1),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(40.dp)
-                            .height(40.dp),
-                        contentScale = ContentScale.Crop
-                    )
-                    SimpleWeatherWord.CLOUDY -> Image(
-                        bitmap = cloudyIconBitmap ?: ImageBitmap(1, 1),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(40.dp)
-                            .height(40.dp),
-                        contentScale = ContentScale.Crop
-                    )
-                    SimpleWeatherWord.RAINY -> Image(
-                        bitmap = rainyIconBitmap ?: ImageBitmap(1, 1),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(40.dp)
-                            .height(40.dp),
-                        contentScale = ContentScale.Crop
-                    )
-
-                    SimpleWeatherWord.STORMY -> TODO("Image pour orage non implémentée")
+                val fileName = when (simpleWeather.word) {
+                    SimpleWeatherWord.SUNNY -> if (isDaytime) sunnyDayIconPath else sunnyNightIconPath
+                    SimpleWeatherWord.SUNNY_CLOUDY -> if (isDaytime) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath
+                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
+                    SimpleWeatherWord.FOGGY -> foggyIconPath
+                    SimpleWeatherWord.DUST -> dustIconPath
+                    SimpleWeatherWord.DRIZZLY -> if (isDaytime) drizzleDayIconPath else drizzleNightIconPath
+                    SimpleWeatherWord.RAINY1 -> if (isDaytime) rainy1DayIconPath else rainy1NightIconPath
+                    SimpleWeatherWord.RAINY2 -> if (isDaytime) rainy2DayIconPath else rainy2NightIconPath
+                    SimpleWeatherWord.HAIL -> hailIconPath
+                    SimpleWeatherWord.SNOWY -> snowyIconPath
+                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
+                    SimpleWeatherWord.STORMY -> stormyIconPath
                 }
+
+                AsyncImage(
+                    model = fileName,
+                    contentDescription = "Icône météo actuelle",
+                    modifier = Modifier
+                        .width(58.dp)
+                        .height(58.dp),
+                    contentScale = ContentScale.Fit
+                )
+
                 Column {
                     Text(
                         text = "${tempForecast.firstOrNull()?.temperature?.roundToInt() ?: 0}°C",
@@ -350,19 +386,14 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 }
             }
 
-            // Temperature over time Card
-            TempCard(tempForecast, viewModel)
+            // Hourly forecast 24h
+            HourlyForecast(viewModel)
 
-            // Precipitation / Wind over time Card
-            if (precipitationForecast.isNotEmpty()) {
-                if ((precipitationForecast.subList(0, 6).maxOfOrNull { it.precipitation } ?: 0f).toFloat() > 0f)
-                    RainCard(viewModel)
-                else
-                    WindCard(viewModel)
-            }
+            // Daily forecast
+            DailyForecastCard(viewModel)
 
             // Actual situation
-            ActualSituationCard(
+            situationCard(
                 viewModel = viewModel,
                 onCloudIconClick = { showCloudInfoDialog = true }
             )
@@ -378,7 +409,23 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             Text(
                 "Date : ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}"
             )
-            Text("Source : Open-Meteo")
+
+            when (selectedLocation) {
+                is LocationIdentifier.CurrentUserLocation -> {
+                    Text(
+                        "Position : ${viewModel.userLocation.collectAsState().value?.latitude}," +
+                                " ${viewModel.userLocation.collectAsState().value?.longitude}"
+                    )
+                }
+                is LocationIdentifier.Saved -> {
+                    Text(
+                        "Position : ${(selectedLocation as LocationIdentifier.Saved).location.latitude}," +
+                                " ${(selectedLocation as LocationIdentifier.Saved).location.longitude}"
+                    )
+                }
+            }
+
+            Text("Source : ${getModelSourceText(userSettings.model)}")
 
             Button(
                 onClick = {
@@ -393,62 +440,108 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     }
 }
 
+fun getModelSourceText(model: String?): String {
+    return when (model) {
+        "best_match" -> "Open Meteo"
+        "ecmwf_ifs" -> "ECMWF IFS"
+        "ecmwf_aifs025_single" -> "ECMWF AIFS"
+        "meteofrance_seamless" -> "Météo France"
+        "gfs_seamless" -> "NCEP GFS"
+        "icon_seamless" -> "DWD ICON"
+        "gem_seamless" -> "GEM"
+        "gfs_graphcast025" -> "GFS GraphCast"
+        "ukmo_seamless" -> "UK Met Office"
+        else -> "Open-Meteo" // Fallback générique
+    }
+}
+
+fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
+    return when (code) {
+        0 -> SimpleWeatherWord.SUNNY
+        1, 2 -> SimpleWeatherWord.SUNNY_CLOUDY
+        3 -> SimpleWeatherWord.CLOUDY                 // Overcast
+        in 4..19 -> SimpleWeatherWord.CLOUDY    // Haze, smoke, dust, etc. treated as "cloudy"
+        in 20..29 -> SimpleWeatherWord.CLOUDY   // Phenomena in the past hour
+        in 30..39 -> SimpleWeatherWord.CLOUDY   // Duststorms, sandstorms
+        in 40..49 -> SimpleWeatherWord.FOGGY    // Fog
+        in 50..59 -> SimpleWeatherWord.DRIZZLY  // Drizzle
+        in 60..69 -> SimpleWeatherWord.RAINY1   // Rain
+        in 70..79 -> SimpleWeatherWord.SNOWY
+        in 80..82 -> SimpleWeatherWord.RAINY2   // Rain showers
+        83, 84 -> SimpleWeatherWord.SNOWY_MIX         // Rain and snow mixed showers -> classified as Snowy
+        85, 86 -> SimpleWeatherWord.SNOWY             // Snow showers
+        in 87..90 -> SimpleWeatherWord.HAIL     // Hail showers
+        in 91..94 -> SimpleWeatherWord.STORMY   // Rain/Drizzle with Thunderstorm (but we will let STORMY override)
+        in 95..99 -> SimpleWeatherWord.STORMY
+        else -> SimpleWeatherWord.SUNNY               // Fallback for unknown codes
+    }
+}
+
 @Composable
-fun getSimpleWeather(viewModel: WeatherViewModel): SimpleWeather {
-    var simpleWeather: SimpleWeather by remember { mutableStateOf(SimpleWeather("Ciel clair", SimpleWeatherWord.SUNNY)) }
+fun getSimpleWeather(viewModel: WeatherViewModel, index: Int = 0): SimpleWeather {
+    val context = LocalContext.current
+    var simpleWeather: SimpleWeather by remember {
+        mutableStateOf(SimpleWeather("Ciel clair", SimpleWeatherWord.SUNNY))
+    }
 
     val precipitationForecast by viewModel.precipitationForecast.collectAsState()
-    val precipitationProbabilityForecast by viewModel.precipitationProbabilityForecast.collectAsState()
     val skyStateForecast by viewModel.skyInfoForecast.collectAsState()
-    val isDaytime by viewModel.isDaytime.collectAsState()
+    val wCodeForecast by viewModel.wmoForecast.collectAsState()
 
-    LaunchedEffect(precipitationForecast, precipitationProbabilityForecast, skyStateForecast, isDaytime) {
-        val actualSkyState = skyStateForecast.firstOrNull() ?: return@LaunchedEffect
-        val actualPrecipitationProbability = precipitationProbabilityForecast.firstOrNull()?.probability ?: 0
-        val actualPrecipitation = precipitationForecast.firstOrNull()?.precipitation?.toFloat() ?: 0f
+    LaunchedEffect(precipitationForecast, skyStateForecast, wCodeForecast) {
+        if (precipitationForecast.isEmpty() ||
+            wCodeForecast.isEmpty() ||
+            skyStateForecast.isEmpty())
+            return@LaunchedEffect
+
+        val skyState = skyStateForecast[index]
+        val precipitation = precipitationForecast[index].precipitation.toFloat()
+        val wCode = wCodeForecast[index].wmo
+
+        // Créer une NOUVELLE instance à chaque calcul.
+        val newWeather = SimpleWeather("Initial", SimpleWeatherWord.SUNNY) // Les valeurs sont temporaires
 
         // Set the weather word
-        if (isDaytime) {
-            simpleWeather.word = if (actualPrecipitationProbability >= 30 && actualPrecipitation >= 0.1f)
-                SimpleWeatherWord.RAINY
-            else if (actualSkyState.opacity <= 50)
-                SimpleWeatherWord.SUNNY_CLOUDY
-            else if (actualSkyState.opacity <= 75)
-                SimpleWeatherWord.CLOUDY
-            else
-                SimpleWeatherWord.SUNNY
-        } else {
-            simpleWeather.word = if (actualPrecipitationProbability >= 30 && actualPrecipitation >= 0.1f)
-                SimpleWeatherWord.RAINY
-            else if (actualSkyState.cloudcover_total <= 40)
-                SimpleWeatherWord.SUNNY
-            else if (actualSkyState.cloudcover_total <= 75)
-                SimpleWeatherWord.SUNNY_CLOUDY
-            else
-                SimpleWeatherWord.CLOUDY
-        }
+        newWeather.word = weatherCodeToSimpleWord(wCode)
 
         // Set the weather sentence
-        // 1. tester par couverture nuageuse
-        if (actualSkyState.cloudcover_low <= 50 && actualSkyState.cloudcover_mid <= 50 && actualSkyState.cloudcover_high <= 10)
-            simpleWeather.sentence = "Nuages épars"
-        else if (actualSkyState.cloudcover_low + actualSkyState.cloudcover_mid >= 60)
-            simpleWeather.sentence = "Ciel couvert"
-        else if (actualSkyState.cloudcover_low <= 25 && actualSkyState.cloudcover_mid <= 25 && actualSkyState.cloudcover_high >= 50)
-            simpleWeather.sentence = "Ciel voilé"
-        else
-            simpleWeather.sentence = "Ciel clair"
-        // 2. Ajouter la pluie
-        if (actualPrecipitation >= 0.1f) {
-            if (actualPrecipitation <= 0.5f)
-                simpleWeather.sentence += " avec pluie légère"
-            else if (actualPrecipitation <= 3.0f)
-                simpleWeather.sentence += " avec pluie modérée"
-            else if (actualPrecipitation <= 10.0f)
-                simpleWeather.sentence += " avec pluie forte"
-            else
-                simpleWeather.sentence += " avec pluie torrentielle"
+        // 1. Tester d'abord l'opactité
+        if (skyState.opacity in 1..30) {
+            newWeather.sentence = "Ciel ensoleillé"
+            newWeather.image
+            if (skyState.cloudcover_high > 50)
+                newWeather.sentence += " avec voile"
         }
+        // 2. tester par couverture nuageuse
+        else if (max(skyState.cloudcover_low, skyState.cloudcover_mid) <= 25) {
+            if (skyState.cloudcover_high > 50)
+                newWeather.sentence = "Ciel voilé"
+            else {
+                newWeather.sentence = "Ciel clair"
+            }
+        } else if (max(skyState.cloudcover_low, skyState.cloudcover_mid) <= 50) {
+            newWeather.sentence = "Nuages épars"
+            if (skyState.cloudcover_high > 50)
+                newWeather.sentence += " avec ciel voilé"
+        } else if (max(skyState.cloudcover_low, skyState.cloudcover_mid) <= 75) {
+            newWeather.sentence = "Ciel partiellement couvert"
+            if (skyState.cloudcover_high > 50)
+                newWeather.sentence += " avec voile"
+        } else {
+            newWeather.sentence = "Ciel couvert"
+        }
+        // 3. Ajouter la pluie
+        if (precipitation >= 0.1f) {
+            newWeather.sentence += if (precipitation < 0.5f) " avec pluie légère"
+            else if (precipitation < 3.0f) " avec pluie modérée"
+            else if (precipitation < 10.0f) " avec pluie forte"
+            else " avec pluie torrentielle"
+        }
+
+        // Remplacer l'état.
+        // `simpleWeather` passe de `null` (ou une ancienne instance) à `newWeather`.
+        // C'est CETTE ligne qui dit à Compose: "L'état a changé, redessine ce qui en dépend !"
+        simpleWeather = newWeather
     }
 
     return simpleWeather
@@ -459,6 +552,7 @@ fun getSimpleWeather(viewModel: WeatherViewModel): SimpleWeather {
 fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: LocalDateTime?) {
     val context = LocalContext.current
     val selectedLocation by viewModel.selectedLocation.collectAsState()
+    val settings by viewModel.userSettings.collectAsState()
 
     val locationPermissionsState = rememberMultiplePermissionsState(
         listOf(
@@ -468,12 +562,12 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
     )
 
     // Cet effet ne s'exécute que lorsque le lieu sélectionné change
-    LaunchedEffect(viewModel.selectedLocation.collectAsState().value) {
-        when(selectedLocation) {
+    LaunchedEffect(viewModel.selectedLocation.collectAsState().value, settings.model) {
+        when(val locationIdentifier = selectedLocation) {
             is LocationIdentifier.CurrentUserLocation -> {
                 // On a besoin de la localisation GPS
                 if (locationPermissionsState.allPermissionsGranted) {
-                    viewModel.getLocationAndLoad24hForecast(context, startDateTime)
+                    viewModel.getLocationAndLoad24hForecastPlusDailyForecast(context, startDateTime)
                 } else if (!locationPermissionsState.shouldShowRationale) {
                     // C'est la première fois ou l'utilisateur a dit "ne plus demander"
                     locationPermissionsState.launchMultiplePermissionRequest()
@@ -484,9 +578,17 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
                 }
             }
             is LocationIdentifier.Saved -> {
-                // Pas besoin de permission, le ViewModel a déjà rechargé les données
-                // grâce à la collecte du `selectedLocation` dans son `init`.
-                // Cet espace est vide intentionnellement.
+                // Charger la météo pour le lieu sauvegardé
+                viewModel.load24hForecast(
+                    locationIdentifier.location.latitude,
+                    locationIdentifier.location.longitude,
+                    startDateTime
+                )
+                viewModel.loadDailyForecast(
+                    locationIdentifier.location.latitude,
+                    locationIdentifier.location.longitude,
+                    weatherModelPredictionTime[settings.model] ?: 10
+                )
             }
         }
     }
@@ -495,20 +597,34 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
     LaunchedEffect(locationPermissionsState.allPermissionsGranted) {
         // Si les permissions viennent d'être accordées ET que le lieu actuel est la position GPS
         if (locationPermissionsState.allPermissionsGranted && selectedLocation is LocationIdentifier.CurrentUserLocation) {
-            viewModel.getLocationAndLoad24hForecast(context, startDateTime)
+            viewModel.getLocationAndLoad24hForecastPlusDailyForecast(context, startDateTime)
         }
     }
 }
 
+enum class ChosenVar {
+    TEMPERATURE,
+    APPARENT_TEMPERATURE,
+    PRECIPITATION,
+    WIND
+}
 
 @Composable
-fun TempCard(forecast: List<TemperatureReading>, viewModel: WeatherViewModel) {
+fun HourlyForecast(viewModel: WeatherViewModel) {
+
     val context = LocalContext.current
+    var variable: ChosenVar by remember { mutableStateOf(ChosenVar.TEMPERATURE) }
+
     Card(
         modifier = Modifier
             .padding(24.dp)
-            .clickable(true, onClick = {
-                val intent = Intent(context, DayChooserActivity::class.java)
+            .clickable(true, onClick = { // Make the card clickable
+                // Create an Intent to launch DayGraphsActivity
+                val intent = Intent(context, DayGraphsActivity::class.java).apply {
+                    putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
+                    putExtra("START_DATE_TIME", LocalDateTime.now())
+                }
+                // Start the activity
                 context.startActivity(intent)
             })
     ) {
@@ -522,105 +638,60 @@ fun TempCard(forecast: List<TemperatureReading>, viewModel: WeatherViewModel) {
         }
 
         Text(
-            text = stringResource(R.string.temperature_forecast),
+            text = "Hourly forecast",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
         )
 
-        if (forecast.isNotEmpty()) {
-            Box (
-                modifier = Modifier.padding(start = 16.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
-            ) {
-                GenericGraph(viewModel, GraphType.TEMP, Color(0xFFFFF176))
-            }
-        }
-    }
-}
-
-@Composable
-fun RainCard(viewModel: WeatherViewModel) {
-    val context = LocalContext.current
-    val forecast by viewModel.precipitationForecast.collectAsState()
-    Card(
-        modifier = Modifier
-            .padding(24.dp)
-            .clickable { // Make the card clickable
-                // Create an Intent to launch DayGraphsActivity
-                val intent = Intent(context, DayGraphsActivity::class.java).apply {
-                    putExtra("START_DATE", LocalDateTime.now())
-                }
-                // Start the activity
-                context.startActivity(intent)
-            }
-    ) {
-        if (viewModel._isLoadingPrecipitation.collectAsState().value) {
-            Box(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                CircularProgressIndicator()
-            }
+        if (viewModel.temperatureForecast.collectAsState().value.isEmpty() ||
+            viewModel.precipitationForecast.collectAsState().value.isEmpty() ||
+            viewModel.windspeedForecast.collectAsState().value.isEmpty())
             return@Card
-        }
 
-        Text(
-            text = stringResource(R.string.precipitation_forecast),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
-        )
-
-        if (forecast.isNotEmpty()) {
-            Box (
-                modifier = Modifier.padding(start = 16.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
-            ) {
-                GenericGraph(viewModel, GraphType.RAIN_RATE, Color(0xFF64B5F6), sublist = Pair(0, 6), is6hrGraph = true)
+        Column (
+            modifier = Modifier.padding(start = 8.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
+        ) {
+            val scrollState = rememberScrollState()
+            when (variable) {
+                ChosenVar.TEMPERATURE -> GenericGraph(viewModel, GraphType.TEMP, Color(0xFFFFF176), scrollState = scrollState)
+                ChosenVar.APPARENT_TEMPERATURE -> if (viewModel.apparentTemperatureForecast.collectAsState().value != null)
+                    GenericGraph(viewModel, GraphType.A_TEMP, Color(0xFFFFB300), scrollState = scrollState)
+                ChosenVar.PRECIPITATION -> GenericGraph(viewModel, GraphType.RAIN_RATE, Color(0xFF039BE5), scrollState = scrollState)
+                ChosenVar.WIND -> GenericGraph(viewModel, GraphType.WIND_SPEED, Color(0xFF7CB342), scrollState = scrollState)
             }
+            if (variable != ChosenVar.WIND)
+                WeatherIconGraph(viewModel, scrollState = scrollState)
         }
-    }
-}
 
-@Composable
-fun WindCard(viewModel: WeatherViewModel) {
-    val context = LocalContext.current
-    val forecast by viewModel.windspeedForecast.collectAsState()
-    Card(
-        modifier = Modifier
-            .padding(24.dp)
-            .clickable { // Make the card clickable
-                // Create an Intent to launch DayGraphsActivity
-                val intent = Intent(context, DayGraphsActivity::class.java).apply {
-                    putExtra("START_DATE", LocalDateTime.now())
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            ChosenVar.entries.forEach {
+                if (it == ChosenVar.APPARENT_TEMPERATURE && viewModel.apparentTemperatureForecast.collectAsState().value == null)
+                {
+                    return@forEach
                 }
-                // Start the activity
-                context.startActivity(intent)
-            }
-    ) {
-        if (viewModel._isLoadingWindspeed.collectAsState().value) {
-            Box(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                CircularProgressIndicator()
-            }
-            return@Card
-        }
 
-        Text(
-            text = stringResource(R.string.wind_forecast),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
-        )
-
-        if (forecast.isNotEmpty()) {
-            Box (
-                modifier = Modifier.padding(start = 16.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
-            ) {
-                GenericGraph(viewModel, GraphType.WIND_SPEED, Color(0xFFAED581))
+                OutlinedButton(
+                    modifier = Modifier.padding(8.dp),
+                    onClick = { variable = it }
+                ) {
+                    Text(when(it){
+                        ChosenVar.TEMPERATURE -> "Température °C"
+                        ChosenVar.APPARENT_TEMPERATURE -> "Température ressentie °C"
+                        ChosenVar.PRECIPITATION -> "Précipitation mm/h"
+                        ChosenVar.WIND -> "Vitesse du vent km/h"
+                    })
+                }
             }
         }
     }
 }
 
 @Composable
-fun ActualSituationCard(
+fun situationCard(
     viewModel: WeatherViewModel,
     onCloudIconClick: () -> Unit
 ) {
@@ -706,7 +777,7 @@ fun ActualSituationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${apparentTemperatureForecast.firstOrNull()?.apparentTemperature?.roundToInt() ?: 0}°C (A)")
+                        Text("${apparentTemperatureForecast?.firstOrNull()?.apparentTemperature?.roundToInt() ?: 0}°C (A)")
                     }
                 }
                 // Item 3: Point de rosée
@@ -743,7 +814,7 @@ fun ActualSituationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${precipitationProbabilityForecast.firstOrNull()?.probability ?: 0}%")
+                        Text("${precipitationProbabilityForecast?.firstOrNull()?.probability ?: 0}%")
                     }
                 }
                 // Item 5: Précipitation
@@ -959,6 +1030,7 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                                         country = result.countryCode
                                     )
                                     viewModel.addLocation(newLocation)
+                                    viewModel.selectLocation(LocationIdentifier.Saved(newLocation))
                                     onDismiss()
                                 }
                                 .padding(vertical = 8.dp)

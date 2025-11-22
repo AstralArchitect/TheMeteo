@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".TheMeteo"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -16,9 +17,9 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme.Compose">
         <activity
-            android:name=".forecastViewer.DayGraphsActivity"
-            android:exported="false"
-            android:label="@string/title_activity_day_graphs"
+            android:name=".forecastViewer.SettingsActivity"
+            android:exported="true"
+            android:label="@string/title_activity_settings_activity.kt"
             android:theme="@style/AppTheme.Compose" />
         <activity
             android:name=".forecastViewer.ForecastMainActivity"
@@ -34,6 +35,11 @@
             android:name=".forecastViewer.DayChooserActivity"
             android:exported="true"
             android:label="@string/title_activity_temp_graphs"
+            android:theme="@style/AppTheme.Compose" />
+        <activity
+            android:name=".forecastViewer.DayGraphsActivity"
+            android:exported="false"
+            android:label="@string/title_activity_day_graphs"
             android:theme="@style/AppTheme.Compose" />
         <activity
             android:name=".satImgs.FullScreenSatImage"

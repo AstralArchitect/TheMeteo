@@ -22,17 +22,16 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
      * Flow pour le modèle météo sélectionné.
      * Fournit une valeur par défaut si aucune n'est définie.
      */
-    val model: Flow<String> = dataStore.data.map { preferences ->
-        // Fournissez un modèle par défaut si aucun n'est encore enregistré
-        preferences[PreferencesKeys.MODEL] as String
+    val model: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.MODEL]
     }
 
     /**
      * Flow pour le réglage d'arrondi des températures.
      * La valeur par défaut est `true`.
      */
-    val roundToInt: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.ROUND_TO_INT] as Boolean
+    val roundToInt: Flow<Boolean?> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ROUND_TO_INT]
     }
 
     // 3. Fonctions pour mettre à jour les paramètres

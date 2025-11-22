@@ -1,21 +1,28 @@
 package fr.matthstudio.themeteo.forecastViewer
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels // Import viewModels
+import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,15 +35,30 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import fr.matthstudio.themeteo.data.WeatherViewModelFactory
+import coil.compose.AsyncImage
+import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.forecastViewer.data.WeatherViewModelFactory
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
-import java.util.Locale // For TextStyle to get full day name
-import kotlin.math.roundToInt // For rounding temperatures
+import java.util.Locale
+import kotlin.collections.get
+import kotlin.math.roundToInt
+
+val weatherModelPredictionTime = mapOf(
+    "best_match" to 15,
+    "ecmwf_ifs" to 14,
+    "ecmwf_aifs025_single" to 14,
+    "meteofrance_seamless" to 3,
+    "gfs_seamless" to 15,
+    "icon_seamless" to 6,
+    "gem_seamless" to 9,
+    "ukmo_seamless" to 6,
+)
 
 class DayChooserActivity : ComponentActivity() {
 
@@ -48,6 +70,21 @@ class DayChooserActivity : ComponentActivity() {
 
         // connecter le ViewModel au Repository
         WeatherViewModelFactory.initialize(this)
+
+        val selectedLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra("SELECTED_LOCATION", LocationIdentifier::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra("SELECTED_LOCATION") as? LocationIdentifier
+        }
+
+        if (selectedLocation == null) {
+            Log.e("DayChooserActivity", "selectedLocation is null. You must pass a location to start this activity")
+            finish()
+            return
+        }
+
+        weatherViewModel.selectLocation(selectedLocation)
 
         enableEdgeToEdge()
         setContent {
@@ -67,21 +104,23 @@ class DayChooserActivity : ComponentActivity() {
                             is LocationIdentifier.CurrentUserLocation -> {
                                 // On utilise la dernière position GPS connue du ViewModel
                                 weatherViewModel.userLocation.value?.let { userLoc ->
-                                    weatherViewModel.loadDailyTemperatureForecast(userLoc.latitude, userLoc.longitude, 10)
+                                    weatherViewModel.loadDailyForecast(userLoc.latitude, userLoc.longitude,
+                                        weatherModelPredictionTime[weatherViewModel.userSettings.value.model] ?: 10)
                                 } ?: run {
                                     // Si la position GPS n'est pas encore connue,
                                     // on se rabat sur Paris comme valeur par défaut.
                                     // (Le ViewModel essaiera toujours d'obtenir le GPS en parallèle)
-                                    weatherViewModel.loadDailyTemperatureForecast(48.85, 2.35, 10)
+                                    weatherViewModel.loadDailyForecast(48.85, 2.35,
+                                        weatherModelPredictionTime[weatherViewModel.userSettings.value.model] ?: 10)
                                 }
                             }
                             // Cas 2 : Un lieu sauvegardé (ex: "Paris") est sélectionné
                             is LocationIdentifier.Saved -> {
                                 // On utilise les coordonnées du lieu sauvegardé
-                                weatherViewModel.loadDailyTemperatureForecast(
+                                weatherViewModel.loadDailyForecast(
                                     locationIdentifier.location.latitude,
                                     locationIdentifier.location.longitude,
-                                    10
+                                    weatherModelPredictionTime[weatherViewModel.userSettings.value.model] ?: 10
                                 )
                             }
                         }
@@ -116,7 +155,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Next 10 Days Temperature Forecast",
+            text = stringResource(R.string.next_days_temperature_forecast, dailyForecast.size),
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
@@ -130,7 +169,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel) {
                     .padding(16.dp),
             ) {
                 Text(
-                    text = errorMessage ?: "Unknown error",
+                    text = errorMessage ?: stringResource(R.string.unknown_error),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(16.dp)
                 )
@@ -145,7 +184,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 items(dailyForecast) { dayReading ->
-                    DailyForecastCard(dayReading)
+                    SingleDailyForecastCard(dayReading, weatherViewModel)
                 }
             }
         }
@@ -156,10 +195,27 @@ fun DayChooser(weatherViewModel: WeatherViewModel) {
  * A Composable function to display a single daily forecast in a Card.
  *
  * @param dayReading The DailyTemperatureReading data for the specific day.
+ * @param viewModel The viewModel of the activity.
  */
 @Composable
-fun DailyForecastCard(dayReading: DailyTemperatureReading) {
+fun SingleDailyForecastCard(dayReading: DailyReading, viewModel: WeatherViewModel) {
     val context = LocalContext.current
+
+    // Charger les icônes
+    val iconWeatherFolder = "file:///android_asset/icons/weather/"
+    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
+    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
+    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
+    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
+    val dustIconPath: String = iconWeatherFolder + "dust.svg"
+    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
+    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
+    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
+    val hailIconPath: String = iconWeatherFolder + "hail.svg"
+    val snowyIconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
+    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
+
     Card(
         modifier = Modifier
             .fillMaxWidth(0.9f) // Cards take 90% of the screen width
@@ -173,7 +229,8 @@ fun DailyForecastCard(dayReading: DailyTemperatureReading) {
                 .clickable { // Make the card clickable
                     // Create an Intent to launch DayGraphsActivity
                     val intent = Intent(context, DayGraphsActivity::class.java).apply {
-                        putExtra("START_DATE", dayReading.date.atStartOfDay())
+                        putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0))
+                        putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
                     }
                     // Start the activity
                     context.startActivity(intent)
@@ -191,11 +248,176 @@ fun DailyForecastCard(dayReading: DailyTemperatureReading) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
-                text = "Max: ${dayReading.maxTemperature.roundToInt()}°C / Min: ${dayReading.minTemperature.roundToInt()}°C",
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+
+            Row {
+                val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
+                val fileName = when (weatherWord) {
+                    SimpleWeatherWord.SUNNY -> sunnyDayIconPath
+                    SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyDayIconPath
+                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
+                    SimpleWeatherWord.FOGGY -> foggyIconPath
+                    SimpleWeatherWord.DUST -> dustIconPath
+                    SimpleWeatherWord.DRIZZLY -> drizzleIconPath
+                    SimpleWeatherWord.RAINY1 -> rainy1IconPath
+                    SimpleWeatherWord.RAINY2 -> rainy2IconPath
+                    SimpleWeatherWord.HAIL -> hailIconPath
+                    SimpleWeatherWord.SNOWY -> snowyIconPath
+                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
+                    SimpleWeatherWord.STORMY -> stormyIconPath
+                }
+
+                AsyncImage(
+                    model = fileName,
+                    contentDescription = "Icône météo actuelle",
+                    modifier = Modifier
+                        .width(30.dp)
+                        .height(30.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Text(
+                    text = "Max: ${dayReading.maxTemperature.roundToInt()}°C / Min: ${dayReading.minTemperature.roundToInt()}°C",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DailyForecastCard(viewModel: WeatherViewModel) {
+    val context = LocalContext.current
+
+    // On récupère l'état du lieu sélectionné depuis le ViewModel
+    val selectedLocation by viewModel.selectedLocation.collectAsState()
+    val dailyForecast by viewModel.dailyTemperatureForecast.collectAsState()
+    val model = viewModel.userSettings.collectAsState().value.model
+
+    Card(
+        modifier = Modifier
+            .padding(24.dp)
+            .clickable(true, onClick = { // Make the card clickable
+                // Create an Intent to launch DayChooserActivity
+                val intent = Intent(context, DayChooserActivity::class.java).apply {
+                    putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
+                }
+                // Start the activity
+                context.startActivity(intent)
+            })
+    ) {
+        if (viewModel.isLoading.collectAsState().value) {
+            Box(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                CircularProgressIndicator()
+            }
+            return@Card
+        }
+
+        Text(
+            text = "Daily forecast",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
+        )
+
+        if (viewModel.dailyTemperatureForecast.collectAsState().value.isEmpty())
+            return@Card
+
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), // Space between cards
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items(dailyForecast) { dayReading ->
+                DailyWeatherBox(dayReading, viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel) {
+    val context = LocalContext.current
+
+    // Charger les icônes
+    val iconWeatherFolder = "file:///android_asset/icons/weather/"
+    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
+    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
+    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
+    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
+    val dustIconPath: String = iconWeatherFolder + "dust.svg"
+    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
+    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
+    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
+    val hailIconPath: String = iconWeatherFolder + "hail.svg"
+    val snowyIconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
+    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
+
+    Surface(
+        modifier = Modifier
+            .width(85.dp)
+            .padding(4.dp)
+            .clickable { // Make the card clickable
+                // Create an Intent to launch DayGraphsActivity
+                val intent = Intent(context, DayGraphsActivity::class.java).apply {
+                    putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0))
+                    putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
+                }
+                // Start the activity
+                context.startActivity(intent)
+            },
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small,
+        shadowElevation = 2.dp
+    ) {
+        Box(
+            modifier = Modifier.padding()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Get the full day name (e.g., "Monday")
+                Text(
+                    text = dayReading.date.dayOfWeek.getDisplayName(
+                        TextStyle.FULL,
+                        Locale.getDefault()
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
+                val fileName = when (weatherWord) {
+                    SimpleWeatherWord.SUNNY -> sunnyDayIconPath
+                    SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyDayIconPath
+                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
+                    SimpleWeatherWord.FOGGY -> foggyIconPath
+                    SimpleWeatherWord.DUST -> dustIconPath
+                    SimpleWeatherWord.DRIZZLY -> drizzleIconPath
+                    SimpleWeatherWord.RAINY1 -> rainy1IconPath
+                    SimpleWeatherWord.RAINY2 -> rainy2IconPath
+                    SimpleWeatherWord.HAIL -> hailIconPath
+                    SimpleWeatherWord.SNOWY -> snowyIconPath
+                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
+                    SimpleWeatherWord.STORMY -> stormyIconPath
+                }
+
+                AsyncImage(
+                    model = fileName,
+                    contentDescription = "Icône météo actuelle",
+                    modifier = Modifier
+                        .width(30.dp)
+                        .height(30.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Text(
+                    text = "${dayReading.maxTemperature.roundToInt()}°/${dayReading.minTemperature.roundToInt()}°",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
         }
     }
 }

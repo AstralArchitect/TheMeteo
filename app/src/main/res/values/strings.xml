@@ -25,7 +25,7 @@
     <string name="mid_clouds">Medium clouds :</string>
     <string name="high_clouds">High clouds :</string>
     <string name="close">Close</string>
-    <string name="ceiling">Cloud base height :</string>
+    <string name="ceiling">Estimated Cloud base height :</string>
     <string name="opacity">Opacity :</string>
     <string name="diffuse_radiation">Diffuse radiation :</string>
     <string name="direct_radiation">Direct radiation :</string>
@@ -35,4 +35,9 @@
     <string name="sky_details">Sky details :</string>
     <string name="search_city">Search for a city...</string>
     <string name="add_city">Add a city</string>
+    <string name="title_activity_main">MainActivity</string>
+    <string name="widget_description">TheMeteo Widget</string>
+    <string name="title_activity_settings_activity.kt">SettingsActivity.kt</string>
+    <string name="next_days_temperature_forecast">Next %1$d Days Temperature Forecast</string>
+    <string name="unknown_error">Unknown error</string>
 </resources>

@@ -61,14 +61,16 @@ data class HourlyUnits(
     val diffuse_radiation: String? = null,
     @SerialName("windspeed_10m")
     val windspeed10m: String? = null,
+    @SerialName("wind_direction_10m")
+    val windDirection10m: String? = null,
     @SerialName("pressure_msl")
     val pressureMsl: String? = null,
     @SerialName("relative_humidity_2m")
     val relativeHumidity2m: String? = null,
     @SerialName("dewpoint_2m")
     val dewpoint2m: String? = null,
-    @SerialName("is_day")
-    val isDay: String? = null
+    @SerialName("weather_code")
+    val weatherCode: String? = null
 )
 
 @Serializable
@@ -98,14 +100,16 @@ data class HourlyData(
     val diffuse_radiation: List<Double>? = null, // en W/m^2
     @SerialName("windspeed_10m")
     val windspeed10m: List<Double>? = null,
+    @SerialName("wind_direction_10m")
+    val windDirection10m: List<Double>? = null, // en °
     @SerialName("pressure_msl")
     val pressureMsl: List<Double>? = null,
     @SerialName("relative_humidity_2m")
     val relativeHumidity2m: List<Int>? = null, // Souvent en Int (pourcentage)
     @SerialName("dewpoint_2m")
     val dewpoint2m: List<Double>? = null,
-    @SerialName("is_day")
-    val isDay: List<Int>? = null
+    @SerialName("weather_code")
+    val weatherCode: List<Int>? = null
 )
 
 // NEW: Data classes for Daily forecast
@@ -116,7 +120,8 @@ data class DailyUnits(
     val temperature2mMax: String? = null,
     @SerialName("temperature_2m_min")
     val temperature2mMin: String? = null,
-    // Add other daily fields if needed in the future
+    @SerialName("weather_code")
+    val weatherCode: String? = null
 )
 
 @Serializable
@@ -126,7 +131,8 @@ data class DailyData(
     val temperature2mMax: List<Double>? = null,
     @SerialName("temperature_2m_min")
     val temperature2mMin: List<Double>? = null,
-    // Add other daily fields if needed
+    @SerialName("weather_code")
+    val weatherCode: List<Int>? = null
 )
 
 // Classes pratiques pour combiner l'heure et la valeur
@@ -171,6 +177,11 @@ data class WindspeedReading(
     val windspeed: Double // en km/h
 )
 
+data class WindDirectionReading(
+    val time: LocalDateTime,
+    val windDirection: Double // en °
+)
+
 data class PressureReading(  
     val time: LocalDateTime,
     val pressure: Double // en hPa
@@ -186,25 +197,33 @@ data class DewpointReading(
     val dewpoint: Double // en °C
 )
 
+data class WMOReading(
+    val time: LocalDateTime,
+    val wmo: Int
+)
+
 data class AllVarsReading(
     val time: LocalDateTime,
     val temperatureReading: TemperatureReading,
-    val apparentTemperatureReading: ApparentTemperatureReading,
+    val apparentTemperatureReading: ApparentTemperatureReading?,
     val precipitationReading: PrecipitationReading,
-    val precipitationProbabilityReading: PrecipitationProbabilityReading,
+    val precipitationProbabilityReading: PrecipitationProbabilityReading?,
     val skyInfoReading: SkyInfoReading,
     val windspeedReading: WindspeedReading,
+    val winddirectionReading: WindDirectionReading,
     val pressureReading: PressureReading,
     val humidityReading: HumidityReading,
-    val dewpointReading: DewpointReading
+    val dewpointReading: DewpointReading,
+    val wmoReading: WMOReading
 )
 
 // Data class for daily temperature readings
 @Parcelize
-data class DailyTemperatureReading(
+data class DailyReading(
     val date: LocalDate,
     val maxTemperature: Double,
-    val minTemperature: Double
+    val minTemperature: Double,
+    val wmo: Int
 ) : Parcelable
 
 // --- Data classes pour la recherche de ville (Geocoding) ---
@@ -219,6 +238,41 @@ data class GeocodingResult(
     val longitude: Double,
     @SerialName("country_code") val countryCode: String,
     @SerialName("admin1") val region: String// La région ou l'état
+)
+
+// --- Data classes pour connaître les disponibilitées des variables par modèle ---
+data class AvailableVariables(
+    var precipitationProbability: Boolean,
+    var apparentTemperature: Boolean
+)
+
+val availableVariables = mapOf(
+    "best_match" to AvailableVariables(precipitationProbability = true, apparentTemperature = true),
+    "ecmwf_ifs" to AvailableVariables(precipitationProbability = true, apparentTemperature = true),
+    "ecmwf_aifs025_single" to AvailableVariables(
+        precipitationProbability = false,
+        apparentTemperature = true
+    ),
+    "meteofrance_seamless" to AvailableVariables(
+        precipitationProbability = true,
+        apparentTemperature = true
+    ),
+    "gfs_seamless" to AvailableVariables(
+        precipitationProbability = true,
+        apparentTemperature = true
+    ),
+    "icon_seamless" to AvailableVariables(
+        precipitationProbability = true,
+        apparentTemperature = true
+    ),
+    "gem_seamless" to AvailableVariables(
+        precipitationProbability = true,
+        apparentTemperature = true
+    ),
+    "ukmo_seamless" to AvailableVariables(
+        precipitationProbability = false,
+        apparentTemperature = true
+    ),
 )
 
 // --- 2. LE SERVICE MÉTÉO ---
@@ -248,6 +302,7 @@ class WeatherService {
     private fun HttpRequestBuilder.addHourlyParameters(
         latitude: Double,
         longitude: Double,
+        model: String,
         startDateTime: LocalDateTime,
         endDateTime: LocalDateTime,
         localZoneId: ZoneId,
@@ -256,6 +311,7 @@ class WeatherService {
         val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
         parameter("latitude", latitude)
         parameter("longitude", longitude)
+        parameter("models", model)
         parameter("hourly", hourlyFields.joinToString(",")) // Joindre tous les champs
         parameter("timezone", localZoneId.id)
         parameter("start_date", startDateTime.format(formatter).substringBefore("T"))
@@ -294,12 +350,13 @@ class WeatherService {
      * Récupère toutes les données horaires pour une période donnée.
      * Cette fonction sera la base pour tous nos appels.
      */
-    private suspend fun getHourlyData(
+    suspend fun getHourlyData(
         latitude: Double,
         longitude: Double,
+        model: String,
         startDateTime: LocalDateTime,
         hours: Long, // Nombre d'heures à récupérer à partir de maintenant
-        vararg hourlyFields: String // Les champs spécifiques à demander (ex: "temperature_2m", "precipitation")
+        vararg hourlyFields: String, // Les champs spécifiques à demander (ex: "temperature_2m", "precipitation")
     ): WeatherApiResponse? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
         val localZoneId = ZoneId.systemDefault()
@@ -308,7 +365,7 @@ class WeatherService {
         return try {
             client.get(apiUrl) {
                 // Utilisez la fonction d'aide
-                addHourlyParameters(latitude, longitude, startDateTime, endDateTime, localZoneId, *hourlyFields)
+                addHourlyParameters(latitude, longitude, model, startDateTime, endDateTime, localZoneId, *hourlyFields)
             }.body()
         } catch (e: Exception) {
             println("Erreur lors de la récupération des données horaires (${hourlyFields.joinToString(",")}) : ${e.message}")
@@ -317,13 +374,13 @@ class WeatherService {
     }
 
     // Function to get daily temperature forecast (max/min)
-    suspend fun getDailyTemperatureForecast(latitude: Double, longitude: Double, days: Long): List<DailyTemperatureReading>? {
+    suspend fun getDailyForecast(latitude: Double, longitude: Double, days: Int, model: String): List<DailyReading>? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
         val localZoneId = ZoneId.systemDefault()
         val now = LocalDate.now(localZoneId)
         // Start from tomorrow, and fetch 'days' number of days
         val startLocalDate = now.plusDays(1)
-        val endLocalDate = now.plusDays(days)
+        val endLocalDate = now.plusDays(days.toLong())
 
         val formatter = DateTimeFormatter.ISO_LOCAL_DATE
 
@@ -331,7 +388,8 @@ class WeatherService {
             val response: WeatherApiResponse = client.get(apiUrl) {
                 parameter("latitude", latitude)
                 parameter("longitude", longitude)
-                parameter("daily", "temperature_2m_max,temperature_2m_min") // Request max/min daily temps
+                parameter("models", model)
+                parameter("daily", "temperature_2m_max,temperature_2m_min,weather_code") // Request max/min daily temps and VMO code
                 parameter("timezone", localZoneId.id)
                 parameter("start_date", startLocalDate.format(formatter))
                 parameter("end_date", endLocalDate.format(formatter))
@@ -340,14 +398,17 @@ class WeatherService {
             val dailyTimes = response.daily?.time
             val dailyMaxTemps = response.daily?.temperature2mMax
             val dailyMinTemps = response.daily?.temperature2mMin
+            val dailyVMO = response.daily?.weatherCode
 
-            if (dailyTimes != null && dailyMaxTemps != null && dailyMinTemps != null &&
-                dailyTimes.size == dailyMaxTemps.size && dailyTimes.size == dailyMinTemps.size) {
-                dailyTimes.zip(dailyMaxTemps.zip(dailyMinTemps)) { timeStr, (maxTemp, minTemp) ->
-                    DailyTemperatureReading(
+            if (dailyTimes != null && dailyMaxTemps != null && dailyMinTemps != null && dailyVMO != null &&
+                dailyTimes.size == dailyMaxTemps.size && dailyTimes.size == dailyMinTemps.size && dailyTimes.size == dailyVMO.size
+            ) {
+                dailyTimes.zip(dailyMaxTemps.zip(dailyMinTemps.zip(dailyVMO))) { timeStr, (maxTemp, minTempVMO) ->
+                    DailyReading(
                         date = LocalDate.parse(timeStr, formatter),
                         maxTemperature = maxTemp,
-                        minTemperature = minTemp
+                        minTemperature = minTempVMO.first,
+                        wmo = minTempVMO.second
                     )
                 }
             } else {
@@ -360,20 +421,26 @@ class WeatherService {
         }
     }
 
-    // -- Fonctions pour récupérer l'état actuel pour chaque type de donnée --
-    // TODO(): Ajouter les fonctions pour chaque type de donnée
-
-    // --- Fonctions spécifiques pour chaque type de donnée ---
-
+    // --- Fonctions pour télécharger les hourly data sur 24H ---
     suspend fun get24hAllVariablesForecast(
         latitude: Double, longitude: Double,
+        model: String,
         startDateTime: LocalDateTime = LocalDateTime.now(ZoneId.systemDefault())
     ): List<AllVarsReading>? {
-        val response = getHourlyData(latitude, longitude, startDateTime, 24, "temperature_2m", "apparent_temperature",
-                "precipitation", "precipitation_probability", "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
-                "shortwave_radiation", "direct_radiation", "diffuse_radiation", "windspeed_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m")
-        ?: return null
-        val endDateTime = startDateTime.plusHours(24)
+        val startDateTime = startDateTime.withMinute(0).withSecond(0)
+        val variables = mutableListOf("temperature_2m", "precipitation",
+            "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
+            "shortwave_radiation", "direct_radiation", "diffuse_radiation", "windspeed_10m", "wind_direction_10m",
+            "pressure_msl", "relative_humidity_2m", "dewpoint_2m", "weather_code")
+        if (availableVariables[model]?.precipitationProbability == true)
+            variables.add("precipitation_probability")
+        if (availableVariables[model]?.apparentTemperature == true)
+            variables.add("apparent_temperature")
+
+        val response = getHourlyData(latitude, longitude, model, startDateTime, 23,
+            variables.joinToString(",")
+        ) ?: return null
+        val endDateTime = startDateTime.plusHours(23)
 
         // Utiliser let pour s'assurer que toutes les listes de données requises ne sont pas nulles
         return response.hourly?.let { hourly ->
@@ -390,22 +457,23 @@ class WeatherService {
             val dsi = hourly.direct_radiation
             val dhi = hourly.diffuse_radiation
             val windspeed = hourly.windspeed10m
+            val windDirection = hourly.windDirection10m
             val pressure = hourly.pressureMsl
             val humidity = hourly.relativeHumidity2m
             val dewpoint = hourly.dewpoint2m
+            val wmo = hourly.weatherCode
 
             // 2. Vérifier que toutes les listes de données sont présentes et ont la même taille
-            if (temperature != null && apparentTemperature != null &&
-                precipitation != null && precipitationProbability != null &&
+            if (temperature != null && precipitation != null &&
                 totalCover != null && lowCover != null && midCover != null && highCover != null &&
-                dsi != null && ghi != null && dhi != null && windspeed != null &&
-                pressure != null && humidity != null && dewpoint != null &&
-                times.size == temperature.size && times.size == apparentTemperature.size &&
-                times.size == precipitation.size && times.size == precipitationProbability.size &&
+                dsi != null && ghi != null && dhi != null && windspeed != null && windDirection != null &&
+                pressure != null && humidity != null && dewpoint != null && wmo != null &&
+                times.size == temperature.size && times.size == precipitation.size &&
                 times.size == totalCover.size && times.size == lowCover.size &&
                 times.size == midCover.size && times.size == highCover.size && times.size == dsi.size &&
                 times.size == ghi.size && times.size == dhi.size && times.size == windspeed.size &&
-                times.size == pressure.size && times.size == humidity.size && times.size == dewpoint.size
+                times.size == pressure.size && times.size == humidity.size &&
+                times.size == dewpoint.size && times.size == wmo.size && times.size == windDirection.size
             ) {
 
                 // 3. Itérer sur les indices de la liste de temps
@@ -422,18 +490,18 @@ class WeatherService {
                             time = dateTime,
                             temperature = temperature[index]
                         ),
-                        apparentTemperatureReading = ApparentTemperatureReading(
+                        apparentTemperatureReading = if (apparentTemperature != null) ApparentTemperatureReading(
                             time = dateTime,
                             apparentTemperature = apparentTemperature[index]
-                        ),
+                        ) else null,
                         precipitationReading = PrecipitationReading(
                             time = dateTime,
                             precipitation = precipitation[index]
                         ),
-                        precipitationProbabilityReading = PrecipitationProbabilityReading(
+                        precipitationProbabilityReading = if (precipitationProbability != null) PrecipitationProbabilityReading(
                             time = dateTime,
                             probability = precipitationProbability[index]
-                        ),
+                        ) else null,
                         skyInfoReading = SkyInfoReading(
                             time = dateTime,
                             cloudcover_total = totalCover[index],
@@ -449,6 +517,10 @@ class WeatherService {
                             time = dateTime,
                             windspeed = windspeed[index]
                         ),
+                        winddirectionReading = WindDirectionReading(
+                            time = dateTime,
+                            windDirection = windDirection[index]
+                        ),
                         pressureReading = PressureReading(
                             time = dateTime,
                             pressure = pressure[index]
@@ -460,6 +532,10 @@ class WeatherService {
                         dewpointReading = DewpointReading(
                             time = dateTime,
                             dewpoint = dewpoint[index]
+                        ),
+                        wmoReading = WMOReading(
+                            time = dateTime,
+                            wmo = wmo[index]
                         )
                     )
                 }
@@ -468,26 +544,13 @@ class WeatherService {
                             endDateTime.plusMinutes(1)
                         )
                     }
-                    .take(25)
+                    .take(24)
 
             } else {
-                println("Erreur: Données de couverture nuageuse incomplètes ou de tailles différentes reçues.")
+                println("Erreur: Erreur lors de la récupération des données horaires.")
                 null
             }
         }
-    }
-
-    suspend fun getIsDay(latitude: Double, longitude: Double): Boolean? {
-        // On ne demande les données que pour 1 heure, avec seulement le champ "is_day"
-        val response = getHourlyData(latitude, longitude, LocalDateTime.now(ZoneId.systemDefault()),1, "is_day") ?: return null
-
-        // Il faut inverser la valeur donnée
-        val value = response.hourly?.isDay?.firstOrNull() != 1
-
-        // L'API retourne une liste, on prend le premier élément qui correspond à l'heure actuelle.
-        // 1 signifie "jour", 0 signifie "nuit".
-        // On retourne true si la valeur est 1, sinon false (ou null en cas d'erreur).
-        return value
     }
 
     fun close() {

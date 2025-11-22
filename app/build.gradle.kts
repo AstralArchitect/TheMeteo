@@ -1,9 +1,20 @@
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Date
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20" // Utilisez la même version que votre Kotlin
     id("kotlin-parcelize")
+}
+
+// Fonction pour obtenir la date formatée
+fun getBuildDate(): String {
+    return SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(
+        Date()
+    )
 }
 
 android {
@@ -15,13 +26,27 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "1.1.1 (Preview)"
+        versionName = "1.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        // Configuration pour le build de débogage
+        debug {
+            // Le suffixe sera ajouté au nom de l'application (ex: Themeteo-Alpha)
+            applicationIdSuffix = ".debug"
+            // Le suffixe sera ajouté au nom de la version
+            versionNameSuffix = "-${getBuildDate()} Alpha"
+            isDebuggable = true // Cette ligne est implicite pour le debug, mais la laisser est clair
+        }
+
+        // Configuration pour le build de production
         release {
+            // Ajout du suffixe pour la version de release
+            // Note : Pas de suffixe pour l'applicationID en release
+            versionNameSuffix = "-${getBuildDate()} Beta"
+
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -68,6 +93,10 @@ dependencies {
     // Pour la gestion des permissions avec Compose
     implementation(libs.accompanist.permissions)
 
+    // Dépendance de base pour Coil
+    implementation(libs.coil.compose)
+    implementation("io.coil-kt:coil-svg:2.6.0")
+
     // Ktor pour les requêtes réseau
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio) // Moteur HTTP pour Ktor
@@ -91,17 +120,20 @@ dependencies {
     implementation(libs.photoview)
     implementation(libs.ycharts)
 
+    // Glance pour les widgets d'écran d'accueil
+    implementation("androidx.glance:glance-appwidget:1.2.0-beta01")
+    implementation("androidx.glance:glance-material3:1.2.0-beta01")
+
+    // WorkManager pour exécuter des tâches en arrière-plan
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
     // Data store
-    implementation("androidx.datastore:datastore-core:1.1.7") // ou la version explicite
+    implementation("androidx.datastore:datastore-core:1.1.7")
     implementation("androidx.datastore:datastore-preferences:1.1.7") // Alternative plus simple pour clé-valeur
-    implementation("com.google.protobuf:protobuf-kotlin-lite:4.33.0") // Nécessaire pour la sérialisation d'objets
-
-
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
+    implementation("com.google.protobuf:protobuf-kotlin-lite:4.33.0")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
