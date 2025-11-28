@@ -10,7 +10,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.appcompat.graphics.drawable.DrawerArrowDrawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,21 +35,34 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -58,44 +70,33 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
 import fr.matthstudio.themeteo.forecastViewer.data.WeatherViewModelFactory
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.satImgs.MainSatActivity
+import io.ktor.utils.io.InternalAPI
 import java.io.IOException
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.text.font.FontWeight
-import coil.compose.AsyncImage
-import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
-import io.ktor.util.collections.getValue
-import io.ktor.utils.io.InternalAPI
-import kotlin.collections.get
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
- * Chaque cas peut être associé à une icône et à un niveau de "priorité".
- *
- * @param priority Plus le chiffre est élevé, plus le phénomène est important.
  */
 enum class SimpleWeatherWord {
     STORMY,       // Orageux
     HAIL,         // Grêle
-    SNOWY,        // Neigeux
+    SNOWY1,        // Neigeux
+    SNOWY2,        // Neige
+    SNOWY3,        // Neige forte
     SNOWY_MIX,    // Neige et pluie
     RAINY2,       // Pluvieux
     RAINY1,       // Pluvieux
@@ -155,8 +156,7 @@ class ForecastMainActivity : ComponentActivity() {
 @OptIn(InternalAPI::class)
 @Composable
 fun WeatherScreen(viewModel: WeatherViewModel) {
-    val tempForecast by viewModel.temperatureForecast.collectAsState()
-    val isDaytime: Boolean = (viewModel.skyInfoForecast.collectAsState().value.firstOrNull()?.shortwave_radiation ?: 1.0) >= 1.0
+    val isDaytime: Boolean = (viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.skyInfo?.shortwave_radiation ?: 1.0) >= 1.0
 
     val userSettings by viewModel.userSettings.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -179,6 +179,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val sunnyCloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "mid-cloudy.jpg")) }
     val cloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "overcast.jpg")) }
     val rainyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainy.jpg")) }
+    val snowyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "snowy.jpg")) }
 
     // icons paths
     val iconWeatherFolder = "file:///android_asset/icons/weather/"
@@ -196,7 +197,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val rainy2DayIconPath: String = iconWeatherFolder + "rainy-3-day.svg"
     val rainy2NightIconPath: String = iconWeatherFolder + "rainy-3-night.svg"
     val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowyIconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
+    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
     val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
     val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
 
@@ -253,8 +256,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 SimpleWeatherWord.CLOUDY -> cloudyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.RAINY1 -> rainyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.RAINY2 -> rainyImageBitmap ?: ImageBitmap(1, 1)
-
-                SimpleWeatherWord.STORMY -> null
+                SimpleWeatherWord.SNOWY1 -> snowyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.SNOWY2 -> snowyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.SNOWY3 -> snowyImageBitmap ?: ImageBitmap(1, 1)
                 else -> null
             }
 
@@ -275,7 +279,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 // --- SÉLECTEUR DE LIEU PAR-DESSUS L'IMAGE ---
                 Row (
                     modifier = Modifier
-                        .align (Alignment.Center)
+                        .align(Alignment.Center)
                         .clickable { showLocationSheet = true }, // OUVRE LE PANNEAU
                 ) {
                     Icon(
@@ -334,7 +338,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     SimpleWeatherWord.RAINY1 -> if (isDaytime) rainy1DayIconPath else rainy1NightIconPath
                     SimpleWeatherWord.RAINY2 -> if (isDaytime) rainy2DayIconPath else rainy2NightIconPath
                     SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY -> snowyIconPath
+                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
+                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
+                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
                     SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
                     SimpleWeatherWord.STORMY -> stormyIconPath
                 }
@@ -350,7 +356,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
 
                 Column {
                     Text(
-                        text = "${tempForecast.firstOrNull()?.temperature?.roundToInt() ?: 0}°C",
+                        text = "${viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.temperature?.roundToInt() ?: 0}°C",
                         style = MaterialTheme.typography.headlineLarge,
                         color = Color.White
                     )
@@ -392,8 +398,11 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             // Daily forecast
             DailyForecastCard(viewModel)
 
+            // 15 minutely forecast
+            FifteenMinutelyForecastCard(viewModel)
+
             // Actual situation
-            situationCard(
+            ActualSituationCard(
                 viewModel = viewModel,
                 onCloudIconClick = { showCloudInfoDialog = true }
             )
@@ -466,10 +475,13 @@ fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
         in 40..49 -> SimpleWeatherWord.FOGGY    // Fog
         in 50..59 -> SimpleWeatherWord.DRIZZLY  // Drizzle
         in 60..69 -> SimpleWeatherWord.RAINY1   // Rain
-        in 70..79 -> SimpleWeatherWord.SNOWY
+        70, 71 -> SimpleWeatherWord.SNOWY1            // Light Snow
+        72, 73 -> SimpleWeatherWord.SNOWY2            // Snow
+        74, 75 -> SimpleWeatherWord.SNOWY3            // Heavy Snow
+        in 76..79 -> SimpleWeatherWord.SNOWY_MIX// Snow Grains
         in 80..82 -> SimpleWeatherWord.RAINY2   // Rain showers
         83, 84 -> SimpleWeatherWord.SNOWY_MIX         // Rain and snow mixed showers -> classified as Snowy
-        85, 86 -> SimpleWeatherWord.SNOWY             // Snow showers
+        85, 86 -> SimpleWeatherWord.SNOWY3            // Snow showers
         in 87..90 -> SimpleWeatherWord.HAIL     // Hail showers
         in 91..94 -> SimpleWeatherWord.STORMY   // Rain/Drizzle with Thunderstorm (but we will let STORMY override)
         in 95..99 -> SimpleWeatherWord.STORMY
@@ -479,24 +491,26 @@ fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
 
 @Composable
 fun getSimpleWeather(viewModel: WeatherViewModel, index: Int = 0): SimpleWeather {
-    val context = LocalContext.current
     var simpleWeather: SimpleWeather by remember {
         mutableStateOf(SimpleWeather("Ciel clair", SimpleWeatherWord.SUNNY))
     }
 
-    val precipitationForecast by viewModel.precipitationForecast.collectAsState()
-    val skyStateForecast by viewModel.skyInfoForecast.collectAsState()
-    val wCodeForecast by viewModel.wmoForecast.collectAsState()
+    val hourlyForecast by viewModel.hourlyForecast.collectAsState()
 
-    LaunchedEffect(precipitationForecast, skyStateForecast, wCodeForecast) {
-        if (precipitationForecast.isEmpty() ||
-            wCodeForecast.isEmpty() ||
-            skyStateForecast.isEmpty())
+    LaunchedEffect(
+        hourlyForecast.map { it.skyInfo },
+        hourlyForecast.map { it.precipitationData },
+        hourlyForecast.map { it.wmo },
+        index
+    ) {
+        if (hourlyForecast.isEmpty())
             return@LaunchedEffect
 
-        val skyState = skyStateForecast[index]
-        val precipitation = precipitationForecast[index].precipitation.toFloat()
-        val wCode = wCodeForecast[index].wmo
+        val skyState = hourlyForecast.map { it.skyInfo }[index]
+        val precipitation = hourlyForecast.map { it.precipitationData.precipitation }[index].toFloat()
+        val rain = hourlyForecast.map { it.precipitationData.rain }[index].toFloat()
+        val snow = hourlyForecast.map { it.precipitationData.snowfall }[index].toFloat()
+        val wCode = hourlyForecast.map { it.wmo }[index]
 
         // Créer une NOUVELLE instance à chaque calcul.
         val newWeather = SimpleWeather("Initial", SimpleWeatherWord.SUNNY) // Les valeurs sont temporaires
@@ -530,12 +544,21 @@ fun getSimpleWeather(viewModel: WeatherViewModel, index: Int = 0): SimpleWeather
         } else {
             newWeather.sentence = "Ciel couvert"
         }
-        // 3. Ajouter la pluie
+        // 3. Ajouter la pluie / neige
         if (precipitation >= 0.1f) {
-            newWeather.sentence += if (precipitation < 0.5f) " avec pluie légère"
-            else if (precipitation < 3.0f) " avec pluie modérée"
-            else if (precipitation < 10.0f) " avec pluie forte"
-            else " avec pluie torrentielle"
+            // prioriser la neige
+            if (snow >= 0.1f)
+            {
+                newWeather.sentence += if (snow < 0.5) " avec neige légère"
+                else if (snow < 1.0) " avec neige modérée"
+                else " avec neige forte"
+            } else if (rain >= 0.1f) {
+                newWeather.sentence += if (rain < 0.5) " avec pluie légère"
+                else if (rain < 3.0) " avec pluie modérée"
+                else if (rain < 10.0) " avec pluie forte"
+                else " avec pluie torrentielle"
+            }
+            else newWeather.sentence += " avec precipitation"
         }
 
         // Remplacer l'état.
@@ -567,7 +590,7 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
             is LocationIdentifier.CurrentUserLocation -> {
                 // On a besoin de la localisation GPS
                 if (locationPermissionsState.allPermissionsGranted) {
-                    viewModel.getLocationAndLoad24hForecastPlusDailyForecast(context, startDateTime)
+                    viewModel.getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context, startDateTime)
                 } else if (!locationPermissionsState.shouldShowRationale) {
                     // C'est la première fois ou l'utilisateur a dit "ne plus demander"
                     locationPermissionsState.launchMultiplePermissionRequest()
@@ -589,6 +612,10 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
                     locationIdentifier.location.longitude,
                     weatherModelPredictionTime[settings.model] ?: 10
                 )
+                viewModel.load12hMinutelyForecast(
+                    locationIdentifier.location.latitude,
+                    locationIdentifier.location.longitude
+                )
             }
         }
     }
@@ -597,7 +624,7 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
     LaunchedEffect(locationPermissionsState.allPermissionsGranted) {
         // Si les permissions viennent d'être accordées ET que le lieu actuel est la position GPS
         if (locationPermissionsState.allPermissionsGranted && selectedLocation is LocationIdentifier.CurrentUserLocation) {
-            viewModel.getLocationAndLoad24hForecastPlusDailyForecast(context, startDateTime)
+            viewModel.getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context, startDateTime)
         }
     }
 }
@@ -611,7 +638,6 @@ enum class ChosenVar {
 
 @Composable
 fun HourlyForecast(viewModel: WeatherViewModel) {
-
     val context = LocalContext.current
     var variable: ChosenVar by remember { mutableStateOf(ChosenVar.TEMPERATURE) }
 
@@ -628,7 +654,7 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
                 context.startActivity(intent)
             })
     ) {
-        if (viewModel._isLoadingTemperature.collectAsState().value) {
+        if (viewModel._isLoadingHourly.collectAsState().value) {
             Box(
                 modifier = Modifier.padding(16.dp)
             ) {
@@ -638,14 +664,12 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
         }
 
         Text(
-            text = "Hourly forecast",
+            text = stringResource(R.string.hourly_forecast),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
         )
 
-        if (viewModel.temperatureForecast.collectAsState().value.isEmpty() ||
-            viewModel.precipitationForecast.collectAsState().value.isEmpty() ||
-            viewModel.windspeedForecast.collectAsState().value.isEmpty())
+        if (viewModel.hourlyForecast.collectAsState().value.isEmpty())
             return@Card
 
         Column (
@@ -654,9 +678,9 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
             val scrollState = rememberScrollState()
             when (variable) {
                 ChosenVar.TEMPERATURE -> GenericGraph(viewModel, GraphType.TEMP, Color(0xFFFFF176), scrollState = scrollState)
-                ChosenVar.APPARENT_TEMPERATURE -> if (viewModel.apparentTemperatureForecast.collectAsState().value != null)
+                ChosenVar.APPARENT_TEMPERATURE -> if (viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.apparentTemperature != null)
                     GenericGraph(viewModel, GraphType.A_TEMP, Color(0xFFFFB300), scrollState = scrollState)
-                ChosenVar.PRECIPITATION -> GenericGraph(viewModel, GraphType.RAIN_RATE, Color(0xFF039BE5), scrollState = scrollState)
+                ChosenVar.PRECIPITATION -> GenericGraph(viewModel, GraphType.PRECIPITATION, Color(0xFF039BE5), scrollState = scrollState)
                 ChosenVar.WIND -> GenericGraph(viewModel, GraphType.WIND_SPEED, Color(0xFF7CB342), scrollState = scrollState)
             }
             if (variable != ChosenVar.WIND)
@@ -669,20 +693,23 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             ChosenVar.entries.forEach {
-                if (it == ChosenVar.APPARENT_TEMPERATURE && viewModel.apparentTemperatureForecast.collectAsState().value == null)
+                if (it == ChosenVar.APPARENT_TEMPERATURE && viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.apparentTemperature == null)
                 {
                     return@forEach
                 }
+                val isSelected = variable == it
 
                 OutlinedButton(
-                    modifier = Modifier.padding(8.dp),
+                    modifier = Modifier
+                        .padding(8.dp),
+                    enabled = !isSelected,
                     onClick = { variable = it }
                 ) {
                     Text(when(it){
-                        ChosenVar.TEMPERATURE -> "Température °C"
-                        ChosenVar.APPARENT_TEMPERATURE -> "Température ressentie °C"
-                        ChosenVar.PRECIPITATION -> "Précipitation mm/h"
-                        ChosenVar.WIND -> "Vitesse du vent km/h"
+                        ChosenVar.TEMPERATURE -> stringResource(R.string.temperature_unit)
+                        ChosenVar.APPARENT_TEMPERATURE -> stringResource(R.string.a_temperature_unit)
+                        ChosenVar.PRECIPITATION -> stringResource(R.string.precipitation_unit)
+                        ChosenVar.WIND -> stringResource(R.string.wind_speed_unit)
                     })
                 }
             }
@@ -691,19 +718,59 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
 }
 
 @Composable
-fun situationCard(
+fun FifteenMinutelyForecastCard(viewModel: WeatherViewModel) {
+    if (viewModel.minutelyForecast15.collectAsState().value.isEmpty() ||
+        (viewModel.minutelyForecast15.collectAsState().value.maxOf{it.rain} == 0.0 &&
+                viewModel.minutelyForecast15.collectAsState().value.maxOf{it.snowfall} == 0.0)
+        )
+        return
+
+    Card(
+        modifier = Modifier.padding(24.dp)
+    ) {
+        if (viewModel._isLoadingHourly.collectAsState().value) {
+            Box(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                CircularProgressIndicator()
+            }
+            return@Card
+        }
+
+        Text(
+            text = "15 Minutely Precipitation Forecast",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
+        )
+
+        if (viewModel.hourlyForecast.collectAsState().value.isEmpty())
+            return@Card
+
+        Column (
+            modifier = Modifier.padding(start = 8.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
+        ) {
+            BarsGraph(viewModel)
+        }
+    }
+}
+
+@Composable
+fun ActualSituationCard(
     viewModel: WeatherViewModel,
     onCloudIconClick: () -> Unit
 ) {
-    val tempForecast by viewModel.temperatureForecast.collectAsState()
-    val apparentTemperatureForecast by viewModel.apparentTemperatureForecast.collectAsState()
-    val precipitationForecast by viewModel.precipitationForecast.collectAsState()
-    val precipitationProbabilityForecast by viewModel.precipitationProbabilityForecast.collectAsState()
-    val cloudcoverForecast by viewModel.skyInfoForecast.collectAsState()
-    val windspeedForecast by viewModel.windspeedForecast.collectAsState()
-    val pressureForecast by viewModel.pressureForecast.collectAsState()
-    val humidityForecast by viewModel.humidityForecast.collectAsState()
-    val dewpointForecast by viewModel.dewpointForecast.collectAsState()
+    val temp = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.temperature
+    val apparentTemperature =
+        viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.apparentTemperature
+    val precipitation =
+        viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.precipitationData?.precipitation
+    val precipitationProbability =
+        viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.precipitationData?.precipitationProbability
+    val cloudcover = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.skyInfo?.cloudcover_total
+    val windspeed = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.windspeed
+    val pressure = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.pressure
+    val humidity = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.humidity
+    val dewpoint = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.dewpoint
 
     val isLoading by viewModel.isLoading.collectAsState()
 
@@ -761,7 +828,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${tempForecast.firstOrNull()?.temperature?.roundToInt() ?: 0}°C")
+                        Text("${temp ?: 0}°C")
                     }
                 }
                 // Item 2: Température ressentie
@@ -777,7 +844,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${apparentTemperatureForecast?.firstOrNull()?.apparentTemperature?.roundToInt() ?: 0}°C (A)")
+                        Text("${apparentTemperature ?: 0}°C (A)")
                     }
                 }
                 // Item 3: Point de rosée
@@ -793,7 +860,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${dewpointForecast.firstOrNull()?.dewpoint ?: 0}°C")
+                        Text("${dewpoint ?: 0}°C")
                     }
                 }
             }
@@ -814,7 +881,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${precipitationProbabilityForecast?.firstOrNull()?.probability ?: 0}%")
+                        Text("${precipitationProbability ?: 0}%")
                     }
                 }
                 // Item 5: Précipitation
@@ -830,7 +897,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${precipitationForecast.firstOrNull()?.precipitation ?: 0}mm")
+                        Text("${precipitation ?: 0}mm")
                     }
                 }
                 // Item 6: Vitesse du vent
@@ -846,7 +913,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${windspeedForecast.firstOrNull()?.windspeed ?: 0}km/h")
+                        Text("${windspeed ?: 0}km/h")
                     }
                 }
             }
@@ -867,7 +934,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${pressureForecast.firstOrNull()?.pressure ?: 0}hPa")
+                        Text("${pressure ?: 0}hPa")
                     }
                 }
                 // Item 8: Humidité
@@ -883,7 +950,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${humidityForecast.firstOrNull()?.humidity ?: 0}%")
+                        Text("${humidity ?: 0}%")
                     }
                 }
                 // Item 9: Couverture nuageuse
@@ -901,7 +968,7 @@ fun situationCard(
                             contentDescription = null,
                             modifier = Modifier.size(48.dp)
                         )
-                        Text("${cloudcoverForecast.firstOrNull()?.cloudcover_total ?: 0}%")
+                        Text("${cloudcover ?: 0}%")
                     }
                 }
             }
@@ -1048,25 +1115,23 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
 @Composable
 fun CloudInfoDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     // Collecter les différents états de couverture nuageuse depuis le ViewModel
-    val skyInfoForecast by viewModel.skyInfoForecast.collectAsState()
-    val temperatureForecast by viewModel.temperatureForecast.collectAsState()
-    val dewpointForecast by viewModel.dewpointForecast.collectAsState()
+    val houryForecast by viewModel.hourlyForecast.collectAsState()
 
     // Récupérer les valeurs
     // cloud cover
-    val total = skyInfoForecast.firstOrNull()?.cloudcover_total ?: 0
-    val low = skyInfoForecast.firstOrNull()?.cloudcover_low ?: 0
-    val mid = skyInfoForecast.firstOrNull()?.cloudcover_mid ?: 0
-    val high = skyInfoForecast.firstOrNull()?.cloudcover_high ?: 0
+    val total = houryForecast.firstOrNull()?.skyInfo?.cloudcover_total ?: 0
+    val low = houryForecast.firstOrNull()?.skyInfo?.cloudcover_low ?: 0
+    val mid = houryForecast.firstOrNull()?.skyInfo?.cloudcover_mid ?: 0
+    val high = houryForecast.firstOrNull()?.skyInfo?.cloudcover_high ?: 0
     // Solar radiation
-    val shortwaveRadiation = skyInfoForecast.firstOrNull()?.shortwave_radiation ?: 0f
-    val directRadiation = skyInfoForecast.firstOrNull()?.direct_radiation ?: 0f
-    val diffuseRadiation = skyInfoForecast.firstOrNull()?.diffuse_radiation ?: 0f
+    val shortwaveRadiation = houryForecast.firstOrNull()?.skyInfo?.shortwave_radiation
+    val directRadiation = houryForecast.firstOrNull()?.skyInfo?.direct_radiation
+    val diffuseRadiation = houryForecast.firstOrNull()?.skyInfo?.diffuse_radiation
     // opacity
-    val opacity = skyInfoForecast.firstOrNull()?.opacity ?: 0
+    val opacity = houryForecast.firstOrNull()?.skyInfo?.opacity ?: 0
     // temp and dew point
-    val temp = (temperatureForecast.firstOrNull()?.temperature ?: 0f).toDouble()
-    val dewpoint = (dewpointForecast.firstOrNull()?.dewpoint ?: 0f).toDouble()
+    val temp = (houryForecast.firstOrNull()?.temperature ?: 0f).toDouble()
+    val dewpoint = (houryForecast.firstOrNull()?.dewpoint ?: 0f).toDouble()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1082,10 +1147,21 @@ fun CloudInfoDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                 InfoRow(label = stringResource(R.string.mid_clouds), value = "$mid%")
                 InfoRow(label = stringResource(R.string.high_clouds), value = "$high%")
                 InfoRow(label = stringResource(R.string.ceiling), value = "${125 * (temp - dewpoint).toInt()}m")
-                InfoRow(label = stringResource(R.string.total_radiation), value = "$shortwaveRadiation W/m²")
-                InfoRow(label = stringResource(R.string.direct_radiation), value = "$directRadiation W/m²")
-                InfoRow(label = stringResource(R.string.diffuse_radiation), value = "$diffuseRadiation W/m²")
-                InfoRow(label = stringResource(R.string.opacity), value = "$opacity%")
+                if (shortwaveRadiation != null) {
+                    InfoRow(
+                        label = stringResource(R.string.total_radiation),
+                        value = "$shortwaveRadiation W/m²"
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.direct_radiation),
+                        value = "$directRadiation W/m²"
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.diffuse_radiation),
+                        value = "$diffuseRadiation W/m²"
+                    )
+                    InfoRow(label = stringResource(R.string.opacity), value = "$opacity%")
+                }
             }
         },
         confirmButton = {

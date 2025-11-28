@@ -142,7 +142,7 @@ class DayChooserActivity : ComponentActivity() {
 @Composable
 fun DayChooser(weatherViewModel: WeatherViewModel) {
     // Collect the daily forecast and loading state from the ViewModel
-    val dailyForecast by weatherViewModel.dailyTemperatureForecast.collectAsState()
+    val dailyForecast by weatherViewModel.dailyForecast.collectAsState()
     val isLoading by weatherViewModel.isLoading.collectAsState()
     val errorMessage by weatherViewModel.errorMessage.collectAsState()
 
@@ -212,7 +212,9 @@ fun SingleDailyForecastCard(dayReading: DailyReading, viewModel: WeatherViewMode
     val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
     val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
     val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowyIconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
+    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
     val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
     val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
 
@@ -261,7 +263,9 @@ fun SingleDailyForecastCard(dayReading: DailyReading, viewModel: WeatherViewMode
                     SimpleWeatherWord.RAINY1 -> rainy1IconPath
                     SimpleWeatherWord.RAINY2 -> rainy2IconPath
                     SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY -> snowyIconPath
+                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
+                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
+                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
                     SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
                     SimpleWeatherWord.STORMY -> stormyIconPath
                 }
@@ -289,9 +293,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel) {
     val context = LocalContext.current
 
     // On récupère l'état du lieu sélectionné depuis le ViewModel
-    val selectedLocation by viewModel.selectedLocation.collectAsState()
-    val dailyForecast by viewModel.dailyTemperatureForecast.collectAsState()
-    val model = viewModel.userSettings.collectAsState().value.model
+    val dailyForecast by viewModel.dailyForecast.collectAsState()
 
     Card(
         modifier = Modifier
@@ -315,16 +317,18 @@ fun DailyForecastCard(viewModel: WeatherViewModel) {
         }
 
         Text(
-            text = "Daily forecast",
+            text = stringResource(R.string.daily_forecast),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
         )
 
-        if (viewModel.dailyTemperatureForecast.collectAsState().value.isEmpty())
+        if (viewModel.dailyForecast.collectAsState().value.isEmpty())
             return@Card
 
         LazyRow(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), // Space between cards
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -350,7 +354,9 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel) {
     val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
     val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
     val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowyIconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
+    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
     val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
     val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
 
@@ -399,7 +405,9 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel) {
                     SimpleWeatherWord.RAINY1 -> rainy1IconPath
                     SimpleWeatherWord.RAINY2 -> rainy2IconPath
                     SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY -> snowyIconPath
+                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
+                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
+                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
                     SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
                     SimpleWeatherWord.STORMY -> stormyIconPath
                 }

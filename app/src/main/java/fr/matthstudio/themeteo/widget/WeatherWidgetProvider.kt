@@ -1,11 +1,9 @@
 package fr.matthstudio.themeteo.widget
 
-import android.annotation.SuppressLint
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.text.format.DateUtils
 import android.util.Log
-import android.widget.ProgressBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -16,7 +14,6 @@ import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
-import androidx.glance.appwidget.AndroidRemoteViews
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.ActionCallback
@@ -42,8 +39,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import co.yml.charts.common.extensions.formatToSinglePrecision
-import coil.compose.AsyncImage
 import com.google.common.util.concurrent.ListenableFuture
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.forecastViewer.SimpleWeatherWord
@@ -288,7 +283,8 @@ class WeatherWidget : GlanceAppWidget() {
             SimpleWeatherWord.RAINY1 -> R.drawable.rainy_2
             SimpleWeatherWord.RAINY2 -> R.drawable.rainy_3
             SimpleWeatherWord.HAIL -> R.drawable.hail
-            SimpleWeatherWord.SNOWY, SimpleWeatherWord.SNOWY_MIX -> R.drawable.snowy_2
+            SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2, SimpleWeatherWord.SNOWY3 -> R.drawable.snowy_2
+            SimpleWeatherWord.SNOWY_MIX -> R.drawable.snowy_2
             SimpleWeatherWord.STORMY -> R.drawable.thunderstorms
         }
     }

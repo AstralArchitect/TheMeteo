@@ -11,7 +11,7 @@
     <string name="dew_point">Point de rosée</string>
     <string name="humidity">Humidité</string>
     <string name="rain">Pluie</string>
-    <string name="rain_prob">Probabilité de pluie</string>
+    <string name="precipitation_prob">Probabilité de pluie</string>
     <string name="wind_speed">Vitesse du vent</string>
     <string name="pressure">Pression</string>
     <string name="cloud_cover">Couverture nuageuse</string>
@@ -30,4 +30,14 @@
     <string name="sky_details">Détails du ciel</string>
     <string name="search_city">Rechercher une ville...</string>
     <string name="add_city">Ajouter une ville</string>
+    <string name="next_days_temperature_forecast">Prévisions pour les %1$d prochains jours</string>
+    <string name="unknown_error">Erreur inconnue</string>
+    <string name="wind_speed_unit">Vitesse du vent km/h</string>
+    <string name="settings">Paramètres</string>
+    <string name="chose_model">Choisissez le modèle pour les prévisions.</string>
+    <string name="precipitation">Précipitations</string>
+    <string name="hourly_forecast">Prévisions heure par heure</string>
+    <string name="temperature_unit">Température °C</string>
+    <string name="a_temperature_unit">Température ressentie °C</string>
+    <string name="precipitation_unit">Précipitation mm/h</string>
 </resources>

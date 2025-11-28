@@ -49,7 +49,7 @@ fun SettingsScreen(viewModel: WeatherViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Paramètres") },
+                title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
                     IconButton(onClick = { activity?.finish() }) {
                         Icon(
@@ -105,7 +105,7 @@ fun ModelSelectionSetting(
     Column {
         Text("Modèle Météo", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Choisissez le modèle pour les prévisions.",
+            stringResource(R.string.chose_model),
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
         )

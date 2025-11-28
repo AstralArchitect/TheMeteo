@@ -168,10 +168,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
 
         val scrollState = rememberScrollState()
 
-        if (
-            viewModel.precipitationForecast.collectAsState().value.isNotEmpty() &&
-            viewModel.skyInfoForecast.collectAsState().value.isNotEmpty()) {
-
+        if (viewModel.hourlyForecast.collectAsState().value.isNotEmpty()) {
             WeatherIconGraph(viewModel, scrollState = scrollState)
         }
 
@@ -184,14 +181,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
             // On affiche un indicateur de chargement pendant la récupération des données
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.padding(vertical = 50.dp))
-            } else if (
-                viewModel.temperatureForecast.collectAsState().value.isNotEmpty() &&
-                viewModel.dewpointForecast.collectAsState().value.isNotEmpty() &&
-                viewModel.precipitationForecast.collectAsState().value.isNotEmpty() &&
-                viewModel.windspeedForecast.collectAsState().value.isNotEmpty() &&
-                viewModel.pressureForecast.collectAsState().value.isNotEmpty() &&
-                viewModel.humidityForecast.collectAsState().value.isNotEmpty()
-            ) {
+            } else if (viewModel.hourlyForecast.collectAsState().value.isNotEmpty()) {
                 // Le graphique ne s'affiche QUE si les données sont prêtes
                 Text(stringResource(R.string.temperature))
                 GenericGraph(
@@ -200,7 +190,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     Color(0xFFFFD54F),
                     scrollState = scrollState
                 )
-                if (viewModel.apparentTemperatureForecast.collectAsState().value != null) {
+                if (viewModel.hourlyForecast.collectAsState().value.first().apparentTemperature != null) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(stringResource(R.string.apparent_temperature))
                     GenericGraph(
@@ -228,26 +218,63 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     valueRange = 0f..100f
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.rain))
-                GenericGraph(
-                    viewModel,
-                    GraphType.RAIN_RATE,
-                    Color(0xFF64B5F6),
-                    scrollState = scrollState,
-                    valueRange = 0f..3f
-                )
-                if (viewModel.precipitationProbabilityForecast.collectAsState().value != null) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(stringResource(R.string.rain_prob))
+                if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.precipitation } != 0.0) {
+                    Text(stringResource(R.string.precipitation))
                     GenericGraph(
                         viewModel,
-                        GraphType.RAIN_PROB,
+                        GraphType.PRECIPITATION,
+                        Color(0xFF64B5F6),
+                        scrollState = scrollState,
+                        valueRange = 0f..3f
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                if (viewModel.hourlyForecast.collectAsState().value.first().precipitationData.precipitationProbability != null)
+                {
+                    Text(stringResource(R.string.precipitation_prob))
+                    GenericGraph(
+                        viewModel,
+                        GraphType.PRECIPITATION_PROB,
                         Color(0xFF64B5F6),
                         scrollState = scrollState,
                         valueRange = 0f..100f
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.rain } != 0.0) {
+                    Text(stringResource(R.string.rain))
+                    GenericGraph(
+                        viewModel,
+                        GraphType.RAIN,
+                        Color(0xFF64B5F6),
+                        scrollState = scrollState,
+                        valueRange = 0f..3f
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.snowfall } != 0.0)
+                {
+                    Text("Snowfall (cm/h)")
+                    GenericGraph(
+                        viewModel,
+                        GraphType.SNOWFALL,
+                        Color(0xFFFFFFFF),
+                        scrollState = scrollState
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                if (viewModel.hourlyForecast.collectAsState().value.first().precipitationData.snowDepth != null) {
+                    if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.snowDepth!! } != 0.0) {
+                        Text("Snow depth (cm)")
+                        GenericGraph(
+                            viewModel,
+                            GraphType.SNOW_DEPTH,
+                            Color(0xFFFFFFFF),
+                            scrollState = scrollState
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
                 Text(stringResource(R.string.wind_speed))
                 GenericGraph(
                     viewModel,
@@ -273,14 +300,16 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     valueRange = 0f..100f
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Opacity")
-                GenericGraph(
-                    viewModel,
-                    GraphType.OPACITY,
-                    Color(0xFF9D9D9D),
-                    scrollState = scrollState,
-                    valueRange = 0f..100f
-                )
+                if (viewModel.hourlyForecast.collectAsState().value.first().skyInfo.opacity != null) {
+                    Text("Opacity")
+                    GenericGraph(
+                        viewModel,
+                        GraphType.OPACITY,
+                        Color(0xFF9D9D9D),
+                        scrollState = scrollState,
+                        valueRange = 0f..100f
+                    )
+                }
             } else {
                 // Message si aucune donnée n'est disponible après le chargement
                 Text("Données non disponibles pour ce jour.")
@@ -290,7 +319,11 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
 }
 
 enum class GraphType {
-    TEMP, A_TEMP, DEW_POINT, RAIN_PROB, RAIN_RATE, WIND_SPEED, PRESSURE, HUMIDITY, CLOUD_COVER, OPACITY
+    TEMP, A_TEMP,
+    DEW_POINT, HUMIDITY,
+    PRECIPITATION, PRECIPITATION_PROB, RAIN, SNOWFALL, SNOW_DEPTH,
+    WIND_SPEED, PRESSURE,
+    CLOUD_COVER, OPACITY
 }
 
 @Composable
@@ -307,11 +340,11 @@ fun GenericGraph(
             .width(1000.dp)
             .horizontalScroll(scrollState),
     ) {
+        val fullForecast = viewModel.hourlyForecast.collectAsState().value
         var forecast: List<Double>
         var times: List<String>
         when (graphType) {
             GraphType.TEMP -> {
-                val fullForecast = viewModel.temperatureForecast.collectAsState().value
                 forecast = sublist?.let {
                     fullForecast.subList(it.first, it.second).map { f -> f.temperature }
                 } ?: fullForecast.map { it.temperature }
@@ -319,41 +352,57 @@ fun GenericGraph(
             }
 
             GraphType.A_TEMP -> {
-                val fullForecast = viewModel.apparentTemperatureForecast.collectAsState().value
                 forecast = sublist?.let {
-                    fullForecast?.subList(it.first, it.second)?.map { f -> f.apparentTemperature }
-                } ?: (fullForecast?.map { it.apparentTemperature } ?: emptyList())
+                    fullForecast.subList(it.first, it.second).map { f -> f.apparentTemperature ?: return }
+                } ?: fullForecast.map { it.apparentTemperature ?: return}
                 times =
-                    fullForecast?.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" } ?: emptyList()
+                    fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
 
             GraphType.DEW_POINT -> {
-                val fullForecast = viewModel.dewpointForecast.collectAsState().value
                 forecast = sublist?.let {
                     fullForecast.subList(it.first, it.second).map { f -> f.dewpoint }
                 } ?: fullForecast.map { it.dewpoint }
                 times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
 
-            GraphType.RAIN_PROB -> {
-                val fullForecast = viewModel.precipitationProbabilityForecast.collectAsState().value
+            GraphType.PRECIPITATION_PROB -> {
                 forecast = sublist?.let {
-                    fullForecast?.subList(it.first, it.second)?.map { f -> f.probability.toDouble() }
-                } ?: (fullForecast?.map { it.probability.toDouble() } ?: emptyList())
+                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.precipitationProbability?.toDouble() ?: return }
+                } ?: fullForecast.map { it.precipitationData.precipitationProbability?.toDouble() ?: return }
                 times =
-                    fullForecast?.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" } ?: emptyList()
+                    fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
 
-            GraphType.RAIN_RATE -> {
-                val fullForecast = viewModel.precipitationForecast.collectAsState().value
+            GraphType.PRECIPITATION -> {
                 forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.precipitation }
-                } ?: fullForecast.map { it.precipitation }
+                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.precipitation }
+                } ?: fullForecast.map { it.precipitationData.precipitation }
+                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+            }
+
+            GraphType.RAIN -> {
+                forecast = sublist?.let {
+                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.rain }
+                } ?: fullForecast.map { it.precipitationData.rain }
+                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+            }
+
+            GraphType.SNOWFALL -> {
+                forecast = sublist?.let {
+                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.snowfall }
+                } ?: fullForecast.map { it.precipitationData.snowfall }
+                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+            }
+
+            GraphType.SNOW_DEPTH -> {
+                forecast = sublist?.let {
+                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.snowDepth ?: return }
+                } ?: fullForecast.map { it.precipitationData.snowDepth ?: return }
                 times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
 
             GraphType.WIND_SPEED -> {
-                val fullForecast = viewModel.windspeedForecast.collectAsState().value
                 forecast = sublist?.let {
                     fullForecast.subList(it.first, it.second).map { f -> f.windspeed }
                 } ?: fullForecast.map { it.windspeed }
@@ -361,7 +410,6 @@ fun GenericGraph(
             }
 
             GraphType.PRESSURE -> {
-                val fullForecast = viewModel.pressureForecast.collectAsState().value
                 forecast = sublist?.let {
                     fullForecast.subList(it.first, it.second).map { f -> f.pressure }
                 } ?: fullForecast.map { it.pressure }
@@ -369,7 +417,6 @@ fun GenericGraph(
             }
 
             GraphType.HUMIDITY -> {
-                val fullForecast = viewModel.humidityForecast.collectAsState().value
                 forecast = sublist?.let {
                     fullForecast.subList(it.first, it.second).map { f -> f.humidity.toDouble() }
                 } ?: fullForecast.map { it.humidity.toDouble() }
@@ -377,19 +424,17 @@ fun GenericGraph(
             }
 
             GraphType.CLOUD_COVER -> {
-                val fullForecast = viewModel.skyInfoForecast.collectAsState().value
                 forecast = sublist?.let {
                     fullForecast.subList(it.first, it.second)
-                        .map { f -> f.cloudcover_total.toDouble() }
-                } ?: fullForecast.map { it.cloudcover_total.toDouble() }
+                        .map { f -> f.skyInfo.cloudcover_total.toDouble() }
+                } ?: fullForecast.map { it.skyInfo.cloudcover_total.toDouble() }
                 times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
 
             GraphType.OPACITY -> {
-                val fullForecast = viewModel.skyInfoForecast.collectAsState().value
                 forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.opacity.toDouble() }
-                } ?: fullForecast.map { it.opacity.toDouble() }
+                    fullForecast.subList(it.first, it.second).map { f -> f.skyInfo.opacity?.toDouble() ?: return }
+                } ?: fullForecast.map { it.skyInfo.opacity?.toDouble() ?: return }
                 times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
         }
@@ -425,7 +470,9 @@ fun GenericGraph(
 
             // Premier point pour initialiser les chemins
             val firstX = xPadding
-            val firstY = size.height - yPadding - (((if (graphType == GraphType.RAIN_RATE || !roundToInt)
+            val firstY = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
+                graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
+                graphType == GraphType.SNOW_DEPTH || !roundToInt)
                 forecast.first() else forecast.first().roundToInt().toDouble()) - minValue) * yScale)
             linePath.moveTo(firstX, firstY.toFloat())
             gradientPath.moveTo(firstX, size.height) // Commence en bas à gauche
@@ -434,7 +481,9 @@ fun GenericGraph(
             // Construction des chemins pour la courbe et le dégradé
             forecast.forEachIndexed { i, point ->
                 val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if (graphType == GraphType.RAIN_RATE || !roundToInt)
+                val y = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
+                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
+                    graphType == GraphType.SNOW_DEPTH || !roundToInt)
                     point else point.roundToInt().toDouble()) - minValue) * yScale)
                 linePath.lineTo(x, y.toFloat())
                 gradientPath.lineTo(x, y.toFloat())
@@ -462,7 +511,9 @@ fun GenericGraph(
             // Points + labels
             forecast.forEachIndexed { i, point ->
                 val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if (graphType == GraphType.RAIN_RATE || !roundToInt)
+                val y = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
+                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
+                    graphType == GraphType.SNOW_DEPTH || !roundToInt)
                     point else point.roundToInt().toDouble()) - minValue) * yScale)
 
                 // Point
@@ -470,7 +521,9 @@ fun GenericGraph(
 
                 // Value
                 drawContext.canvas.nativeCanvas.drawText(
-                    (if (graphType == GraphType.RAIN_RATE || (!roundToInt && graphType != GraphType.PRESSURE))
+                    (if (graphType == GraphType.RAIN ||
+                        graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
+                        graphType == GraphType.SNOW_DEPTH || (!roundToInt && graphType != GraphType.PRESSURE))
                         point else point.roundToInt()).toString(),
                     x,
                     y.toFloat() - 20f,
@@ -512,15 +565,14 @@ fun WindVectors(viewModel: WeatherViewModel, scrollState: ScrollState = remember
             .width(1000.dp)
             .horizontalScroll(scrollState), // ScrollState partagé
     ) {
-        val windDirectionForecast = viewModel.windDirectionForecast.value
-        if (windDirectionForecast.isNotEmpty())
+        if (viewModel.hourlyForecast.collectAsState().value.isNotEmpty())
         {
             Row(
                 modifier = Modifier.fillMaxWidth(), // Make the Row fill the 1000.dp width
                 // This will space your items evenly across the width of the graph
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
-                windDirectionForecast.forEach { direction ->
+                viewModel.hourlyForecast.collectAsState().value.forEach { allVarsReading ->
                     Image(
                         bitmap = iconBitmap ?: ImageBitmap(1, 1),
                         contentDescription = null,
@@ -528,7 +580,124 @@ fun WindVectors(viewModel: WeatherViewModel, scrollState: ScrollState = remember
                             // Use a fixed width that matches the spacing of your graph points.
                             // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
                             .width(41.5.dp)
-                            .rotate(direction.windDirection.toFloat())
+                            .rotate(allVarsReading.windDirection.toFloat())
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BarsGraph(
+    viewModel: WeatherViewModel,
+    valueRange: ClosedFloatingPointRange<Float>? = null,
+    scrollState: ScrollState = rememberScrollState()
+) {
+    val forecast by viewModel.minutelyForecast15.collectAsState()
+
+    if (forecast.isEmpty()) {
+        return // Ne rien dessiner si les données ne sont pas prêtes
+    }
+
+    Box(
+        modifier = Modifier
+            .width(1000.dp) // Largeur fixe pour correspondre aux autres graphiques
+            .horizontalScroll(scrollState),
+    ) {
+        val rainColor = Color(0xFF64B5F6) // Bleu pour la pluie
+        val snowColor = Color.White       // Blanc pour la neige
+        val textColor: Int = AndroidColor.rgb(
+            MaterialTheme.colorScheme.onBackground.red,
+            MaterialTheme.colorScheme.onBackground.green,
+            MaterialTheme.colorScheme.onBackground.blue
+        )
+
+        Canvas(
+            modifier = Modifier
+                .width(1000.dp)
+                .height(150.dp)
+        ) {
+            val xPadding = 50f
+            val yPadding = 100f
+
+            // Déterminer la valeur maximale pour l'échelle Y
+            val maxPrecipitation = forecast.maxOfOrNull { it.rain + it.snowfall }?.toFloat() ?: 1f
+            val maxValue = valueRange?.endInclusive?.coerceAtLeast(maxPrecipitation) ?: maxPrecipitation
+
+            if (maxValue <= 0f) return@Canvas // Éviter la division par zéro si aucune précipitation
+
+            val canvasWidth = size.width
+            val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
+            val barWidth = xStep * 0.7f // Laisser un peu d'espace entre les barres
+            val yScale = (size.height - 2 * yPadding) / maxValue
+
+            forecast.forEachIndexed { index, reading ->
+                val x = xPadding + (index * xStep)
+                val rainHeight = (reading.rain * yScale).toFloat()
+                val snowHeight = (reading.snowfall * yScale).toFloat()
+                val totalHeight = rainHeight + snowHeight
+
+                // 1. Dessiner la barre de pluie (en bas)
+                if (rainHeight > 0) {
+                    drawRect(
+                        color = rainColor,
+                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight),
+                        size = androidx.compose.ui.geometry.Size(barWidth, rainHeight)
+                    )
+                }
+
+                // 2. Dessiner la barre de neige (empilée sur la pluie)
+                if (snowHeight > 0) {
+                    drawRect(
+                        color = snowColor,
+                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight - snowHeight),
+                        size = androidx.compose.ui.geometry.Size(barWidth, snowHeight)
+                    )
+                }
+
+                // 3. Dessiner la valeur totale au-dessus de la barre (si > 0)
+                val totalPrecipitationValue = reading.rain + reading.snowfall
+                if (totalPrecipitationValue > 0) {
+                    drawContext.canvas.nativeCanvas.drawText(
+                        String.format("%.1f", totalPrecipitationValue), // Formatter avec une décimale
+                        x,
+                        size.height - yPadding - totalHeight - 15f, // Position au-dessus de la barre
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 25f
+                            color = textColor
+                        }
+                    )
+                }
+
+                // 4. Dessiner la minute en bas
+                drawContext.canvas.nativeCanvas.drawText(
+                    reading.time.format(DateTimeFormatter.ofPattern("mm")),
+                    x,
+                    size.height - yPadding + 60f,
+                    Paint().apply {
+                        textAlign = Paint.Align.CENTER
+                        textSize = 35f
+                        color = textColor
+                    }
+                )
+                // Dessiner l'heure en dessous de la minute si elle est égale à 0 et dessiner une barre vertical devant celle-ci
+                if (reading.time.minute == 0) {
+                    drawContext.canvas.nativeCanvas.drawText(
+                        reading.time.format(DateTimeFormatter.ofPattern("HH")),
+                        x,
+                        size.height - yPadding + 90f,
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 35f
+                            color = textColor
+                        }
+                    )
+                    drawRect(
+                        color = Color.Gray,
+                        topLeft = Offset(x - xStep / 2f, 0f),
+                        size = androidx.compose.ui.geometry.Size(2f, size.height)
                     )
                 }
             }
@@ -548,23 +717,41 @@ fun WeatherIconGraph(
     val sunnyNightIconPath: String = iconWeatherFolder + "clear-night.svg"
     val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
     val sunnyCloudyNightIconPath: String = iconWeatherFolder + "cloudy-3-night.svg"
+    val sunnyCloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val foggyIconPath: String = iconWeatherFolder + "fog.svg"
     val dustIconPath: String = iconWeatherFolder + "dust.svg"
     val drizzleDayIconPath: String = iconWeatherFolder + "rainy-1-day.svg"
     val drizzleNightIconPath: String = iconWeatherFolder + "rainy-1-night.svg"
+    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
     val rainy1DayIconPath: String = iconWeatherFolder + "rainy-2-day.svg"
     val rainy1NightIconPath: String = iconWeatherFolder + "rainy-2-night.svg"
+    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
     val rainy2DayIconPath: String = iconWeatherFolder + "rainy-3-day.svg"
     val rainy2NightIconPath: String = iconWeatherFolder + "rainy-3-night.svg"
+    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
     val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowyIconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
+    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
+    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
     val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
     val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
 
-    val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord, Boolean>>()
-    for (index in 0..23) {
-        simpleWeatherList.add(Pair(getSimpleWeather(viewModel, index).word, viewModel.skyInfoForecast.collectAsState().value[index].shortwave_radiation >= 1.0))
+    val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord, Boolean?>>()
+
+    if (viewModel.hourlyForecast.collectAsState().value.first().skyInfo.shortwave_radiation != null) {
+        for (index in 0..23) {
+            simpleWeatherList.add(
+                Pair(
+                    getSimpleWeather(viewModel, index).word,
+                    viewModel.hourlyForecast.collectAsState().value[index].skyInfo.shortwave_radiation!! >= 1.0
+                )
+            )
+        }
+    } else {
+        for (index in 0..23) {
+            simpleWeatherList.add(Pair(getSimpleWeather(viewModel, index).word, null))
+        }
     }
 
     Box(
@@ -579,16 +766,18 @@ fun WeatherIconGraph(
         ) {
             simpleWeatherList.forEach { (weatherWord, isDay) ->
                 val fileName = when (weatherWord) {
-                    SimpleWeatherWord.SUNNY -> if (isDay) sunnyDayIconPath else sunnyNightIconPath
-                    SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath
+                    SimpleWeatherWord.SUNNY -> if (isDay != null) if (isDay) sunnyDayIconPath else sunnyNightIconPath else sunnyDayIconPath
+                    SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay != null) if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath else sunnyCloudyIconPath
                     SimpleWeatherWord.CLOUDY -> cloudyIconPath
                     SimpleWeatherWord.FOGGY -> foggyIconPath
                     SimpleWeatherWord.DUST -> dustIconPath
-                    SimpleWeatherWord.DRIZZLY -> if (isDay) drizzleDayIconPath else drizzleNightIconPath
-                    SimpleWeatherWord.RAINY1 -> if (isDay) rainy1DayIconPath else rainy1NightIconPath
-                    SimpleWeatherWord.RAINY2 -> if (isDay) rainy2DayIconPath else rainy2NightIconPath
+                    SimpleWeatherWord.DRIZZLY -> if (isDay != null) if (isDay) drizzleDayIconPath else drizzleNightIconPath else drizzleIconPath
+                    SimpleWeatherWord.RAINY1 -> if (isDay != null) if (isDay) rainy1DayIconPath else rainy1NightIconPath else rainy1IconPath
+                    SimpleWeatherWord.RAINY2 -> if (isDay != null) if (isDay) rainy2DayIconPath else rainy2NightIconPath else rainy2IconPath
                     SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY -> snowyIconPath
+                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
+                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
+                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
                     SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
                     SimpleWeatherWord.STORMY -> stormyIconPath
                 }

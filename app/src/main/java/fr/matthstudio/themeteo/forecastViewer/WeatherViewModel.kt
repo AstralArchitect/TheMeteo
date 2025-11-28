@@ -56,44 +56,17 @@ class WeatherViewModel(
 
     private val weatherService = WeatherService()
 
-    // --- StateFlow pour toutes les données ---
+    // --- StateFlow pour toutes les données à periode de 24h ---
+    private val _hourlyForecast = MutableStateFlow<List<AllHourlyVarsReading>>(emptyList())
+    val hourlyForecast: StateFlow<List<AllHourlyVarsReading>> = _hourlyForecast.asStateFlow()
 
-    private val _temperatureForecast = MutableStateFlow<List<TemperatureReading>>(emptyList())
-    val temperatureForecast: StateFlow<List<TemperatureReading>> = _temperatureForecast.asStateFlow()
+    // --- StateFlow pour les prévisions à intervalle de 15 minutes ---
+    private val _minutelyForecast15 = MutableStateFlow<List<MinutelyReading>>(emptyList())
+    val minutelyForecast15: StateFlow<List<MinutelyReading>> = _minutelyForecast15.asStateFlow()
 
-    private val _apparentTemperatureForecast = MutableStateFlow<List<ApparentTemperatureReading>?>(emptyList())
-    val apparentTemperatureForecast: StateFlow<List<ApparentTemperatureReading>?> = _apparentTemperatureForecast.asStateFlow()
-
-    private val _precipitationForecast = MutableStateFlow<List<PrecipitationReading>>(emptyList())
-    val precipitationForecast: StateFlow<List<PrecipitationReading>> = _precipitationForecast.asStateFlow()
-
-    private val _precipitationProbabilityForecast = MutableStateFlow<List<PrecipitationProbabilityReading>?>(emptyList())
-    val precipitationProbabilityForecast: StateFlow<List<PrecipitationProbabilityReading>?> = _precipitationProbabilityForecast.asStateFlow()
-
-    private val _skyInfoForecast = MutableStateFlow<List<SkyInfoReading>>(emptyList())
-    val skyInfoForecast: StateFlow<List<SkyInfoReading>> = _skyInfoForecast.asStateFlow()
-
-    private val _windspeedForecast = MutableStateFlow<List<WindspeedReading>>(emptyList()) 
-    val windspeedForecast: StateFlow<List<WindspeedReading>> = _windspeedForecast.asStateFlow()
-
-    private val _windDirectionForecast = MutableStateFlow<List<WindDirectionReading>>(emptyList())
-    val windDirectionForecast: StateFlow<List<WindDirectionReading>> = _windDirectionForecast.asStateFlow()
-
-    private val _pressureForecast = MutableStateFlow<List<PressureReading>>(emptyList()) 
-    val pressureForecast: StateFlow<List<PressureReading>> = _pressureForecast.asStateFlow()
-
-    private val _humidityForecast = MutableStateFlow<List<HumidityReading>>(emptyList()) 
-    val humidityForecast: StateFlow<List<HumidityReading>> = _humidityForecast.asStateFlow()
-
-    private val _dewpointForecast = MutableStateFlow<List<DewpointReading>>(emptyList()) 
-    val dewpointForecast: StateFlow<List<DewpointReading>> = _dewpointForecast.asStateFlow()
-
-    private val _wmoForecast = MutableStateFlow<List<WMOReading>>(emptyList())
-    val wmoForecast: StateFlow<List<WMOReading>> = _wmoForecast.asStateFlow()
-
-    // StateFlow for daily temperature forecast
-    private val _dailyTemperatureForecast = MutableStateFlow<List<DailyReading>>(emptyList())
-    val dailyTemperatureForecast: StateFlow<List<DailyReading>> = _dailyTemperatureForecast.asStateFlow()
+    // --- StateFlow pour les prévisions journalières ---
+    private val _dailyForecast = MutableStateFlow<List<DailyReading>>(emptyList())
+    val dailyForecast: StateFlow<List<DailyReading>> = _dailyForecast.asStateFlow()
 
     // Le lieu actuellement sélectionné par l'utilisateur
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -111,31 +84,15 @@ class WeatherViewModel(
     private val _searchQuery = MutableStateFlow("")
 
     // Gestion du chargement
-    val _isLoadingTemperature = MutableStateFlow(false)
-    val _isLoadingPrecipitation = MutableStateFlow(false)
-    val _isLoadingApparentTemperature = MutableStateFlow(false)
-    val _isLoadingPrecipitationProbability = MutableStateFlow(false)
-    val _isLoadingCloudcover = MutableStateFlow(false)
-    val _isLoadingWindspeed = MutableStateFlow(false)
-    val _isLoadingPressure = MutableStateFlow(false)
-    val _isLoadingHumidity = MutableStateFlow(false)
-    val _isLoadingDewpoint = MutableStateFlow(false)
-    val _isLoadingWMO = MutableStateFlow(false)
-    val _isLoadingDailyTemperature = MutableStateFlow(false)
+    val _isLoadingHourly = MutableStateFlow(false)
+    val _isLoadingHourly15 = MutableStateFlow(false)
+    val _isLoadingDaily = MutableStateFlow(false)
 
     // Un StateFlow combiné pour l'état global de chargement
     val isLoading: StateFlow<Boolean> = combine(
-        _isLoadingTemperature,
-        _isLoadingPrecipitation,
-        _isLoadingApparentTemperature,
-        _isLoadingPrecipitationProbability,
-        _isLoadingCloudcover,
-        _isLoadingWindspeed,
-        _isLoadingPressure,
-        _isLoadingHumidity,
-        _isLoadingDewpoint,
-        _isLoadingWMO,
-        _isLoadingDailyTemperature
+        _isLoadingHourly,
+        _isLoadingHourly15,
+        _isLoadingDaily
     ) { loadingStatesArray -> // Le paramètre du lambda est un Array<Boolean>
         loadingStatesArray.any { it } // 'it' fait référence à chaque Boolean dans le tableau
     }.stateIn( // Use stateIn instead of asStateFlow
@@ -229,21 +186,21 @@ class WeatherViewModel(
     }
 
     fun loadDailyForecast(latitude: Double, longitude: Double, days: Int) {
-        if (_isLoadingDailyTemperature.value){ // Ne pas relancer si déjà en cours
-            Log.e("WeatherViewModel", "Le chargement des prévisions journalières de température est déjà en cours.")
+        if (_isLoadingDaily.value){ // Ne pas relancer si déjà en cours
+            Log.w("WeatherViewModel", "Le chargement des prévisions journalières de température est déjà en cours.")
             return
         }
         _errorMessage.value = null // Réinitialiser l'erreur
 
         viewModelScope.launch {
-            _isLoadingDailyTemperature.value = true
+            _isLoadingDaily.value = true
             val result = weatherService.getDailyForecast(latitude, longitude, days, userSettings.value.model ?: "best_match")
             if (result != null) {
-                _dailyTemperatureForecast.value = result
+                _dailyForecast.value = result
             } else {
                 _errorMessage.value = "Impossible de récupérer les prévisions journalières de température."
             }
-            _isLoadingDailyTemperature.value = false
+            _isLoadingDaily.value = false
         }
     }
 
@@ -275,14 +232,14 @@ class WeatherViewModel(
      * C'est cette fonction qui est appelée lorsque le lieu change.
      */
     fun load24hForecast(latitude: Double, longitude: Double, startTime: LocalDateTime?) {
-        if (_isLoadingTemperature.value) { // Ne pas relancer si déjà en cours
-            Log.e("WeatherViewModel", "Le chargement des prévisions horaire est déjà en cours.")
+        if (_isLoadingHourly.value) { // Ne pas relancer si déjà en cours
+            Log.w("WeatherViewModel", "Le chargement des prévisions horaire est déjà en cours.")
             return
         }
         _errorMessage.value = null // Réinitialiser l'erreur
 
         if (userSettings.value.model == null)
-            Log.e("WeatherViewModel", "Le modèle n'est pas défini. Chargement impossible.")
+            Log.w("WeatherViewModel", "Le modèle n'est pas défini. Best match utilisé.")
 
         viewModelScope.launch {
             // Log pour savoir quel lieu est en cours de chargement
@@ -291,53 +248,54 @@ class WeatherViewModel(
             Log.d("WeatherViewModel", "Model :${userSettings.value.model}")
 
             viewModelScope.launch {
-                _isLoadingTemperature.value = true
-                _isLoadingPrecipitation.value = true
-                _isLoadingApparentTemperature.value = true
-                _isLoadingPrecipitationProbability.value = true
-                _isLoadingCloudcover.value = true
-                _isLoadingWindspeed.value = true
-                _isLoadingPressure.value = true
-                _isLoadingHumidity.value = true
-                _isLoadingDewpoint.value = true
-                _isLoadingWMO.value = true
+                _isLoadingHourly.value = true
 
                 val result = if (startTime != null)
                     weatherService.get24hAllVariablesForecast(latitude, longitude, userSettings.value.model ?: "best_match", startTime)
                 else
                     weatherService.get24hAllVariablesForecast(latitude, longitude, userSettings.value.model ?: "best_match")
                 if (result != null) {
-                    _temperatureForecast.value = result.map { it.temperatureReading }
-                    if (result.first().apparentTemperatureReading != null)
-                        _apparentTemperatureForecast.value = result.map { it.apparentTemperatureReading as ApparentTemperatureReading }
-                    else
-                        _apparentTemperatureForecast.value = null
-                    _precipitationForecast.value = result.map { it.precipitationReading }
-                    if (result.first().precipitationProbabilityReading != null)
-                        _precipitationProbabilityForecast.value = result.map { it.precipitationProbabilityReading as PrecipitationProbabilityReading }
-                    else
-                        _precipitationProbabilityForecast.value = null
-                    _skyInfoForecast.value = result.map { it.skyInfoReading }
-                    _windspeedForecast.value = result.map { it.windspeedReading }
-                    _windDirectionForecast.value = result.map { it.winddirectionReading }
-                    _pressureForecast.value = result.map { it.pressureReading }
-                    _humidityForecast.value = result.map { it.humidityReading }
-                    _dewpointForecast.value = result.map { it.dewpointReading }
-                    _wmoForecast.value = result.map { it.wmoReading }
+                    _hourlyForecast.value = result
                 } else {
-                    _errorMessage.value = "Impossible de récupérer les prévisions météo."
+                    _errorMessage.value = "Impossible de récupérer les prévisions météo horaire."
                 }
 
-                _isLoadingTemperature.value = false
-                _isLoadingPrecipitation.value = false
-                _isLoadingApparentTemperature.value = false
-                _isLoadingPrecipitationProbability.value = false
-                _isLoadingCloudcover.value = false
-                _isLoadingWindspeed.value = false
-                _isLoadingPressure.value = false
-                _isLoadingHumidity.value = false
-                _isLoadingDewpoint.value = false
-                _isLoadingWMO.value = false
+                _isLoadingHourly.value = false
+            }
+        }
+    }
+
+    /**
+     * Fonction centrale pour charger TOUTES les données météo pour une latitude/longitude donnée à intervalle de 15 minutes.
+     * C'est cette fonction qui est appelée lorsque le lieu change.
+     */
+    fun load12hMinutelyForecast(latitude: Double, longitude: Double) {
+        if (_isLoadingHourly15.value) { // Ne pas relancer si déjà en cours
+            Log.w("WeatherViewModel", "Le chargement des prévisions '15 minutely' est déjà en cours.")
+            return
+        }
+        _errorMessage.value = null // Réinitialiser l'erreur
+
+        if (userSettings.value.model == null)
+            Log.w("WeatherViewModel", "Le modèle n'est pas défini. Best match utilisé.")
+
+        viewModelScope.launch {
+            // Log pour savoir quel lieu est en cours de chargement
+            Log.d("WeatherViewModel", "Chargement des '15 minutely' prévisions pour lat: $latitude, lon: $longitude")
+            // Log pour savoir quel model est utilisé
+            Log.d("WeatherViewModel", "Model :${userSettings.value.model}")
+
+            viewModelScope.launch {
+                _isLoadingHourly15.value = true
+
+                val result = weatherService.get15MinutelyForecast(latitude, longitude, userSettings.value.model ?: "best_match", 12)
+                if (result != null) {
+                    _minutelyForecast15.value = result
+                } else {
+                    _errorMessage.value = "Impossible de récupérer les prévisions météo '15 minutely'."
+                }
+
+                _isLoadingHourly15.value = false
             }
         }
     }
@@ -347,7 +305,7 @@ class WeatherViewModel(
      * Cette fonction ne charge pas directement les prévisions, elle demande une mise à jour
      * de la localisation. Le `locationCallback` se chargera de déclencher le chargement.
      */
-    fun getLocationAndLoad24hForecastPlusDailyForecast(context: Context, startTime: LocalDateTime?) {
+    fun getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context: Context, startTime: LocalDateTime?) {
         // Coordonnées par défaut (Paris, France)
         val defaultLatitude = 48.85
         val defaultLongitude = 2.35
@@ -356,9 +314,11 @@ class WeatherViewModel(
 
         // 1. Vérifier si le client a été initialisé
         if (!::fusedLocationClient.isInitialized) {
-            Log.e("WeatherViewModel", "FusedLocationClient non initialisé. Appelez initializeLocationClient en premier.")
+            Log.w("WeatherViewModel", "FusedLocationClient non initialisé. Appelez initializeLocationClient en premier.")
             // On charge les données pour le lieu par défaut si le client GPS n'est pas prêt
             load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
+            load12hMinutelyForecast(defaultLatitude, defaultLongitude)
+            loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
             return
         }
 
@@ -370,6 +330,7 @@ class WeatherViewModel(
             _errorMessage.value = "Permission de localisation non accordée. Veuillez sélectionner un lieu manuellement ou autoriser la localisation."
             // Charger pour le lieu par défaut si aucune permission n'est accordée
             load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
+            load12hMinutelyForecast(defaultLatitude, defaultLongitude)
             loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
             return
         }
@@ -382,6 +343,7 @@ class WeatherViewModel(
                     Log.d("WeatherViewModel", "Dernière position connue trouvée : ${location.latitude}")
                     _userLocation.value = location
                     load24hForecast(location.latitude, location.longitude, startTime)
+                    load12hMinutelyForecast(location.latitude, location.longitude)
                     loadDailyForecast(location.latitude, location.longitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
                 } else {
                     // Aucune position connue, on demande une nouvelle mise à jour
@@ -397,12 +359,14 @@ class WeatherViewModel(
                 Log.e("WeatherViewModel", "Erreur lors de la récupération de la dernière position", e)
                 _errorMessage.value = "Impossible de récupérer la position GPS."
                 load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
+                load12hMinutelyForecast(defaultLatitude, defaultLongitude)
                 loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
             }
         } catch (e: SecurityException) {
             Log.e("WeatherViewModel", "Exception de sécurité lors de la demande de localisation", e)
             _errorMessage.value = "Erreur de sécurité de la localisation."
             load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
+            load12hMinutelyForecast(defaultLatitude, defaultLongitude)
             loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
         }
     }
