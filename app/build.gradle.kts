@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20" // Utilisez la même version que votre Kotlin
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.21" // Utilisez la même version que votre Kotlin
     id("kotlin-parcelize")
 }
 
@@ -26,7 +26,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "1.3.2"
+        versionName = "1.3.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -95,7 +95,7 @@ dependencies {
 
     // Dépendance de base pour Coil
     implementation(libs.coil.compose)
-    implementation("io.coil-kt:coil-svg:2.6.0")
+    implementation(libs.coil.svg)
 
     // Ktor pour les requêtes réseau
     implementation(libs.ktor.client.core)
@@ -121,16 +121,17 @@ dependencies {
     implementation(libs.photoview)
 
     // Glance pour les widgets d'écran d'accueil
-    implementation("androidx.glance:glance-appwidget:1.2.0-beta01")
-    implementation("androidx.glance:glance-material3:1.2.0-beta01")
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
 
     // WorkManager pour exécuter des tâches en arrière-plan
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation(libs.androidx.work.runtime.ktx)
 
     // Data store
-    implementation("androidx.datastore:datastore-core:1.1.7")
-    implementation("androidx.datastore:datastore-preferences:1.1.7") // Alternative plus simple pour clé-valeur
-    implementation("com.google.protobuf:protobuf-kotlin-lite:4.33.0")
+    implementation(libs.androidx.datastore.core)
+    implementation(libs.androidx.datastore.preferences) // Alternative plus simple pour clé-valeur
+    implementation(libs.protobuf.kotlin.lite)
+    implementation(libs.androidx.ui.graphics)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 

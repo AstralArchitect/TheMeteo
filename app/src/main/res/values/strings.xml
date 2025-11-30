@@ -33,10 +33,10 @@
     <string name="low_clouds">Low clouds :</string>
     <string name="total">Total cloud cover :</string>
     <string name="sky_details">Sky details :</string>
-    <string name="search_city">Search for a city...</string>
+    <string name="search_city">Search for a city…</string>
     <string name="add_city">Add a city</string>
-    <string name="widget_description">TheMeteo Widget</string>
-    <string name="title_activity_settings_activity.kt">SettingsActivity.kt</string>
+    <string name="widget_description" translatable="false">TheMeteo Widget</string>
+    <string name="title_activity_settings_activity.kt" translatable="false">SettingsActivity.kt</string>
     <string name="next_days_temperature_forecast">Next %1$d Days Temperature Forecast</string>
     <string name="unknown_error">Unknown error</string>
     <string name="chose_model">Chose the weather forcasting model.</string>
@@ -48,4 +48,16 @@
     <string name="settings">Settings</string>
     <string name="temperature_unit">Temperature °C</string>
     <string name="daily_forecast">Daily forecast</string>
+    <string name="_15_minutely_precipitation_forecast">15 Minutely Precipitation Forecast</string>
+    <string name="day_duration">Day Duration %s</string>
+    <string name="sun">Sun</string>
+    <string name="sunrise">Sunrise %1$s</string>
+    <string name="sunset">Sunset %1$s</string>
+    <string name="sun_infos">Sun Infos</string>
+    <string name="today_s_sunrise">Today\'s Sunrise</string>
+    <string name="today">Today</string>
+    <string name="tomorrow">Tomorrow</string>
+    <string name="sunrise_no_value">Sunrise</string>
+    <string name="sunset_no_value">Sunset</string>
+    <string name="day_duration_no_value">Day duration</string>
 </resources>

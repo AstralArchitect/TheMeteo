@@ -1,6 +1,7 @@
 package fr.matthstudio.themeteo.forecastViewer
 
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -24,9 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,6 +58,7 @@ import fr.matthstudio.themeteo.forecastViewer.data.WeatherViewModelFactory
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 import android.graphics.Color as AndroidColor
 
@@ -426,8 +426,8 @@ fun GenericGraph(
             GraphType.CLOUD_COVER -> {
                 forecast = sublist?.let {
                     fullForecast.subList(it.first, it.second)
-                        .map { f -> f.skyInfo.cloudcover_total.toDouble() }
-                } ?: fullForecast.map { it.skyInfo.cloudcover_total.toDouble() }
+                        .map { f -> f.skyInfo.cloudcoverTotal.toDouble() }
+                } ?: fullForecast.map { it.skyInfo.cloudcoverTotal.toDouble() }
                 times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
 
@@ -660,7 +660,7 @@ fun BarsGraph(
                 val totalPrecipitationValue = reading.rain + reading.snowfall
                 if (totalPrecipitationValue > 0) {
                     drawContext.canvas.nativeCanvas.drawText(
-                        String.format("%.1f", totalPrecipitationValue), // Formatter avec une décimale
+                        String.format(Locale.getDefault(), "%.1f", totalPrecipitationValue), // Formatter avec une décimale
                         x,
                         size.height - yPadding - totalHeight - 15f, // Position au-dessus de la barre
                         Paint().apply {
@@ -675,20 +675,21 @@ fun BarsGraph(
                 drawContext.canvas.nativeCanvas.drawText(
                     reading.time.format(DateTimeFormatter.ofPattern("mm")),
                     x,
-                    size.height - yPadding + 60f,
+                    size.height - yPadding + 90f,
                     Paint().apply {
                         textAlign = Paint.Align.CENTER
                         textSize = 35f
                         color = textColor
                     }
                 )
-                // Dessiner l'heure en dessous de la minute si elle est égale à 0 et dessiner une barre vertical devant celle-ci
+                // Dessiner l'heure au dessus de la minute si elle est égale à 0 et dessiner une barre vertical devant celle-ci
                 if (reading.time.minute == 0) {
                     drawContext.canvas.nativeCanvas.drawText(
-                        reading.time.format(DateTimeFormatter.ofPattern("HH")),
+                        reading.time.format(DateTimeFormatter.ofPattern("HH")) + "h",
                         x,
-                        size.height - yPadding + 90f,
+                        size.height - yPadding + 60f,
                         Paint().apply {
+                            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                             textAlign = Paint.Align.CENTER
                             textSize = 35f
                             color = textColor
@@ -739,12 +740,12 @@ fun WeatherIconGraph(
 
     val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord, Boolean?>>()
 
-    if (viewModel.hourlyForecast.collectAsState().value.first().skyInfo.shortwave_radiation != null) {
+    if (viewModel.hourlyForecast.collectAsState().value.first().skyInfo.shortwaveRadiation != null) {
         for (index in 0..23) {
             simpleWeatherList.add(
                 Pair(
                     getSimpleWeather(viewModel, index).word,
-                    viewModel.hourlyForecast.collectAsState().value[index].skyInfo.shortwave_radiation!! >= 1.0
+                    viewModel.hourlyForecast.collectAsState().value[index].skyInfo.shortwaveRadiation!! >= 1.0
                 )
             )
         }

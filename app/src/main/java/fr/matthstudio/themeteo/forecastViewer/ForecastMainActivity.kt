@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,9 +65,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -83,8 +90,13 @@ import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.satImgs.MainSatActivity
 import io.ktor.utils.io.InternalAPI
 import java.io.IOException
+import java.text.SimpleDateFormat
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -156,7 +168,7 @@ class ForecastMainActivity : ComponentActivity() {
 @OptIn(InternalAPI::class)
 @Composable
 fun WeatherScreen(viewModel: WeatherViewModel) {
-    val isDaytime: Boolean = (viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.skyInfo?.shortwave_radiation ?: 1.0) >= 1.0
+    val isDaytime: Boolean = (viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.skyInfo?.shortwaveRadiation ?: 1.0) >= 1.0
 
     val userSettings by viewModel.userSettings.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -178,7 +190,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val sunnyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "clear.jpg")) }
     val sunnyCloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "mid-cloudy.jpg")) }
     val cloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "overcast.jpg")) }
-    val rainyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainy.jpg")) }
+    val drizzleImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "drizzle.png")) }
+    val rainy1ImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainy1.jpg")) }
+    val rainy2ImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainy2.jpg")) }
     val snowyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "snowy.jpg")) }
 
     // icons paths
@@ -254,11 +268,13 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 SimpleWeatherWord.SUNNY -> sunnyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.CLOUDY -> cloudyImageBitmap ?: ImageBitmap(1, 1)
-                SimpleWeatherWord.RAINY1 -> rainyImageBitmap ?: ImageBitmap(1, 1)
-                SimpleWeatherWord.RAINY2 -> rainyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.DRIZZLY -> drizzleImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.RAINY1 -> rainy1ImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.RAINY2 -> rainy2ImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.SNOWY1 -> snowyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.SNOWY2 -> snowyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.SNOWY3 -> snowyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.STORMY -> rainy2ImageBitmap ?: ImageBitmap(1, 1)
                 else -> null
             }
 
@@ -407,6 +423,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 onCloudIconClick = { showCloudInfoDialog = true }
             )
 
+            //Sunset/Sunrise
+            SunsetSunriseCard(viewModel)
+
             // Si l'état est vrai, affichez le dialogue
             if (showCloudInfoDialog) {
                 CloudInfoDialog(
@@ -523,23 +542,23 @@ fun getSimpleWeather(viewModel: WeatherViewModel, index: Int = 0): SimpleWeather
         if (skyState.opacity in 1..30) {
             newWeather.sentence = "Ciel ensoleillé"
             newWeather.image
-            if (skyState.cloudcover_high > 50)
+            if (skyState.cloudcoverHigh > 50)
                 newWeather.sentence += " avec voile"
         }
         // 2. tester par couverture nuageuse
-        else if (max(skyState.cloudcover_low, skyState.cloudcover_mid) <= 25) {
-            if (skyState.cloudcover_high > 50)
+        else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 25) {
+            if (skyState.cloudcoverHigh > 50)
                 newWeather.sentence = "Ciel voilé"
             else {
                 newWeather.sentence = "Ciel clair"
             }
-        } else if (max(skyState.cloudcover_low, skyState.cloudcover_mid) <= 50) {
+        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 50) {
             newWeather.sentence = "Nuages épars"
-            if (skyState.cloudcover_high > 50)
+            if (skyState.cloudcoverHigh > 50)
                 newWeather.sentence += " avec ciel voilé"
-        } else if (max(skyState.cloudcover_low, skyState.cloudcover_mid) <= 75) {
+        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 75) {
             newWeather.sentence = "Ciel partiellement couvert"
-            if (skyState.cloudcover_high > 50)
+            if (skyState.cloudcoverHigh > 50)
                 newWeather.sentence += " avec voile"
         } else {
             newWeather.sentence = "Ciel couvert"
@@ -602,7 +621,7 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
             }
             is LocationIdentifier.Saved -> {
                 // Charger la météo pour le lieu sauvegardé
-                viewModel.load24hForecast(
+                viewModel.load24hHourlyAnd24hMinutelyForecast(
                     locationIdentifier.location.latitude,
                     locationIdentifier.location.longitude,
                     startDateTime
@@ -611,10 +630,6 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
                     locationIdentifier.location.latitude,
                     locationIdentifier.location.longitude,
                     weatherModelPredictionTime[settings.model] ?: 10
-                )
-                viewModel.load12hMinutelyForecast(
-                    locationIdentifier.location.latitude,
-                    locationIdentifier.location.longitude
                 )
             }
         }
@@ -673,7 +688,7 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
             return@Card
 
         Column (
-            modifier = Modifier.padding(start = 8.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
+            modifier = Modifier.padding(start = 8.dp, end= 16.dp, top = 0.dp)
         ) {
             val scrollState = rememberScrollState()
             when (variable) {
@@ -701,16 +716,19 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
 
                 OutlinedButton(
                     modifier = Modifier
-                        .padding(8.dp),
+                        .padding(4.dp),
                     enabled = !isSelected,
                     onClick = { variable = it }
                 ) {
-                    Text(when(it){
-                        ChosenVar.TEMPERATURE -> stringResource(R.string.temperature_unit)
-                        ChosenVar.APPARENT_TEMPERATURE -> stringResource(R.string.a_temperature_unit)
-                        ChosenVar.PRECIPITATION -> stringResource(R.string.precipitation_unit)
-                        ChosenVar.WIND -> stringResource(R.string.wind_speed_unit)
-                    })
+                    Text(
+                        when(it){
+                            ChosenVar.TEMPERATURE -> stringResource(R.string.temperature_unit)
+                            ChosenVar.APPARENT_TEMPERATURE -> stringResource(R.string.a_temperature_unit)
+                            ChosenVar.PRECIPITATION -> stringResource(R.string.precipitation_unit)
+                            ChosenVar.WIND -> stringResource(R.string.wind_speed_unit)
+                        },
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
             }
         }
@@ -738,7 +756,7 @@ fun FifteenMinutelyForecastCard(viewModel: WeatherViewModel) {
         }
 
         Text(
-            text = "15 Minutely Precipitation Forecast",
+            text = stringResource(R.string._15_minutely_precipitation_forecast),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
         )
@@ -766,7 +784,7 @@ fun ActualSituationCard(
         viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.precipitationData?.precipitation
     val precipitationProbability =
         viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.precipitationData?.precipitationProbability
-    val cloudcover = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.skyInfo?.cloudcover_total
+    val cloudcover = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.skyInfo?.cloudcoverTotal
     val windspeed = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.windspeed
     val pressure = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.pressure
     val humidity = viewModel.hourlyForecast.collectAsState().value.firstOrNull()?.humidity
@@ -976,6 +994,381 @@ fun ActualSituationCard(
     }
 }
 
+@Composable
+fun CloudInfoDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
+    // Collecter les différents états de couverture nuageuse depuis le ViewModel
+    val houryForecast by viewModel.hourlyForecast.collectAsState()
+
+    // Récupérer les valeurs
+    // cloud cover
+    val total = houryForecast.firstOrNull()?.skyInfo?.cloudcoverTotal ?: 0
+    val low = houryForecast.firstOrNull()?.skyInfo?.cloudcoverLow ?: 0
+    val mid = houryForecast.firstOrNull()?.skyInfo?.cloudcoverMid ?: 0
+    val high = houryForecast.firstOrNull()?.skyInfo?.cloudcoverHigh ?: 0
+    // Solar radiation
+    val shortwaveRadiation = houryForecast.firstOrNull()?.skyInfo?.shortwaveRadiation
+    val directRadiation = houryForecast.firstOrNull()?.skyInfo?.directRadiation
+    val diffuseRadiation = houryForecast.firstOrNull()?.skyInfo?.diffuseRadiation
+    // opacity
+    val opacity = houryForecast.firstOrNull()?.skyInfo?.opacity ?: 0
+    // temp and dew point
+    val temp = (houryForecast.firstOrNull()?.temperature ?: 0f).toDouble()
+    val dewpoint = (houryForecast.firstOrNull()?.dewpoint ?: 0f).toDouble()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.sky_details))
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp) // Espace entre les éléments
+            ) {
+                InfoRow(label = stringResource(R.string.total), value = "$total%")
+                InfoRow(label = stringResource(R.string.low_clouds), value = "$low%")
+                InfoRow(label = stringResource(R.string.mid_clouds), value = "$mid%")
+                InfoRow(label = stringResource(R.string.high_clouds), value = "$high%")
+                InfoRow(label = stringResource(R.string.ceiling), value = "${125 * (temp - dewpoint).toInt()}m")
+                if (shortwaveRadiation != null) {
+                    InfoRow(
+                        label = stringResource(R.string.total_radiation),
+                        value = "$shortwaveRadiation W/m²"
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.direct_radiation),
+                        value = "$directRadiation W/m²"
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.diffuse_radiation),
+                        value = "$diffuseRadiation W/m²"
+                    )
+                    InfoRow(label = stringResource(R.string.opacity), value = "$opacity%")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    )
+}
+
+// Un petit Composable pour afficher une ligne d'information (Label + Valeur)
+@Composable
+fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontWeight = FontWeight.Bold)
+        Text(text = value, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+fun SunsetSunriseCard(viewModel: WeatherViewModel) {
+    val context = LocalContext.current
+
+    // variable qui stocke l'état de l'info dialog
+    val showInfoDialog = remember { mutableStateOf(false) }
+    if (showInfoDialog.value) {
+        SunInfoDialog(viewModel) {
+            showInfoDialog.value = false
+        }
+    }
+    // S'assure que les données sont disponibles
+    val sunriseSunsetForecast by viewModel.sunriseSunsetForecast.collectAsState()
+    if (sunriseSunsetForecast.isEmpty() || sunriseSunsetForecast.first().sunset == null ||
+        sunriseSunsetForecast.first().sunrise == null || sunriseSunsetForecast[1].sunset == null ||
+        sunriseSunsetForecast[1].sunrise == null) return
+
+    // Si le soleil n'est pas encore couché, afficher les données du jour. Sinon celles du lendemain
+    val now = LocalDateTime.now()
+    val sunset = LocalDateTime.parse(
+        sunriseSunsetForecast.first().sunset!!, DateTimeFormatter.ISO_DATE_TIME)
+    val sunriseSunset = if (now < sunset)
+        sunriseSunsetForecast.first()
+    else
+        sunriseSunsetForecast[1]
+
+    Card(
+        modifier = Modifier
+            .padding(24.dp)
+            .clickable(onClick = { showInfoDialog.value = true })
+    ) {
+        if (viewModel._isLoadingHourly.collectAsState().value) {
+            Box(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                CircularProgressIndicator()
+            }
+            return@Card
+        }
+        Column {
+            Text(
+                text = stringResource(R.string.sun),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
+            )
+
+            val textColor = android.graphics.Color.rgb(MaterialTheme.colorScheme.onSurface.red,
+                MaterialTheme.colorScheme.onSurface.green, MaterialTheme.colorScheme.onSurface.blue)
+
+            // Le Canvas
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .padding(24.dp) // Ajout de padding pour l'esthétique
+            ) {
+                // 1. Parser les chaînes de caractères en objets LocalDateTime
+                val sunriseDateTime = LocalDateTime.parse(
+                    sunriseSunset.sunrise!!,
+                    DateTimeFormatter.ISO_DATE_TIME
+                )
+                val sunsetDateTime = LocalDateTime.parse(
+                    sunriseSunset.sunset!!,
+                    DateTimeFormatter.ISO_DATE_TIME
+                )
+
+                // 2. Convertir ces LocalDateTime en millisecondes depuis l'époque Unix
+                // On utilise le fuseau horaire du système par défaut pour la conversion.
+                val sunriseTimeMillis =
+                    sunriseDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                val sunsetTimeMillis =
+                    sunsetDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                val now = System.currentTimeMillis()
+
+                val width = size.width
+                val height = size.height
+
+                // 1. DESSINER LA COURBE (TRAJECTOIRE DU SOLEIL)
+                val path = Path().apply {
+                    val diameter = width - 24.dp.toPx()
+                    val radius = diameter / 2f
+                    // Ajoute un arc pour former un demi-cercle.
+                    // L'arc est contenu dans un rectangle englobant (bounding box).
+                    // Les angles de départ et de balayage sont mesurés en degrés,
+                    // où 0 degré est à 3 heures sur une horloge.
+                    arcTo(
+                        rect = androidx.compose.ui.geometry.Rect(
+                            left = 24.dp.toPx(),
+                            top = height - radius, // Le haut du rectangle est à `height - radius` pour que le bas soit à `height + radius`.
+                            right = diameter,
+                            bottom = height + radius
+                        ),
+                        startAngleDegrees = -180f, // Commence à 9 heures
+                        sweepAngleDegrees =  180f, // Balaye de 180 degrés dans le sens des aiguilles d'une montre
+                        forceMoveTo = false
+                    )
+                }
+                drawPath(
+                    path = path,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF2196F3), // Couleur du haut (plus foncée)
+                            Color(0xFF4FC3F7), // Couleur du bas  (plus claire)
+                            Color(0xFFF3D7A1)
+                        )
+                    ),
+                    style = Stroke(10f),
+                )
+
+                // 2. CALCULER LA POSITION DU SOLEIL
+                val totalDaylightSeconds = (sunsetTimeMillis - sunriseTimeMillis)
+                val elapsedSecondsSinceSunrise =
+                    (now - sunriseTimeMillis).coerceIn(0, totalDaylightSeconds)
+                val sunProgress =
+                    (elapsedSecondsSinceSunrise.toFloat() / totalDaylightSeconds.toFloat()).coerceIn(
+                        0f,
+                        1f
+                    )
+
+                // Si le soleil n'est pas levé ou déjà couché, ajuster la progression
+                val isSunUp = now in sunriseTimeMillis..sunsetTimeMillis
+                val finalSunProgress =
+                    if (isSunUp) sunProgress else if (now < sunriseTimeMillis) 0f else 1f
+
+                // Obtenir la position (x, y) sur le chemin en fonction de la progression
+                val pathMeasure = androidx.compose.ui.graphics.PathMeasure()
+                pathMeasure.setPath(path, false)
+                val sunPosition = pathMeasure.getPosition(pathMeasure.length * finalSunProgress)
+
+                // 3. DESSINER LE SOLEIL
+                if (isSunUp) {
+                    drawCircle(
+                        color = Color.Yellow,
+                        radius = 30f,
+                        center = sunPosition
+                    )
+                    // Ajoute un léger halo
+                    drawCircle(
+                        color = Color.Yellow.copy(alpha = 0.4f),
+                        radius = 40f,
+                        center = sunPosition
+                    )
+                }
+
+                // 4. DESSINER L'HORIZON
+                drawRect(
+                    color = Color(0xFF8BC34A).copy(alpha = 0.8f),
+                    topLeft = Offset(0f, height), // Commence en bas à gauche du Canvas
+                    size = androidx.compose.ui.geometry.Size(width, 5f) // La hauteur de l'horizon
+                )
+
+                // 5. AFFICHER LES HEURES DE LEVER ET DE COUCHER
+                val textPaint = Paint().asFrameworkPaint().apply {
+                    isAntiAlias = true
+                    textSize = 35f // Taille du texte
+                    color = textColor
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+
+                val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+                val sunriseText = context.getString(
+                    R.string.sunrise,
+                    timeFormatter.format(Date(sunriseTimeMillis))
+                )
+                val sunsetText =
+                    context.getString(R.string.sunset, timeFormatter.format(Date(sunsetTimeMillis)))
+                // 1. Calculer la durée totale en secondes
+                val durationInSeconds = sunsetDateTime.toEpochSecond(ZoneOffset.UTC) - sunriseDateTime.toEpochSecond(ZoneOffset.UTC)
+                // 2. Convertisser les secondes en heures et minutes
+                val hours = durationInSeconds / 3600
+                val minutes = (durationInSeconds % 3600) / 60
+                // 3. Formater la chaîne de caractères manuellement
+                val dayDurationText = context.getString(R.string.day_duration,
+                    String.format(Locale.getDefault(), "%dh%02d", hours, minutes)
+                )
+
+                // Dessiner l'heure du lever
+                drawContext.canvas.nativeCanvas.drawText(
+                    sunriseText,
+                    24.dp.toPx(),
+                    height + 40f, // Positionnement sous la courbe
+                    textPaint.apply { textAlign = android.graphics.Paint.Align.CENTER }
+                )
+
+                // Dessiner l'heure du coucher
+                drawContext.canvas.nativeCanvas.drawText(
+                    sunsetText,
+                    width - 24.dp.toPx(),
+                    height + 40f, // Positionnement sous la courbe
+                    textPaint.apply { textAlign = android.graphics.Paint.Align.CENTER }
+                )
+
+                // 6. AFFICHER LA DURÉE DU JOUR AU CENTRE
+                drawContext.canvas.nativeCanvas.drawText(
+                    dayDurationText,
+                    width / 2,
+                    height / 2, // Positionnement sous la courbe
+                    textPaint.apply { textAlign = android.graphics.Paint.Align.CENTER }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SunInfoDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
+    LocalContext.current
+    // Collecter les différents états de couverture nuageuse depuis le ViewModel
+    val sunriseSunsetForecast by viewModel.sunriseSunsetForecast.collectAsState()
+
+    // Convert all date variable into millis
+    val todaysSunriseTimeMillis = LocalDateTime.parse(
+        sunriseSunsetForecast.first().sunrise!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val todaysSunsetTimeMillis = LocalDateTime.parse(
+        sunriseSunsetForecast.first().sunset!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val tomorrowSunriseTimeMillis = LocalDateTime.parse(
+        sunriseSunsetForecast[1].sunrise!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val tomorrowSunsetTimeMillis = LocalDateTime.parse(
+        sunriseSunsetForecast[1].sunset!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    // TODAYS SUN DURATION
+    // 1. Calculer la durée totale en secondes
+    var durationInSeconds = LocalDateTime.parse(
+        sunriseSunsetForecast.first().sunset!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).toEpochSecond(ZoneOffset.UTC) - LocalDateTime.parse(
+        sunriseSunsetForecast.first().sunrise!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).toEpochSecond(ZoneOffset.UTC)
+    // 2. Convertisser les secondes en heures et minutes
+    var hours = durationInSeconds / 3600
+    var minutes = (durationInSeconds % 3600) / 60
+    // 3. Formater la chaîne de caractères manuellement
+    val todaysDayDurationText = String.format(Locale.getDefault(), "%dh%02d", hours, minutes)
+    // TOMORROW SUN DURATION
+    // 1. Calculer la durée totale en secondes
+    durationInSeconds = LocalDateTime.parse(
+        sunriseSunsetForecast[1].sunset!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).toEpochSecond(ZoneOffset.UTC) - LocalDateTime.parse(
+        sunriseSunsetForecast[1].sunrise!!,
+        DateTimeFormatter.ISO_DATE_TIME
+    ).toEpochSecond(ZoneOffset.UTC)
+    // 2. Convertisser les secondes en heures et minutes
+    hours = durationInSeconds / 3600
+    minutes = (durationInSeconds % 3600) / 60
+    // 3. Formater la chaîne de caractères manuellement
+    val tomorrowDayDurationText = String.format(Locale.getDefault(), "%dh%02d", hours, minutes)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.sun_infos))
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp) // Espace entre les éléments
+            ) {
+                val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+                Text(stringResource(R.string.today), style = MaterialTheme.typography.headlineSmall)
+                InfoRow(
+                    stringResource(R.string.sunrise_no_value),
+                    timeFormatter.format(Date(todaysSunriseTimeMillis)) ?: "Unknown"
+                )
+                InfoRow(
+                    stringResource(R.string.sunset_no_value),
+                    timeFormatter.format(Date(todaysSunsetTimeMillis)) ?: "Unknown"
+                )
+                InfoRow(
+                    stringResource(R.string.day_duration_no_value),
+                    todaysDayDurationText
+                )
+                Text(stringResource(R.string.tomorrow), style = MaterialTheme.typography.headlineSmall)
+                InfoRow(
+                    stringResource(R.string.sunrise_no_value),
+                    timeFormatter.format(Date(tomorrowSunriseTimeMillis)) ?: "Unknown"
+                )
+                InfoRow(
+                    stringResource(R.string.sunset_no_value),
+                    timeFormatter.format(Date(tomorrowSunsetTimeMillis)) ?: "Unknown"
+                )
+                InfoRow(
+                    stringResource(R.string.day_duration_no_value),
+                    tomorrowDayDurationText
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    )
+}
+
 // 1. LE PANNEAU QUI S'OUVRE DEPUIS LE BAS (BOTTOM SHEET)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -997,7 +1390,8 @@ fun LocationManagementSheet(
         ) { paddingValues ->
             Column(modifier = Modifier
                 .padding(paddingValues)
-                .padding(16.dp)) {
+                .padding(16.dp))
+            {
                 Text("Gérer les lieux", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
 
                 LazyColumn {
@@ -1052,7 +1446,7 @@ fun LocationRow(
             text = name,
             style = MaterialTheme.typography.bodyLarge,
             color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
-            fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else null
+            fontWeight = if (isSelected) FontWeight.Bold else null
         )
         if (onDelete != null) {
             IconButton(onClick = onDelete) {
@@ -1110,77 +1504,4 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         }
     )
-}
-
-@Composable
-fun CloudInfoDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
-    // Collecter les différents états de couverture nuageuse depuis le ViewModel
-    val houryForecast by viewModel.hourlyForecast.collectAsState()
-
-    // Récupérer les valeurs
-    // cloud cover
-    val total = houryForecast.firstOrNull()?.skyInfo?.cloudcover_total ?: 0
-    val low = houryForecast.firstOrNull()?.skyInfo?.cloudcover_low ?: 0
-    val mid = houryForecast.firstOrNull()?.skyInfo?.cloudcover_mid ?: 0
-    val high = houryForecast.firstOrNull()?.skyInfo?.cloudcover_high ?: 0
-    // Solar radiation
-    val shortwaveRadiation = houryForecast.firstOrNull()?.skyInfo?.shortwave_radiation
-    val directRadiation = houryForecast.firstOrNull()?.skyInfo?.direct_radiation
-    val diffuseRadiation = houryForecast.firstOrNull()?.skyInfo?.diffuse_radiation
-    // opacity
-    val opacity = houryForecast.firstOrNull()?.skyInfo?.opacity ?: 0
-    // temp and dew point
-    val temp = (houryForecast.firstOrNull()?.temperature ?: 0f).toDouble()
-    val dewpoint = (houryForecast.firstOrNull()?.dewpoint ?: 0f).toDouble()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(stringResource(R.string.sky_details))
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp) // Espace entre les éléments
-            ) {
-                InfoRow(label = stringResource(R.string.total), value = "$total%")
-                InfoRow(label = stringResource(R.string.low_clouds), value = "$low%")
-                InfoRow(label = stringResource(R.string.mid_clouds), value = "$mid%")
-                InfoRow(label = stringResource(R.string.high_clouds), value = "$high%")
-                InfoRow(label = stringResource(R.string.ceiling), value = "${125 * (temp - dewpoint).toInt()}m")
-                if (shortwaveRadiation != null) {
-                    InfoRow(
-                        label = stringResource(R.string.total_radiation),
-                        value = "$shortwaveRadiation W/m²"
-                    )
-                    InfoRow(
-                        label = stringResource(R.string.direct_radiation),
-                        value = "$directRadiation W/m²"
-                    )
-                    InfoRow(
-                        label = stringResource(R.string.diffuse_radiation),
-                        value = "$diffuseRadiation W/m²"
-                    )
-                    InfoRow(label = stringResource(R.string.opacity), value = "$opacity%")
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.close))
-            }
-        }
-    )
-}
-
-// Un petit Composable pour afficher une ligne d'information (Label + Valeur)
-@Composable
-fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = label, fontWeight = FontWeight.Bold)
-        Text(text = value, style = MaterialTheme.typography.bodyLarge)
-    }
 }

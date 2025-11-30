@@ -6,9 +6,6 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
-import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.parcelize.Parcelize
@@ -20,7 +17,6 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 //import java.lang.Math.*
 import kotlin.math.*
 
@@ -64,17 +60,17 @@ data class HourlyUnits(
     @SerialName("cloudcover")
     val cloudcover: String? = null,
     @SerialName("cloudcover_low")
-    val cloudcover_low: String? = null,
+    val cloudcoverLow: String? = null,
     @SerialName("cloudcover_mid")
-    val cloudcover_mid: String? = null,
+    val cloudcoverMid: String? = null,
     @SerialName("cloudcover_high")
-    val cloudcover_high: String? = null,
+    val cloudcoverHigh: String? = null,
     @SerialName("shortwave_radiation")
-    val shortwave_radiation: String? = null,
+    val shortwaveRadiation: String? = null,
     @SerialName("direct_radiation")
-    val direct_radiation: String? = null,
+    val directRadiation: String? = null,
     @SerialName("diffuse_radiation")
-    val diffuse_radiation: String? = null,
+    val diffuseRadiation: String? = null,
     @SerialName("windspeed_10m")
     val windspeed10m: String? = null,
     @SerialName("wind_direction_10m")
@@ -111,17 +107,17 @@ data class HourlyData(
     @SerialName("cloudcover")
     val cloudcover: List<Int>? = null, // Souvent en Int (pourcentage)
     @SerialName("cloudcover_low")
-    val cloudcover_low: List<Int>? = null,
+    val cloudcoverLow: List<Int>? = null,
     @SerialName("cloudcover_mid")
-    val cloudcover_mid: List<Int>? = null,
+    val cloudcoverMid: List<Int>? = null,
     @SerialName("cloudcover_high")
-    val cloudcover_high: List<Int>? = null,
+    val cloudcoverHigh: List<Int>? = null,
     @SerialName("shortwave_radiation")
-    val shortwave_radiation: List<Double>? = null, // en W/m^2
+    val shortwaveRadiation: List<Double>? = null, // en W/m^2
     @SerialName("direct_radiation")
-    val direct_radiation: List<Double>? = null, // en W/m^2
+    val directRadiation: List<Double>? = null, // en W/m^2
     @SerialName("diffuse_radiation")
-    val diffuse_radiation: List<Double>? = null, // en W/m^2
+    val diffuseRadiation: List<Double>? = null, // en W/m^2
     @SerialName("windspeed_10m")
     val windspeed10m: List<Double>? = null,
     @SerialName("wind_direction_10m")
@@ -145,7 +141,11 @@ data class DailyUnits(
     @SerialName("temperature_2m_min")
     val temperature2mMin: String? = null,
     @SerialName("weather_code")
-    val weatherCode: String? = null
+    val weatherCode: String? = null,
+    @SerialName("sunset")
+    val sunset: String? = null,
+    @SerialName("sunrise")
+    val sunrise: String? = null
 )
 
 @Serializable
@@ -156,7 +156,11 @@ data class DailyData(
     @SerialName("temperature_2m_min")
     val temperature2mMin: List<Double>? = null,
     @SerialName("weather_code")
-    val weatherCode: List<Int>? = null
+    val weatherCode: List<Int>? = null,
+    @SerialName("sunset")
+    val sunset: List<String>? = null,
+    @SerialName("sunrise")
+    val sunrise: List<String>? = null
 )
 
 @Serializable
@@ -193,14 +197,14 @@ data class PrecipitationData(
 
 data class SkyInfoData(
     // Cloud Cover
-    val cloudcover_total: Int, // en %
-    val cloudcover_low: Int,
-    val cloudcover_mid: Int,
-    val cloudcover_high: Int,
+    val cloudcoverTotal: Int, // en %
+    val cloudcoverLow: Int,
+    val cloudcoverMid: Int,
+    val cloudcoverHigh: Int,
     // Sun radiation
-    val shortwave_radiation: Double?, // en W/m^2
-    val direct_radiation: Double?, // en W/m^2
-    val diffuse_radiation: Double?, // en W/m^2
+    val shortwaveRadiation: Double?, // en W/m^2
+    val directRadiation: Double?, // en W/m^2
+    val diffuseRadiation: Double?, // en W/m^2
     // sky opacity (calculated)
     val opacity: Int?, // en %
 )
@@ -225,7 +229,9 @@ data class DailyReading(
     val date: LocalDate,
     val maxTemperature: Double,
     val minTemperature: Double,
-    val wmo: Int
+    val wmo: Int,
+    val sunset: String?,
+    val sunrise: String?
 ) : Parcelable
 
 // Data class for 15-minutely weather readings
@@ -307,8 +313,6 @@ class WeatherService {
         parameter("models", model)
         parameter("hourly", hourlyFields.joinToString(",")) // Joindre tous les champs
         parameter("timezone", localZoneId.id)
-        parameter("start_date", startDateTime.format(formatter).substringBefore("T"))
-        parameter("end_date", endDateTime.format(formatter).substringBefore("T"))
         parameter("hourly_start", startDateTime.format(formatter))
         parameter("hourly_end", endDateTime.format(formatter))
     }
@@ -401,7 +405,9 @@ class WeatherService {
                         date = LocalDate.parse(timeStr, formatter),
                         maxTemperature = maxTemp,
                         minTemperature = minTempVMO.first,
-                        wmo = minTempVMO.second
+                        wmo = minTempVMO.second,
+                        sunset = null,
+                        sunrise = null
                     )
                 }
             } else {
@@ -416,10 +422,9 @@ class WeatherService {
 
     // --- Fonction pour télécharger les données 15-minutely sur 1 heure ---
     suspend fun get15MinutelyForecast(
-        latitude: Double, longitude: Double, model: String, hours: Long
+        latitude: Double, longitude: Double, hours: Long
     ): List<MinutelyReading>? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
-        ZoneId.systemDefault()
 
         return try {
             val response: WeatherApiResponse = client.get(apiUrl) {
@@ -427,9 +432,7 @@ class WeatherService {
                 parameter("longitude", longitude)
                 //parameter("models", model)
                 parameter("minutely_15", "rain,snowfall")
-                parameter("forecast_days", 16)
                 parameter("forecast_minutely_15", hours * 4)
-                parameter("past_minutely_15", 4)
             }.body()
 
             val minutelyTimes = response.minutely15?.time
@@ -473,11 +476,12 @@ class WeatherService {
                 // Utilisez la fonction d'aide
                 addHourlyParameters(latitude, longitude, model, startDateTime, endDateTime, localZoneId, *hourlyFields)
                 parameter("minutely_15", "rain,snowfall")
-                parameter("forecast_minutely_15", hours * 4)
-                parameter("past_minutely_15", 4)
+                parameter("forecast_minutely_15", 12 * 4)
+                parameter("forecast_days", 2)
+                parameter("daily", "sunset,sunrise")
             }.body()
         } catch (e: Exception) {
-            Log.e("getHourlyData", "Erreur lors de la récupération des données horaires (${hourlyFields.joinToString(",")}) : ${e.message}")
+            Log.e("getHourlyData", "Erreur lors de la récupération des données '15 minutely' + horaires (${hourlyFields.joinToString(",")}) : ${e.message}")
             null
         }
     }
@@ -516,12 +520,12 @@ class WeatherService {
             val snowfall = hourly.snowfall
             val snowDepth = hourly.snowDepth
             val totalCover = hourly.cloudcover
-            val lowCover = hourly.cloudcover_low
-            val midCover = hourly.cloudcover_mid
-            val highCover = hourly.cloudcover_high
-            val ghi = hourly.shortwave_radiation
-            val dsi = hourly.direct_radiation
-            val dhi = hourly.diffuse_radiation
+            val lowCover = hourly.cloudcoverLow
+            val midCover = hourly.cloudcoverMid
+            val highCover = hourly.cloudcoverHigh
+            val ghi = hourly.shortwaveRadiation
+            val dsi = hourly.directRadiation
+            val dhi = hourly.diffuseRadiation
             val windspeed = hourly.windspeed10m
             val windDirection = hourly.windDirection10m
             val pressure = hourly.pressureMsl
@@ -567,13 +571,13 @@ class WeatherService {
                             snowDepth = snowDepth?.get(index)
                         ),
                         skyInfo = SkyInfoData(
-                            cloudcover_total = totalCover[index],
-                            cloudcover_low = lowCover[index],
-                            cloudcover_mid = midCover[index],
-                            cloudcover_high = highCover[index],
-                            shortwave_radiation = ghi?.get(index),
-                            direct_radiation = dsi?.get(index),
-                            diffuse_radiation = dhi?.get(index),
+                            cloudcoverTotal = totalCover[index],
+                            cloudcoverLow = lowCover[index],
+                            cloudcoverMid = midCover[index],
+                            cloudcoverHigh = highCover[index],
+                            shortwaveRadiation = ghi?.get(index),
+                            directRadiation = dsi?.get(index),
+                            diffuseRadiation = dhi?.get(index),
                             opacity = o
                         ),
                         windspeed = windspeed[index],
@@ -602,9 +606,8 @@ class WeatherService {
     suspend fun get24hAllVariablesForecastPlus15Minutely(
         latitude: Double, longitude: Double,
         model: String,
-        startDateTime: LocalDateTime = LocalDateTime.now(ZoneId.systemDefault()),
-        addMinutely15: Boolean = false
-    ): Pair<List<AllHourlyVarsReading>?, List<MinutelyReading>?>? {
+        startDateTime: LocalDateTime = LocalDateTime.now(ZoneId.systemDefault())
+    ): Triple<List<AllHourlyVarsReading>?, List<MinutelyReading>?, List<DailyReading>?>? {
         val startDateTime = startDateTime.withMinute(0).withSecond(0)
         val variables = mutableListOf("temperature_2m", "precipitation", "rain", "snowfall", "showers",
             "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "apparent_temperature",
@@ -616,13 +619,8 @@ class WeatherService {
         if (availableVariables[model]?.solarRadiation == true)
             variables.addAll(listOf("shortwave_radiation", "direct_radiation", "diffuse_radiation"))
 
-        val response = if (addMinutely15)
-            get15MinutelyAndHourlyData(latitude, longitude, model, startDateTime,
-                23, *variables.toTypedArray()) ?: return null
-        else
-            getHourlyData(latitude, longitude, model, startDateTime, 23,
-                variables.joinToString(",")
-            ) ?: return null
+        val response = get15MinutelyAndHourlyData(latitude, longitude, model, startDateTime,
+            23, *variables.toTypedArray()) ?: return null
 
         val endDateTime = startDateTime.plusHours(23)
 
@@ -639,12 +637,12 @@ class WeatherService {
                 val snowfall = hourly.snowfall
                 val snowDepth = hourly.snowDepth
                 val totalCover = hourly.cloudcover
-                val lowCover = hourly.cloudcover_low
-                val midCover = hourly.cloudcover_mid
-                val highCover = hourly.cloudcover_high
-                val ghi = hourly.shortwave_radiation
-                val dsi = hourly.direct_radiation
-                val dhi = hourly.diffuse_radiation
+                val lowCover = hourly.cloudcoverLow
+                val midCover = hourly.cloudcoverMid
+                val highCover = hourly.cloudcoverHigh
+                val ghi = hourly.shortwaveRadiation
+                val dsi = hourly.directRadiation
+                val dhi = hourly.diffuseRadiation
                 val windspeed = hourly.windspeed10m
                 val windDirection = hourly.windDirection10m
                 val pressure = hourly.pressureMsl
@@ -669,8 +667,6 @@ class WeatherService {
                     times.size == pressure.size && times.size == humidity.size &&
                     times.size == dewpoint.size && times.size == wmo.size && times.size == windDirection.size
                 ) {
-
-                    // 3. Itérer sur les indices de la liste de temps
                     times.indices.map { index ->
                         val dateTime =
                             LocalDateTime.parse(times[index], DateTimeFormatter.ISO_LOCAL_DATE_TIME)
@@ -696,13 +692,13 @@ class WeatherService {
                                 snowDepth = snowDepth?.get(index)
                             ),
                             skyInfo = SkyInfoData(
-                                cloudcover_total = totalCover[index],
-                                cloudcover_low = lowCover[index],
-                                cloudcover_mid = midCover[index],
-                                cloudcover_high = highCover[index],
-                                shortwave_radiation = ghi?.get(index),
-                                direct_radiation = dsi?.get(index),
-                                diffuse_radiation = dhi?.get(index),
+                                cloudcoverTotal = totalCover[index],
+                                cloudcoverLow = lowCover[index],
+                                cloudcoverMid = midCover[index],
+                                cloudcoverHigh = highCover[index],
+                                shortwaveRadiation = ghi?.get(index),
+                                directRadiation = dsi?.get(index),
+                                diffuseRadiation = dhi?.get(index),
                                 opacity = o
                             ),
                             windspeed = windspeed[index],
@@ -722,14 +718,14 @@ class WeatherService {
 
                 } else {
                     Log.e(
-                        "get24hAllVariablesForecast",
+                        "get24hAllVariablesForecastPlus15Minutely",
                         "Erreur: Erreur lors de la récupération des données horaires."
                     )
                     return null
                 }
             }
 
-            var minutely15: List<MinutelyReading>? = null
+            var minutely15: List<MinutelyReading>?
 
             val minutelyTimes = response.minutely15?.time
             val minutelyRain = response.minutely15?.rain
@@ -749,13 +745,39 @@ class WeatherService {
                     }
             } else {
                 Log.e(
-                    "get15MinutelyForecast",
+                    "get24hAllVariablesForecastPlus15Minutely",
                     "Erreur: Erreur lors de la récupération des données '15 minutely'."
                 )
                 return null
             }
 
-            return Pair(hourlyData, minutely15)
+            var daily: List<DailyReading?>
+
+            val dailyTimes = response.daily?.time
+            val dailySunset = response.daily?.sunset
+            val dailySunrise = response.daily?.sunrise
+
+            if (dailyTimes != null && dailySunset != null && dailySunrise != null) {
+                daily = dailyTimes.zip(dailySunset.zip(dailySunrise))
+                    .map { (timeStr, sunsetSunrise) ->
+                        DailyReading(
+                            date = LocalDate.parse(timeStr, DateTimeFormatter.ISO_LOCAL_DATE),
+                            maxTemperature = .0,
+                            minTemperature = .0,
+                            wmo = -1,
+                            sunset = sunsetSunrise.first,
+                            sunrise = sunsetSunrise.second
+                        )
+                    }
+            } else {
+                Log.e(
+                    "get24hAllVariablesForecastPlus15Minutely",
+                    "Erreur: Erreur lors de la récupération des données '15 minutely'."
+                )
+                return null
+            }
+
+            return Triple(hourlyData, minutely15, daily)
         } catch (e: Exception) {
             Log.e(
                 "get24hAllVariablesForecast",
