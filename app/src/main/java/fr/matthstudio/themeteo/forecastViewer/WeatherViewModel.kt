@@ -298,7 +298,7 @@ class WeatherViewModel(
         }
     }
 
-    fun load24hHourlyAnd24hMinutelyForecast(latitude: Double, longitude: Double, startTime: LocalDateTime?) {
+    fun load24hHourlyAnd24hMinutelyForecast(latitude: Double, longitude: Double) {
         if (_isLoadingHourly15.value || _isLoadingHourly.value) { // Ne pas relancer si déjà en cours
             Log.w("WeatherViewModel", "Le chargement des prévisions '15 minutely' + horaire est déjà en cours.")
             return
@@ -317,12 +317,8 @@ class WeatherViewModel(
             _isLoadingHourly15.value = true
             _isLoadingHourly.value = true
 
-            val result = if (startTime != null)
-                weatherService.get24hAllVariablesForecastPlus15Minutely(latitude, longitude,
-                    userSettings.value.model ?: "best_match", startTime)
-            else
-                weatherService.get24hAllVariablesForecastPlus15Minutely(latitude, longitude,
-                    userSettings.value.model ?: "best_match")
+            val result = weatherService.get24hAllVariablesForecastPlus15Minutely(latitude, longitude,
+                userSettings.value.model ?: "best_match")
 
             if (result != null) {
                 if (result.first != null) {
@@ -348,7 +344,7 @@ class WeatherViewModel(
      * Cette fonction ne charge pas directement les prévisions, elle demande une mise à jour
      * de la localisation. Le `locationCallback` se chargera de déclencher le chargement.
      */
-    fun getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context: Context, startTime: LocalDateTime?) {
+    fun getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context: Context) {
         // Coordonnées par défaut (Paris, France)
         val defaultLatitude = 48.85
         val defaultLongitude = 2.35
@@ -359,9 +355,7 @@ class WeatherViewModel(
         if (!::fusedLocationClient.isInitialized) {
             Log.w("WeatherViewModel", "FusedLocationClient non initialisé. Appelez initializeLocationClient en premier.")
             // On charge les données pour le lieu par défaut si le client GPS n'est pas prêt
-            //load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
-            //load24hMinutelyForecast(defaultLatitude, defaultLongitude)
-            load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude, startTime)
+            load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude)
             loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
             return
         }
@@ -375,7 +369,7 @@ class WeatherViewModel(
             // Charger pour le lieu par défaut si aucune permission n'est accordée
             //load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
             //load24hMinutelyForecast(defaultLatitude, defaultLongitude)
-            load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude, startTime)
+            load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude)
             loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
             return
         }
@@ -389,7 +383,7 @@ class WeatherViewModel(
                     _userLocation.value = location
                     //load24hForecast(location.latitude, location.longitude, startTime)
                     //load24hMinutelyForecast(location.latitude, location.longitude)
-                    load24hHourlyAnd24hMinutelyForecast(location.latitude, location.longitude, startTime)
+                    load24hHourlyAnd24hMinutelyForecast(location.latitude, location.longitude)
                     loadDailyForecast(location.latitude, location.longitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
                 } else {
                     // Aucune position connue, on demande une nouvelle mise à jour
@@ -406,7 +400,7 @@ class WeatherViewModel(
                 _errorMessage.value = "Impossible de récupérer la position GPS."
                 //load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
                 //load24hMinutelyForecast(defaultLatitude, defaultLongitude)
-                load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude, startTime)
+                load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude)
                 loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
             }
         } catch (e: SecurityException) {
@@ -414,7 +408,7 @@ class WeatherViewModel(
             _errorMessage.value = "Erreur de sécurité de la localisation."
             //load24hForecast(defaultLatitude, defaultLongitude, LocalDateTime.now())
             //load24hMinutelyForecast(defaultLatitude, defaultLongitude)
-            load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude, startTime)
+            load24hHourlyAnd24hMinutelyForecast(defaultLatitude, defaultLongitude)
             loadDailyForecast(defaultLatitude, defaultLongitude, weatherModelPredictionTime[userSettings.value.model] ?: 10)
         }
     }

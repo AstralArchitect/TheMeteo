@@ -183,7 +183,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
 
     // --- LOGIQUE DE CHARGEMENT ---
     // Elle demande la localisation uniquement si "Position Actuelle" est sélectionné.
-    GetPermissionAndLoadWeather(viewModel, null)
+    GetPermissionAndLoadWeather(viewModel)
 
     // Charger les images
     val imagesFolder = "images/"
@@ -591,7 +591,7 @@ fun getSimpleWeather(viewModel: WeatherViewModel, index: Int = 0): SimpleWeather
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: LocalDateTime?) {
+fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel) {
     val context = LocalContext.current
     val selectedLocation by viewModel.selectedLocation.collectAsState()
     val settings by viewModel.userSettings.collectAsState()
@@ -609,7 +609,7 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
             is LocationIdentifier.CurrentUserLocation -> {
                 // On a besoin de la localisation GPS
                 if (locationPermissionsState.allPermissionsGranted) {
-                    viewModel.getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context, startDateTime)
+                    viewModel.getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context)
                 } else if (!locationPermissionsState.shouldShowRationale) {
                     // C'est la première fois ou l'utilisateur a dit "ne plus demander"
                     locationPermissionsState.launchMultiplePermissionRequest()
@@ -623,8 +623,7 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
                 // Charger la météo pour le lieu sauvegardé
                 viewModel.load24hHourlyAnd24hMinutelyForecast(
                     locationIdentifier.location.latitude,
-                    locationIdentifier.location.longitude,
-                    startDateTime
+                    locationIdentifier.location.longitude
                 )
                 viewModel.loadDailyForecast(
                     locationIdentifier.location.latitude,
@@ -639,7 +638,7 @@ fun GetPermissionAndLoadWeather(viewModel: WeatherViewModel, startDateTime: Loca
     LaunchedEffect(locationPermissionsState.allPermissionsGranted) {
         // Si les permissions viennent d'être accordées ET que le lieu actuel est la position GPS
         if (locationPermissionsState.allPermissionsGranted && selectedLocation is LocationIdentifier.CurrentUserLocation) {
-            viewModel.getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context, startDateTime)
+            viewModel.getLocationAndLoad24hForecastPlusDailyForecastPlus15MinutelyForecast(context)
         }
     }
 }

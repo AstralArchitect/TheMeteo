@@ -6,6 +6,9 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logger
+import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.parcelize.Parcelize
@@ -307,14 +310,14 @@ class WeatherService {
         localZoneId: ZoneId,
         vararg hourlyFields: String
     ) {
-        val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+        val formatter = DateTimeFormatter.ISO_LOCAL_DATE
         parameter("latitude", latitude)
         parameter("longitude", longitude)
         parameter("models", model)
         parameter("hourly", hourlyFields.joinToString(",")) // Joindre tous les champs
         parameter("timezone", localZoneId.id)
-        parameter("hourly_start", startDateTime.format(formatter))
-        parameter("hourly_end", endDateTime.format(formatter))
+        parameter("start_date", startDateTime.toLocalDate().format(formatter))
+        parameter("end_date", endDateTime.toLocalDate().format(formatter))
     }
 
     // --- RECHERCHE DE VILLE ---
@@ -365,7 +368,7 @@ class WeatherService {
                 addHourlyParameters(latitude, longitude, model, startDateTime, endDateTime, localZoneId, *hourlyFields)
             }.body()
         } catch (e: Exception) {
-            Log.e("getHourlyData", "Erreur lors de la récupération des données horaires (${hourlyFields.joinToString(",")}) : ${e.message}")
+            Log.e("getHourlyData", "Erreur lors de la récupération des données horaires : ${e.message}")
             null
         }
     }
@@ -463,25 +466,25 @@ class WeatherService {
         latitude: Double,
         longitude: Double,
         model: String,
-        startDateTime: LocalDateTime,
-        hours: Long, // Nombre d'heures à récupérer à partir de maintenant
         vararg hourlyFields: String, // Les champs spécifiques à demander (ex: "temperature_2m", "precipitation")
     ): WeatherApiResponse? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
         val localZoneId = ZoneId.systemDefault()
-        val endDateTime = startDateTime.plusHours(hours)
 
         return try {
             client.get(apiUrl) {
-                // Utilisez la fonction d'aide
-                addHourlyParameters(latitude, longitude, model, startDateTime, endDateTime, localZoneId, *hourlyFields)
+                parameter("latitude", latitude)
+                parameter("longitude", longitude)
+                parameter("models", model)
+                parameter("hourly", hourlyFields.joinToString(",")) // Joindre tous les champs
+                parameter("timezone", localZoneId.id)
+                parameter("forecast_days", 2)
                 parameter("minutely_15", "rain,snowfall")
                 parameter("forecast_minutely_15", 12 * 4)
-                parameter("forecast_days", 2)
                 parameter("daily", "sunset,sunrise")
             }.body()
         } catch (e: Exception) {
-            Log.e("getHourlyData", "Erreur lors de la récupération des données '15 minutely' + horaires (${hourlyFields.joinToString(",")}) : ${e.message}")
+            Log.e("get15MinutelyAndHourlyData", "Erreur lors de la récupération des données '15 minutely' + horaires (${hourlyFields.joinToString(",")}) : ${e.message}")
             null
         }
     }
@@ -605,10 +608,9 @@ class WeatherService {
     // --- Fonction pour télécharger les hourly data sur 24H et les 15-minutely sur 12H ---
     suspend fun get24hAllVariablesForecastPlus15Minutely(
         latitude: Double, longitude: Double,
-        model: String,
-        startDateTime: LocalDateTime = LocalDateTime.now(ZoneId.systemDefault())
+        model: String
     ): Triple<List<AllHourlyVarsReading>?, List<MinutelyReading>?, List<DailyReading>?>? {
-        val startDateTime = startDateTime.withMinute(0).withSecond(0)
+        val startDateTime = LocalDateTime.now(ZoneId.systemDefault()).withMinute(0).withSecond(0)
         val variables = mutableListOf("temperature_2m", "precipitation", "rain", "snowfall", "showers",
             "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "apparent_temperature",
             "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m", "weather_code")
@@ -619,8 +621,8 @@ class WeatherService {
         if (availableVariables[model]?.solarRadiation == true)
             variables.addAll(listOf("shortwave_radiation", "direct_radiation", "diffuse_radiation"))
 
-        val response = get15MinutelyAndHourlyData(latitude, longitude, model, startDateTime,
-            23, *variables.toTypedArray()) ?: return null
+        val response = get15MinutelyAndHourlyData(latitude, longitude, model,
+            *variables.toTypedArray()) ?: return null
 
         val endDateTime = startDateTime.plusHours(23)
 
