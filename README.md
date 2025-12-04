@@ -1,7 +1,5 @@
 # TheMeteo
 
-LangagePlatforme Licence
-
 TheMeteo est une application météo pour Android, développée en Kotlin avec Jetpack Compose. Elle fournit des prévisions météorologiques détaillées et précises en utilisant les données de l'API Open-Meteo.
 
 ## Table des matières
