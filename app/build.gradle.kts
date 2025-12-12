@@ -69,7 +69,7 @@ android {
     }
     ndkVersion = "27.3.13750724"
 
-    packagingOptions {
+    packaging {
         resources {
             excludes.add("META-INF/DEPENDENCIES")
             excludes.add("META-INF/AL2.0")
@@ -92,6 +92,9 @@ dependencies {
     implementation(libs.play.services.location)
     // Pour la gestion des permissions avec Compose
     implementation(libs.accompanist.permissions)
+
+    // Osmdroid pour la carte
+    implementation(libs.osmdroid.android)
 
     // Dépendance de base pour Coil
     implementation(libs.coil.compose)

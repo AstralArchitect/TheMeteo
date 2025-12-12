@@ -53,4 +53,6 @@
     <string name="sunrise_no_value">Lever de Soleil</string>
     <string name="sunset_no_value">Coucher de Soleil</string>
     <string name="day_duration_no_value">Durée du jour</string>
+    <string name="day">Jour</string>
+    <string name="night">Nuit</string>
 </resources>

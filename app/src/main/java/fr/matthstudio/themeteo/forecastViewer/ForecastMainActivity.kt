@@ -87,7 +87,7 @@ import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
 import fr.matthstudio.themeteo.forecastViewer.data.WeatherViewModelFactory
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
-import fr.matthstudio.themeteo.satImgs.MainSatActivity
+import fr.matthstudio.themeteo.satImgs.MapActivity
 import io.ktor.utils.io.InternalAPI
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -457,7 +457,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
 
             Button(
                 onClick = {
-                    val intent = Intent(context, MainSatActivity::class.java)
+                    val intent = Intent(context, MapActivity::class.java)
                     context.startActivity(intent)
                 },
                 modifier = Modifier.padding(24.dp)

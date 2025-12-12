@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation des Images Satellites RGB</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            color: #333;
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #0056b3;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            color: #0056b3;
+        }
+        .color-box {
+            display: inline-block;
+            width: 25px;
+            height: 25px;
+            border: 1px solid #333;
+            vertical-align: middle;
+            margin-right: 10px;
+            text-align: center;
+            line-height: 25px;
+            font-weight: bold;
+            color: black;
+        }
+        .interpretation-note {
+            background-color: #e6f7ff;
+            border-left: 5px solid #0056b3;
+            padding: 10px;
+            margin-top: 15px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Documentation des Interprétations Couleurs des Images Satellites RGB</h1>
+    <p>Cette légende combine les interprétations des couleurs de deux guides RGB (Red-Green-Blue) utilisés pour l'analyse des images satellites, notamment pour l'identification des types de nuages et des phénomènes atmosphériques.</p>
+
+    <div class="interpretation-note">
+        <strong>Note :</strong> Les couleurs exactes peuvent varier en fonction du capteur satellite et du mélange RGB spécifique utilisé (par exemple, GOES-16 ABI Sensor ou MSG SEVIRI Night Microphysics RGB).
+    </div>
+
+    <h2>1. Interprétation des Couleurs (GOES-16 ABI Sensor - Exemple Amérique du Nord)</h2>
+    <img src="cloudtype.png" alt="Exemple GOES-16 ABI Sensor Fog RGB" style="width:100%; max-width:600px; margin-bottom:20px;">
+    <table>
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Couleur</th>
+                <th>Interprétation</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td><span class="color-box" style="background-color: red;"></span></td>
+                <td>Nuages cirrus minces au-dessus de la terre et de la mer (rouge plus foncé au-dessus des mers)</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td><span class="color-box" style="background-color: yellow; color: black;"></span></td>
+                <td>Nuages de glace épais (nuages multicouches avec de la glace au sommet)</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td><span class="color-box" style="background-color: darkblue;"></span></td>
+                <td>Terre (Land)</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td><span class="color-box" style="background-color: lightgreen; color: black;"></span></td>
+                <td>Nuages d'eau de niveau bas à moyen</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td><span class="color-box" style="background-color: green;"></span></td>
+                <td>Nuages à phase mixte (aux niveaux bas et moyens)</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td><span class="color-box" style="background-color: #d1519d;"></span></td>
+                <td>Nuages d'eau hauts et minces (plus orange si de la glace est présente)</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td><span class="color-box" style="background-color: white; color: black;"></span></td>
+                <td>Nuages d'eau surfondue (Super-cooled water clouds)</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td><span class="color-box" style="background-color: #8c730e; color: white;"></span></td>
+                <td>Neige et glace au sol</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>2. Interprétation des Couleurs (MSG SEVIRI Night Microphysics RGB - Exemple Europe)</h2>
+    <img src="fog_1.png" alt="Exemple MSG SEVIRI Night Microphysics RGB" style="width:100%; max-width:600px; margin-bottom:20px;">
+    <img src="fog_2.png" alt="Exemple d'Image MSG SEVIRI Night Microphysics RGB" style="width:100%; max-width:275px; margin-bottom:20px;">
+    <img src="fog_3.png" alt="Exemple de Brouillard MSG SEVIRI Night Microphysics RGB" style="width:100%; max-width:275px; margin-bottom:20px;">
+    <table>
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Couleur</th>
+                <th>Interprétation</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td><span class="color-box" style="background-color: darkviolet; color: white;"></span></td>
+                <td>Zone sans nuage/terre (Shades of blue or pink depending on temperature and water vapour content)</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td><span class="color-box" style="background-color: #d8417b; color: white;"></span></td>
+                <td>Nuages de faible altitude (Shades of blue or pink depending on temperature and water vapour content)</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td><span class="color-box" style="background-color: aqua; color: black;"></span></td>
+                <td>Brouillard/nuage de faible altitude chaud, avec petites gouttelettes (Shades of aqua)</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td><span class="color-box" style="background-color: lightgreen; color: black;"></span></td>
+                <td>Brouillard/nuage de faible altitude froid, épais (Greenish in case of small droplets; pinkish grey in case of large droplets or thin cloud)</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td><span class="color-box" style="background-color: #5d354b; color: white;"></span></td>
+                <td>Nuage d'altitude moyenne épais (Shades of tan)</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td><span class="color-box" style="background-color: #8c0000; color: white;"></span></td>
+                <td>Nuage de glace épais (Reddish brown)</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td><span class="color-box" style="background-color: #e57200; color: white;"></span></td>
+                <td>Nuage de glace très froid (Reddish brown with green dots)</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td><span class="color-box" style="background-color: darkblue; color: white;"></span></td>
+                <td>Cirrus mince (Shades of dark blue)</td>
+            </tr>
+            <tr>
+                <td>9</td>
+                <td><span class="color-box" style="background-color: magenta; color: white;"></span></td>
+                <td>Cirrus très mince (Shades of magenta depending on the transparency and the type of underlying surface)</td>
+            </tr>
+            <tr>
+                <td>10</td>
+                <td><span class="color-box" style="background-color: red; color: white;"></span></td>
+                <td>Nuages pendant la journée (Shades of magenta, red or blue)</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Interprétation des Limites d'Humidité (SEVIRI)</h3>
+    <p>Les limites d'humidité des zones sans nuages peuvent être visibles. La couleur de la zone sans nuages dépend de la température de la surface et de l'humidité de bas niveau (low-level moisture) :</p>
+    <ul>
+        <li>Les <b>zones humides</b> ont moins de rouge (look more bluish)</li>
+        <li>Les <b>zones sèches</b> ont plus de rouge (look more pinkish)</li>
+    </ul>
+
+    <footer>
+        <p><em>Sources: GOES-16 ABI Sensor (North America) & MSG SEVIRI Night Microphysics RGB (EUMETSAT recommended recipe).</em></p>
+    </footer>
+
+</body>
+</html>
