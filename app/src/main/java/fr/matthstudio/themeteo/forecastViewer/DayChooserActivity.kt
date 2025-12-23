@@ -57,7 +57,7 @@ val weatherModelPredictionTime = mapOf(
     "gfs_seamless" to 15,
     "icon_seamless" to 6,
     "gem_seamless" to 9,
-    "ukmo_seamless" to 6,
+    "ukmo_seamless" to 5,
 )
 
 class DayChooserActivity : ComponentActivity() {

@@ -30,7 +30,7 @@ Explorez des graphiques détaillés pour de nombreuses variables :
 ### Personnalisation du Modèle Météo : 
 Choisissez parmi plusieurs modèles de prévision (ECMWF, GFS, Météo-France, etc.) pour comparer les données.
 
-## Aperçu de l'application1.
+## Aperçu de l'application
 1. Écran Principal (ForecastMainActivity) :
   - Affiche un résumé de la météo actuelle avec une image de fond dynamique.
   - Permet de sélectionner un lieu (position actuelle ou lieux enregistrés).

@@ -333,7 +333,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Ouvrir les paramètres",
-                        tint = Color.White // Assure une bonne visibilité sur l'image
+                        tint = Color.White, // Assure une bonne visibilité sur l'image
                     )
                 }
             }
