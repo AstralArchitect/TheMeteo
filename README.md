@@ -31,7 +31,7 @@ Choisissez parmi plusieurs modèles de prévision (ECMWF, GFS, Météo-France, e
 ### Interface Moderne : 
 Une interface utilisateur propre et intuitive construite avec Jetpack Compose et Material 3.
 
-## Aperçu de l'application1.
+## Aperçu de l'application
 1. Écran Principal (ForecastMainActivity) :
   - Affiche un résumé de la météo actuelle avec une image de fond dynamique.
   - Permet de sélectionner un lieu (position actuelle ou lieux enregistrés).

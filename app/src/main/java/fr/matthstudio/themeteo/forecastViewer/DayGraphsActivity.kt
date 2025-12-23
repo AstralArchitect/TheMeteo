@@ -10,7 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +27,10 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,20 +38,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -556,10 +554,7 @@ fun GenericGraph(
 
 @Composable
 fun WindVectors(viewModel: WeatherViewModel, scrollState: ScrollState = rememberScrollState()) {
-    val context = LocalContext.current
-    // 1. Get the vector icon
-    val iconBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, "icons/variables/wind_vector.png")) }
-    // 2. Draw the icon
+    // Draw the icon
     Box(
         modifier = Modifier
             .width(1000.dp)
@@ -573,14 +568,15 @@ fun WindVectors(viewModel: WeatherViewModel, scrollState: ScrollState = remember
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
                 viewModel.hourlyForecast.collectAsState().value.forEach { allVarsReading ->
-                    Image(
-                        bitmap = iconBitmap ?: ImageBitmap(1, 1),
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier
                             // Use a fixed width that matches the spacing of your graph points.
                             // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
                             .width(41.5.dp)
-                            .rotate(allVarsReading.windDirection.toFloat())
+                            .rotate(allVarsReading.windDirection.toFloat() - 180)
                     )
                 }
             }
