@@ -83,4 +83,3 @@ L'application contient une partie "Images Satellites", un doc est disponible [ic
 Note : L'application nécessite les permissions ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION et INTERNET, qui sont déjà déclarées dans AndroidManifest.xml. L'utilisateur sera invité à accorder les permissions de localisation au premier lancement.
 ### Depuis les releases
 Téléchargez l'APK depuis les [releases](https://github.com/AstralArchitect/TheMeteo/releases) puis installez le
-<p>Pour la liste complète, veuillez consulter le fichier app/build.gradle.kts.</p>
