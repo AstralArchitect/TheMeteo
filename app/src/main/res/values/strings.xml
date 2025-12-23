@@ -60,4 +60,7 @@
     <string name="sunrise_no_value">Sunrise</string>
     <string name="sunset_no_value">Sunset</string>
     <string name="day_duration_no_value">Day duration</string>
+    <string name="day">Day</string>
+    <string name="night">Night</string>
+    <string name="doc" translatable="false">Doc</string>
 </resources>

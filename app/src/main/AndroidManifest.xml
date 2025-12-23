@@ -3,7 +3,9 @@
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".TheMeteo"
@@ -15,7 +17,7 @@
         android:theme="@style/AppTheme.Compose">
         <activity
             android:name=".forecastViewer.SettingsActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="@string/title_activity_settings_activity.kt"
             android:theme="@style/AppTheme.Compose" />
         <activity
@@ -30,7 +32,7 @@
         </activity>
         <activity
             android:name=".forecastViewer.DayChooserActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="@string/title_activity_temp_graphs"
             android:theme="@style/AppTheme.Compose" />
         <activity
@@ -39,14 +41,14 @@
             android:label="@string/title_activity_day_graphs"
             android:theme="@style/AppTheme.Compose" />
         <activity
-            android:name=".satImgs.FullScreenSatImage"
+            android:name=".satImgs.DocActivity"
             android:exported="false"
             android:label="@string/title_activity_full_screen_sat_image"
-            android:theme="@style/AppTheme" />
+            android:theme="@style/AppTheme.Compose" />
         <activity
-            android:name=".satImgs.MainSatActivity"
+            android:name=".satImgs.MapActivity"
             android:exported="true"
-            android:label="@string/title_activity_sat_main"
+            android:label="MapActivity"
             android:theme="@style/AppTheme" />
     </application>
 
