@@ -185,7 +185,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                 GenericGraph(
                     viewModel,
                     GraphType.TEMP,
-                    Color(0xFFFFD54F),
+                    Color(0xFFFFF176),
                     scrollState = scrollState
                 )
                 if (viewModel.hourlyForecast.collectAsState().value.first().apparentTemperature != null) {
@@ -194,7 +194,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     GenericGraph(
                         viewModel,
                         GraphType.A_TEMP,
-                        Color(0xFFFFF176),
+                        Color(0xFFFFD54F),
                         scrollState = scrollState
                     )
                 }
