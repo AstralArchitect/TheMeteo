@@ -300,9 +300,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel) {
             .padding(24.dp)
             .clickable(true, onClick = { // Make the card clickable
                 // Create an Intent to launch DayChooserActivity
-                val intent = Intent(context, DayChooserActivity::class.java).apply {
-                    putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
-                }
+                val intent = Intent(context, DayChooserActivity::class.java)
                 // Start the activity
                 context.startActivity(intent)
             })

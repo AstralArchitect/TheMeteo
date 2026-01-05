@@ -83,25 +83,14 @@ class DayGraphsActivity : ComponentActivity() {
             intent.getSerializableExtra("START_DATE_TIME") as? LocalDateTime
         }
 
-        val selectedLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra("SELECTED_LOCATION", LocationIdentifier::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra("SELECTED_LOCATION") as? LocationIdentifier
-        }
-
-        if (selectedLocation == null) {
-            Log.e("DayGraphsActivity", "selectedLocation is null. You must pass a location to start this activity")
-            finish()
-            return
-        }
-
-        weatherViewModel.selectLocation(selectedLocation)
-
         if (startDateTime == null)
         {
             Log.e("DayGraphsActivity", "dayReading is null. Defaulting to now.")
+            // On prend l'heure actuelle, puis on met les minutes, secondes et nanosecondes à 0.
             startDateTime = LocalDateTime.now()
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0)
         }
 
         enableEdgeToEdge()
@@ -125,25 +114,28 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
     // On ajoute un LaunchedEffect qui réagit au lieu ET à la date
     val selectedLocation by viewModel.selectedLocation.collectAsState()
 
-    // Ce bloc s'exécutera si la date (startDateTime) ou le lieu (selectedLocation) change.
-    LaunchedEffect(selectedLocation, startDateTime) {
-        val (latitude, longitude) = when (val locationIdentifier = selectedLocation) {
-            // Cas 1 : "Position Actuelle"
-            is LocationIdentifier.CurrentUserLocation -> {
-                // On prend les coordonnées GPS du ViewModel si elles existent, sinon Paris par défaut.
-                viewModel.userLocation.value?.let { Pair(it.latitude, it.longitude) } ?: Pair(48.85, 2.35)
-            }
-            // Cas 2 : Un lieu sauvegardé
-            is LocationIdentifier.Saved -> {
-                Pair(locationIdentifier.location.latitude, locationIdentifier.location.longitude)
-            }
-        }
+    // On ne lance l'appel réseau QUE si les données ne sont pas déjà chargées pour la date demandée.
+    LaunchedEffect(startDateTime) {
+        if (viewModel.hourlyForecast.value.isEmpty())
+            Log.w("DayGraphActivity", "Hourly Forecast is empty !!!")
+        val currentForecastDate = viewModel.hourlyForecast.value.firstOrNull()?.time?.toLocalDate()
+        val requestedDate = startDateTime.toLocalDate()
 
-        // On lance la fonction de chargement centrale du ViewModel avec les bonnes coordonnées et la bonne date.
-        viewModel.load24hForecast(latitude, longitude, startDateTime)
+        // Si la liste est vide OU si elle ne correspond pas à la date demandée, on charge.
+        if (viewModel.hourlyForecast.value.isEmpty() || currentForecastDate != requestedDate) {
+            val (latitude, longitude) = when (val locationIdentifier = selectedLocation) {
+                is LocationIdentifier.CurrentUserLocation -> {
+                    viewModel.userLocation.value?.let { Pair(it.latitude, it.longitude) } ?: Pair(48.85, 2.35)
+                }
+                is LocationIdentifier.Saved -> {
+                    Pair(locationIdentifier.location.latitude, locationIdentifier.location.longitude)
+                }
+            }
+            // On lance la fonction de chargement (appel réseau).
+            viewModel.load24hForecast(latitude, longitude, startDateTime)
+        }
     }
 
-    // On collecte les états ici pour les passer au composable du graphique
     val isLoading by viewModel.isLoading.collectAsState()
 
     Column(

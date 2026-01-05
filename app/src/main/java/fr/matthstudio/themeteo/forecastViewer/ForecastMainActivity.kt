@@ -190,6 +190,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val sunnyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "clear.jpg")) }
     val sunnyCloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "mid-cloudy.jpg")) }
     val cloudyImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "overcast.jpg")) }
+    val foggyBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "foggy.jpg")) }
     val drizzleImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "drizzle.png")) }
     val rainy1ImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainy1.jpg")) }
     val rainy2ImageBitmap: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, imagesFolder + "rainy2.jpg")) }
@@ -268,6 +269,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 SimpleWeatherWord.SUNNY -> sunnyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.CLOUDY -> cloudyImageBitmap ?: ImageBitmap(1, 1)
+                SimpleWeatherWord.FOGGY -> foggyBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.DRIZZLY -> drizzleImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.RAINY1 -> rainy1ImageBitmap ?: ImageBitmap(1, 1)
                 SimpleWeatherWord.RAINY2 -> rainy2ImageBitmap ?: ImageBitmap(1, 1)
