@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.21" // Utilisez la même version que votre Kotlin
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.0" // Utilisez la même version que votre Kotlin
     id("kotlin-parcelize")
 }
 
@@ -60,10 +60,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = "11"
-    }
-
     buildFeatures {
         compose = true
     }
@@ -84,6 +80,16 @@ android {
             // excludes.add("META-INF/*.kotlin_module") // If using libraries not yet fully compatible with AGP
         }
     }
+}
+
+kotlin {
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+    // Or shorter:
+    jvmToolchain(11)
+    // For example:
+    jvmToolchain(11)
 }
 
 dependencies {
@@ -135,6 +141,9 @@ dependencies {
     implementation(libs.androidx.datastore.preferences) // Alternative plus simple pour clé-valeur
     implementation(libs.protobuf.kotlin.lite)
     implementation(libs.androidx.ui.graphics)
+    implementation(libs.androidx.compose.ui.text.google.fonts)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.ui.graphics)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 

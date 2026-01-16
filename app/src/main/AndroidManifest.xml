@@ -21,7 +21,7 @@
             android:label="@string/title_activity_settings_activity.kt"
             android:theme="@style/AppTheme.Compose" />
         <activity
-            android:name=".forecastViewer.ForecastMainActivity"
+            android:name=".forecastViewer.forecastMainActivity.ForecastMainActivity"
             android:exported="true"
             android:theme="@style/AppTheme.Compose">
             <intent-filter>
@@ -31,12 +31,12 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".forecastViewer.DayChooserActivity"
+            android:name=".forecastViewer.dayChoserActivity.DayChooserActivity"
             android:exported="false"
             android:label="@string/title_activity_temp_graphs"
             android:theme="@style/AppTheme.Compose" />
         <activity
-            android:name=".forecastViewer.DayGraphsActivity"
+            android:name=".forecastViewer.dayGraphsActivity.DayGraphsActivity"
             android:exported="false"
             android:label="@string/title_activity_day_graphs"
             android:theme="@style/AppTheme.Compose" />
