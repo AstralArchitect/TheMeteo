@@ -4,57 +4,34 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import fr.matthstudio.themeteo.R
-import fr.matthstudio.themeteo.forecastViewer.data.WeatherViewModelFactory
+import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
+import kotlinx.coroutines.launch
 
 class SettingsActivity : ComponentActivity() {
 
-    private val weatherViewModel: WeatherViewModel by viewModels { WeatherViewModelFactory }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // L'initialisation est importante pour que le ViewModelFactory fonctionne
-        WeatherViewModelFactory.initialize(this)
+
+        // On récupère le cache directement depuis l'application
+        val weatherCache = (application as TheMeteo).weatherCache
 
         setContent {
             TheMeteoTheme {
-                SettingsScreen(viewModel = weatherViewModel)
+                // On passe le cache à l'écran des paramètres
+                SettingsScreen(cache = weatherCache)
             }
         }
     }
@@ -62,9 +39,12 @@ class SettingsActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: WeatherViewModel) {
+fun SettingsScreen(cache: WeatherCache) {
     val activity = LocalActivity.current
-    val userSettings by viewModel.userSettings.collectAsState()
+    // On collecte l'état des paramètres depuis le cache
+    val userSettings by cache.userSettings.collectAsState()
+    // On a besoin d'une coroutine scope pour appeler les fonctions suspend du repository
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -88,15 +68,25 @@ fun SettingsScreen(viewModel: WeatherViewModel) {
                 .fillMaxSize()
         ) {
             ModelSelectionSetting(
-                currentModel = userSettings.model ?: "best_match",
-                onModelSelected = { viewModel.updateModel(it) }
+                currentModel = userSettings.model,
+                onModelSelected = { newModel ->
+                    scope.launch {
+                        // On met à jour via le repository contenu dans le cache
+                        cache.userSettingsRepository.updateModel(newModel)
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
             RoundTemperatureSetting(
                 isChecked = userSettings.roundToInt ?: true,
-                onCheckedChange = { viewModel.updateRoundToInt(it) }
+                onCheckedChange = { shouldRound ->
+                    scope.launch {
+                        // On met à jour via le repository contenu dans le cache
+                        cache.userSettingsRepository.updateRoundToInt(shouldRound)
+                    }
+                }
             )
         }
     }
@@ -108,7 +98,6 @@ fun ModelSelectionSetting(
     currentModel: String,
     onModelSelected: (String) -> Unit
 ) {
-    // Liste des modèles disponibles (valeur API, nom affiché)
     val models = listOf(
         "best_match" to "Meilleur Modèle (Défaut)",
         "ecmwf_ifs" to "ECMWF IFS HRES 9km",

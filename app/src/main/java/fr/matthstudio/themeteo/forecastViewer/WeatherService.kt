@@ -2,13 +2,18 @@ package fr.matthstudio.themeteo.forecastViewer
 
 import android.os.Parcelable
 import android.util.Log
+import fr.matthstudio.themeteo.forecastViewer.data.LocalDateSerializer
+import fr.matthstudio.themeteo.forecastViewer.data.LocalDateTimeSerializer
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
+
+// Commenter lorsqu'on utilise pas le logging
+/*import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
+import io.ktor.client.plugins.logging.Logger*/
+
 import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.parcelize.Parcelize
@@ -16,50 +21,39 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.lang.Math.clamp
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.LocalDate
-//import java.lang.Math.*
-import kotlin.math.*
+import kotlin.math.max
+import kotlin.math.roundToInt
 
-// Classes pratiques pour combiner l'heure et la valeur
+// --- DATA CLASSES (inchangées) ---
+@Serializable
 
 data class PrecipitationData(
-    // Precipitation
     val precipitation: Double, // en mm
-    //val precipitationMin: Double?,
-    //val precipitationMax: Double?,
     val precipitationProbability: Int?, // en %
-    // Rain
     val rain: Double, // en mm
-    //val rainMin: Double?,
-    //val rainMax: Double?,
-    // Snowfall
     val snowfall: Double, // en cm
-    //val snowfallMin: Double?,
-    //val snowfallMax: Double?,
-    // Snow depth
-    val snowDepth: Double?, // en m
-    //val snowDepthMin: Double?,
-    //val snowDepthMax: Double?
+    val snowDepth: Int?, // en m
 )
 
+@Serializable
 data class SkyInfoData(
-    // Cloud Cover
     val cloudcoverTotal: Int, // en %
     val cloudcoverLow: Int,
     val cloudcoverMid: Int,
     val cloudcoverHigh: Int,
-    // Sun radiation
     val shortwaveRadiation: Double?, // en W/m^2
     val directRadiation: Double?, // en W/m^2
     val diffuseRadiation: Double?, // en W/m^2
-    // sky opacity (calculated)
     val opacity: Int?, // en %
 )
 
+@Serializable
 data class AllHourlyVarsReading(
+    @Serializable(with = LocalDateTimeSerializer::class)
     val time: LocalDateTime,
     val temperature: Double,
     val apparentTemperature: Double?,
@@ -73,18 +67,18 @@ data class AllHourlyVarsReading(
     val wmo: Int
 )
 
-// Data class for daily temperature readings
 @Parcelize
+@Serializable
 data class DailyReading(
+    @Serializable(with = LocalDateSerializer::class)
     val date: LocalDate,
     val maxTemperature: Double,
     val minTemperature: Double,
     val wmo: Int,
-    val sunset: String?,
-    val sunrise: String?
+    val sunset: String,
+    val sunrise: String
 ) : Parcelable
 
-// Data class for 15-minutely weather readings
 @Parcelize
 data class MinutelyReading(
     val time: LocalDateTime,
@@ -92,39 +86,18 @@ data class MinutelyReading(
     val rain: Double
 ) : Parcelable
 
-// --- Data classes pour la recherche de ville (Geocoding) ---
 @Serializable
 data class GeocodingResponse(val results: List<GeocodingResult>? = null)
 
 @Serializable
 data class GeocodingResult(
-    val id: Int, // id unique pour la ville
+    val id: Int,
     val name: String,
     val latitude: Double,
     val longitude: Double,
     @SerialName("country_code") val countryCode: String,
-    @SerialName("admin1") val region: String // La région ou l'état
+    @SerialName("admin1") val region: String
 )
-
-// --- Data classes pour connaître les disponibilitées des variables par modèle ---
-data class AvailableVariables(
-    var precipitationProbability: Boolean,
-    var snowDepth: Boolean,
-    var solarRadiation: Boolean
-)
-
-val availableVariables = mapOf(
-    "best_match" to AvailableVariables(precipitationProbability = true, snowDepth = true, solarRadiation = true),
-    "ecmwf_ifs" to AvailableVariables(precipitationProbability = true, snowDepth = true, solarRadiation = true),
-    "ecmwf_aifs025_single" to AvailableVariables(precipitationProbability = false, snowDepth = false, solarRadiation = true),
-    "meteofrance_seamless" to AvailableVariables(precipitationProbability = true, snowDepth = false, solarRadiation = true),
-    "gfs_seamless" to AvailableVariables(precipitationProbability = true, snowDepth = true, solarRadiation = true),
-    "icon_seamless" to AvailableVariables(precipitationProbability = true, snowDepth = true, solarRadiation = true),
-    "gem_seamless" to AvailableVariables(precipitationProbability = true, snowDepth = true, solarRadiation = true),
-    "ukmo_seamless" to AvailableVariables(precipitationProbability = false, snowDepth = false, solarRadiation = false),
-)
-
-// --- 2. LE SERVICE MÉTÉO ---
 
 class WeatherService {
 
@@ -147,491 +120,203 @@ class WeatherService {
             }*/
         }
 
-    // Helper pour construire les paramètres horaires
-    private fun HttpRequestBuilder.addHourlyParameters(
-        latitude: Double,
-        longitude: Double,
-        model: String,
-        startDateTime: LocalDateTime,
-        endDateTime: LocalDateTime,
-        localZoneId: ZoneId,
-        vararg hourlyFields: String
-    ) {
-        val formatter = DateTimeFormatter.ISO_LOCAL_DATE
-        parameter("latitude", latitude)
-        parameter("longitude", longitude)
-        parameter("models", model)
-        parameter("hourly", hourlyFields.joinToString(",")) // Joindre tous les champs
-        parameter("timezone", localZoneId.id)
-        parameter("start_date", startDateTime.toLocalDate().format(formatter))
-        parameter("end_date", endDateTime.toLocalDate().format(formatter))
-    }
-
-    // --- RECHERCHE DE VILLE ---
-    /**
-     * Interroge l'API de géocodage d'Open-Meteo pour trouver des villes.
-     * @param query Le nom de la ville à rechercher.
-     * @return Une liste de résultats de géocodage ou null en cas d'erreur.
-     */
     suspend fun searchCity(query: String): List<GeocodingResult>? {
-        // Ne lance pas de recherche pour une requête vide
-        if (query.isBlank()) {
-            return emptyList()
-        }
-
-        val apiUrl = "https://geocoding-api.open-meteo.com/v1/search"
+        if (query.isBlank()) return emptyList()
         return try {
-            client.get(apiUrl) {
+            client.get("https://geocoding-api.open-meteo.com/v1/search") {
                 parameter("name", query)
-                parameter("count", 10) // Limiter le nombre de résultats à 10
-                parameter("language", "fr") // Obtenir les résultats en français
+                parameter("count", 10)
+                parameter("language", "fr")
                 parameter("format", "json")
             }.body<GeocodingResponse>().results
         } catch (e: Exception) {
-            Log.e("Geocoder","Erreur de géocodage : ${e.message}")
+            Log.e("Geocoder", "Erreur de géocodage : ${e.message}")
             null
         }
     }
 
     /**
-     * Récupère toutes les données horaires pour une période donnée.
-     * Cette fonction sera la base pour tous nos appels.
+     * Récupère l'intégralité des prévisions horaires pour une période étendue.
+     * C'est la fonction que le WeatherCache utilisera.
      */
-    suspend fun getHourlyData(
+    suspend fun getCompleteHourlyForecast(
         latitude: Double,
         longitude: Double,
         model: String,
-        startDateTime: LocalDateTime,
-        hours: Long, // Nombre d'heures à récupérer à partir de maintenant
-        vararg hourlyFields: String, // Les champs spécifiques à demander (ex: "temperature_2m", "precipitation")
-    ): WeatherApiResponse? {
-        val apiUrl = "https://api.open-meteo.com/v1/forecast"
-        val localZoneId = ZoneId.systemDefault()
-        val endDateTime = startDateTime.plusHours(hours)
-
-        return try {
-            client.get(apiUrl) {
-                // Utilisez la fonction d'aide
-                addHourlyParameters(latitude, longitude, model, startDateTime, endDateTime, localZoneId, *hourlyFields)
-            }.body()
-        } catch (e: Exception) {
-            Log.e("getHourlyData", "Erreur lors de la récupération des données horaires : ${e.message}")
-            null
-        }
-    }
-
-    // Function to get daily temperature forecast (max/min)
-    suspend fun getDailyForecast(latitude: Double, longitude: Double, days: Int, model: String): List<DailyReading>? {
-        val apiUrl = "https://api.open-meteo.com/v1/forecast"
-        val localZoneId = ZoneId.systemDefault()
-        val now = LocalDate.now(localZoneId)
-        // Start from tomorrow, and fetch 'days' number of days
-        val startLocalDate = now.plusDays(1)
-        val endLocalDate = now.plusDays(if (LocalDateTime.now().hour > 6) days.toLong() else days.toLong() - 1)
-
-        val formatter = DateTimeFormatter.ISO_LOCAL_DATE
-
-        return try {
-            val response: WeatherApiResponse = client.get(apiUrl) {
-                parameter("latitude", latitude)
-                parameter("longitude", longitude)
-                parameter("models", model)
-                parameter("daily", "temperature_2m_max,temperature_2m_min,weather_code") // Request max/min daily temps and VMO code
-                parameter("timezone", localZoneId.id)
-                parameter("start_date", startLocalDate.format(formatter))
-                parameter("end_date", endLocalDate.format(formatter))
-            }.body()
-
-            val dailyTimes = response.getDeterministicDailyData("time")
-            val dailyMaxTemps = response.getDeterministicDailyData("temperature_2m_max")
-            val dailyMinTemps = response.getDeterministicDailyData("temperature_2m_min")
-            val dailyVMO = response.getDeterministicDailyData("weather_code")
-
-            if (dailyTimes != null && dailyMaxTemps != null && dailyMinTemps != null && dailyVMO != null &&
-                dailyTimes.size == dailyMaxTemps.size && dailyTimes.size == dailyMinTemps.size && dailyTimes.size == dailyVMO.size
-            ) {
-                dailyTimes.zip(dailyMaxTemps.zip(dailyMinTemps.zip(dailyVMO))) { timeStr, (maxTemp, minTempVMO) ->
-                    DailyReading(
-                        date = LocalDate.parse(timeStr as String, formatter),
-                        maxTemperature = maxTemp as Double,
-                        minTemperature = minTempVMO.first as Double,
-                        wmo = (minTempVMO.second as Double).toInt(),
-                        sunset = null,
-                        sunrise = null
-                    )
-                }
-            } else {
-                Log.e("getDailyForecast", "Erreur: Données journalières de température incomplètes ou manquantes.")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e("getDailyForecast", "Erreur lors de la récupération des données journalières de température : ${e.message}")
-            null
-        }
-    }
-
-    // --- Fonction pour télécharger les données 15-minutely sur 1 heure ---
-    suspend fun get15MinutelyForecast(
-        latitude: Double, longitude: Double, hours: Long
-    ): List<MinutelyReading>? {
-        val apiUrl = "https://api.open-meteo.com/v1/forecast"
-
-        return try {
-            val response: WeatherApiResponse = client.get(apiUrl) {
-                parameter("latitude", latitude)
-                parameter("longitude", longitude)
-                //parameter("models", model)
-                parameter("minutely_15", "rain,snowfall")
-                parameter("forecast_minutely_15", hours * 4)
-            }.body()
-
-            val minutelyTimes = response.getDeterministicMinutely15Data("time")
-            val minutelyRain = response.getDeterministicMinutely15Data("rain")
-            val minutelySnowfall = response.getDeterministicMinutely15Data("snowfall")
-
-            if (minutelyTimes != null && minutelyRain != null && minutelySnowfall != null)
-            {
-                minutelyTimes.zip(minutelyRain.zip(minutelySnowfall)).map { (timeStr, rainSnowfall) ->
-                    MinutelyReading(
-                        time = LocalDateTime.parse(timeStr as String, DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                        rain = rainSnowfall.first as Double,
-                        snowfall = rainSnowfall.second as Double
-                    )
-                }
-            }
-            else {
-                Log.e("get15MinutelyForecast", "Erreur: Erreur lors de la récupération des données '15 minutely'.")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e("get15MinutelyForecast", "Erreur lors de la récupération des données '15 minutely' : ${e.message}")
-            null
-        }
-    }
-
-    suspend fun get15MinutelyAndHourlyData(
-        latitude: Double,
-        longitude: Double,
-        model: String,
-        vararg hourlyFields: String, // Les champs spécifiques à demander (ex: "temperature_2m", "precipitation")
-    ): WeatherApiResponse? {
-        val apiUrl = "https://api.open-meteo.com/v1/forecast"
-        val localZoneId = ZoneId.systemDefault()
-
-        return try {
-            client.get(apiUrl) {
-                parameter("latitude", latitude)
-                parameter("longitude", longitude)
-                parameter("models", model)
-                parameter("hourly", hourlyFields.joinToString(",")) // Joindre tous les champs
-                parameter("timezone", localZoneId.id)
-                parameter("forecast_days", 2)
-                parameter("minutely_15", "rain,snowfall")
-                parameter("forecast_minutely_15", 12 * 4)
-                parameter("daily", "sunset,sunrise")
-            }.body()
-        } catch (e: Exception) {
-            Log.e("get15MinutelyAndHourlyData", "Erreur lors de la récupération des données '15 minutely' + horaires (${hourlyFields.joinToString(",")}) : ${e.message}")
-            null
-        }
-    }
-
-    // --- Fonction pour télécharger les hourly data sur 24H ---
-    suspend fun get24hAllVariablesForecast(
-        latitude: Double, longitude: Double,
-        model: String,
-        startDateTime: LocalDateTime = LocalDateTime.now(ZoneId.systemDefault())
+        startDate: LocalDate,
+        endDate: LocalDate
     ): List<AllHourlyVarsReading>? {
-        val startDateTime = startDateTime.withMinute(0).withSecond(0)
-        val variables = mutableListOf("temperature_2m", "precipitation", "rain", "snowfall", "showers",
-            "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "apparent_temperature",
-             "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m", "weather_code")
-        if (availableVariables[model]?.precipitationProbability == true)
-            variables.add("precipitation_probability")
-        if (availableVariables[model]?.snowDepth == true)
-            variables.add("snow_depth")
-        if (availableVariables[model]?.solarRadiation == true)
-            variables.addAll(listOf("shortwave_radiation", "direct_radiation", "diffuse_radiation"))
+        val apiUrl = "https://api.open-meteo.com/v1/forecast"
+        val localZoneId = ZoneId.systemDefault()
 
-        val response = getHourlyData(latitude, longitude, model, startDateTime, 23,
-            variables.joinToString(",")
-        ) ?: return null
-        val endDateTime = startDateTime.plusHours(23)
+        return try {
+            val response: WeatherApiResponse = client.get(apiUrl) {
+                parameter("latitude", latitude)
+                parameter("longitude", longitude)
+                parameter("models", model)
+                parameter("hourly", getHourlyVariables().joinToString(","))
+                parameter("timezone", localZoneId.id)
+                parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+                parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+            }.body()
 
-        // Utiliser let pour s'assurer que toutes les listes de données requises ne sont pas nulles
-        return response.let { response ->
-            val times = response.getDeterministicHourlyData("time")
-            val temperature = response.getDeterministicHourlyData("temperature_2m")
-            val apparentTemperature = response.getDeterministicHourlyData("apparent_temperature")
-            val precipitation = response.getDeterministicHourlyData("precipitation")
-            val precipitationProbability = response.getDeterministicHourlyData("precipitation_probability")
+            parseHourlyData(response)
+
+        } catch (e: Exception) {
+            Log.e("getCompleteForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            null
+        }
+    }
+    /**
+     * Récupère l'intégralité des prévisions journalières pour une période étendue.
+     * C'est la fonction que le WeatherCache utilisera.
+     */
+    suspend fun getCompleteDailyForecast(
+        latitude: Double,
+        longitude: Double,
+        model: String,
+        startDate: LocalDate,
+        endDate: LocalDate
+    ): List<DailyReading>? {
+        val apiUrl = "https://api.open-meteo.com/v1/forecast"
+        val localZoneId = ZoneId.systemDefault()
+
+        return try {
+            val response: WeatherApiResponse = client.get(apiUrl) {
+                parameter("latitude", latitude)
+                parameter("longitude", longitude)
+                parameter("models", model)
+                parameter("daily", getDailyVariables().joinToString(","))
+                parameter("timezone", localZoneId.id)
+                parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+                parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+            }.body()
+
+            parseDailyData(response)
+
+        } catch (e: Exception) {
+            Log.e("getCompleteForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            null
+        }
+    }
+
+    private fun getHourlyVariables(): List<String> {
+        val variables = mutableListOf(
+            "temperature_2m", "apparent_temperature", "precipitation", "rain", "showers", "snowfall",
+            "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "weather_code",
+            "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m",
+            "precipitation_probability", "snow_depth", "shortwave_radiation", "direct_radiation",
+            "diffuse_radiation"
+        )
+        return variables
+    }
+
+    private fun parseHourlyData(response: WeatherApiResponse): List<AllHourlyVarsReading>? {
+        try {
+            val times = response.getDeterministicHourlyData("time") ?: return null
+
+            // Récupération sécurisée de toutes les listes de données
+            val temp = response.getDeterministicHourlyData("temperature_2m")
+            val appTemp = response.getDeterministicHourlyData("apparent_temperature")
+            val precip = response.getDeterministicHourlyData("precipitation")
+            val precipProb = response.getDeterministicHourlyData("precipitation_probability")
             val rain = response.getDeterministicHourlyData("rain")
             val showers = response.getDeterministicHourlyData("showers")
             val snowfall = response.getDeterministicHourlyData("snowfall")
             val snowDepth = response.getDeterministicHourlyData("snow_depth")
-            val totalCover = response.getDeterministicHourlyData("cloudcover")
-            val lowCover = response.getDeterministicHourlyData("cloudcover_low")
-            val midCover = response.getDeterministicHourlyData("cloudcover_mid")
-            val highCover = response.getDeterministicHourlyData("cloudcover_high")
+            val cloud = response.getDeterministicHourlyData("cloudcover")
+            val cloudLow = response.getDeterministicHourlyData("cloudcover_low")
+            val cloudMid = response.getDeterministicHourlyData("cloudcover_mid")
+            val cloudHigh = response.getDeterministicHourlyData("cloudcover_high")
             val ghi = response.getDeterministicHourlyData("shortwave_radiation")
-            val dsi = response.getDeterministicHourlyData("direct_radiation")
             val dhi = response.getDeterministicHourlyData("diffuse_radiation")
+            val dsi = response.getDeterministicHourlyData("direct_radiation")
             val windspeed = response.getDeterministicHourlyData("windspeed_10m")
-            val windDirection = response.getDeterministicHourlyData("wind_direction_10m")
+            val windDir = response.getDeterministicHourlyData("wind_direction_10m")
             val pressure = response.getDeterministicHourlyData("pressure_msl")
             val humidity = response.getDeterministicHourlyData("relative_humidity_2m")
             val dewpoint = response.getDeterministicHourlyData("dewpoint_2m")
             val wmo = response.getDeterministicHourlyData("weather_code")
 
-            // 2. Vérifier que toutes les listes de données sont présentes et ont la même taille
-            if (times != null && temperature != null && precipitation != null && rain != null &&
-                snowfall != null && showers != null && totalCover != null && lowCover != null &&
-                midCover != null && highCover != null && windspeed != null && windDirection != null &&
-                pressure != null && humidity != null && dewpoint != null && wmo != null &&
-                apparentTemperature != null &&
-                times.size == temperature.size && times.size == precipitation.size &&
-                times.size == apparentTemperature.size && times.size == showers.size &&
-                times.size == snowfall.size && times.size == rain.size &&
-                times.size == totalCover.size && times.size == lowCover.size &&
-                times.size == midCover.size && times.size == highCover.size &&
-                times.size == (dsi?.size ?: times.size) && times.size == (ghi?.size ?: times.size) &&
-                times.size == (dhi?.size ?: times.size) && times.size == windspeed.size &&
-                times.size == pressure.size && times.size == humidity.size &&
-                times.size == dewpoint.size && times.size == wmo.size && times.size == windDirection.size
-            ) {
-
-                // 3. Itérer sur les indices de la liste de temps
-                times.indices.map { index ->
-                    val dateTime =
-                        LocalDateTime.parse(times[index] as String, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-
-                    val o: Int? = if (ghi != null && dhi != null)
-                            (clamp((dhi[index] as Double) / max(ghi[index] as Double, 1.0), 0.0, 1.0) * 100.0).roundToInt()
+            return times.indices.mapNotNull { i ->
+                try {
+                    val o = if (ghi != null && dhi != null)
+                            (clamp(dhi[i] as Double / max(ghi[i] as Double, 1.0), 0.0, 1.0) * 100.0).roundToInt()
                     else null
-
-                    // 4. Créer l'objet SkyInfoReading avec les données de chaque liste à l'indice courant
                     AllHourlyVarsReading(
-                        time = dateTime,
-                        temperature = temperature[index] as Double,
-                        apparentTemperature = apparentTemperature[index] as Double,
+                        time = LocalDateTime.parse(times[i] as String),
+                        temperature = temp?.get(i) as Double? ?: 0.0,
+                        apparentTemperature = appTemp?.get(i) as Double?,
                         precipitationData = PrecipitationData(
-                            precipitation = precipitation[index] as Double,
-                            precipitationProbability = (precipitationProbability?.get(index) as Double?)?.toInt(),
-                            rain = rain[index] as Double + showers[index] as Double,
-                            snowfall = snowfall[index] as Double,
-                            snowDepth = snowDepth?.get(index) as Double?
+                            precipitation = precip?.get(i) as Double? ?: 0.0,
+                            precipitationProbability = (precipProb?.get(i) as Double?)?.toInt(),
+                            rain = (rain?.get(i) as Double? ?: 0.0) + (showers?.get(i) as Double? ?: 0.0),
+                            snowfall = snowfall?.get(i) as Double? ?: 0.0,
+                            snowDepth = ((snowDepth?.get(i) as Double?)?.times(100))?.toInt()
                         ),
                         skyInfo = SkyInfoData(
-                            cloudcoverTotal = (totalCover[index] as Double).toInt(),
-                            cloudcoverLow = (lowCover[index] as Double).toInt(),
-                            cloudcoverMid = (midCover[index] as Double).toInt(),
-                            cloudcoverHigh = (highCover[index] as Double).toInt(),
-                            shortwaveRadiation = ghi?.get(index) as Double?,
-                            directRadiation = dsi?.get(index) as Double?,
-                            diffuseRadiation = dhi?.get(index) as Double?,
+                            cloudcoverTotal = (cloud?.get(i) as Double?)?.toInt() ?: 0,
+                            cloudcoverLow = (cloudLow?.get(i) as Double?)?.toInt() ?: 0,
+                            cloudcoverMid = (cloudMid?.get(i) as Double?)?.toInt() ?: 0,
+                            cloudcoverHigh = (cloudHigh?.get(i) as Double?)?.toInt() ?: 0,
+                            shortwaveRadiation = ghi?.get(i) as Double,
+                            directRadiation = dsi?.get(i) as Double,
+                            diffuseRadiation = dhi?.get(i) as Double,
                             opacity = o
                         ),
-                        windspeed = windspeed[index] as Double,
-                        windDirection = windDirection[index] as Double,
-                        pressure = pressure[index] as Double,
-                        humidity = (humidity[index] as Double).toInt(),
-                        dewpoint = dewpoint[index] as Double,
-                        wmo = (wmo[index] as Double).toInt()
+                        windspeed = windspeed?.get(i) as Double? ?: 0.0,
+                        windDirection = windDir?.get(i) as Double? ?: 0.0,
+                        pressure = pressure?.get(i) as Double? ?: 0.0,
+                        humidity = (humidity?.get(i) as Double?)?.toInt() ?: 0,
+                        dewpoint = dewpoint?.get(i) as Double? ?: 0.0,
+                        wmo = (wmo?.get(i) as Double?)?.toInt() ?: 0
                     )
+                } catch (e: Exception) {
+                    Log.w("WeatherServiceParser", "Impossible de parser l'heure à l'index $i", e)
+                    null
                 }
-                    .filter {
-                        it.time.isAfter(startDateTime.minusMinutes(1)) && it.time.isBefore(
-                            endDateTime.plusMinutes(1)
-                        )
-                    }
-                    .take(24)
-
-            } else {
-                Log.e("get24hAllVariablesForecast", "Erreur: Erreur lors de la récupération des données horaires.")
-                null
             }
+        } catch (e: Exception) {
+            Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données horaires", e)
+            return null
         }
     }
 
-    // --- Fonction pour télécharger les hourly data sur 24H et les 15-minutely sur 12H ---
-    suspend fun get24hAllVariablesForecastPlus15Minutely(
-        latitude: Double, longitude: Double,
-        model: String
-    ): Triple<List<AllHourlyVarsReading>?, List<MinutelyReading>?, List<DailyReading>?>? {
-        val startDateTime = LocalDateTime.now(ZoneId.systemDefault()).withMinute(0).withSecond(0)
-        val variables = mutableListOf("temperature_2m", "precipitation", "rain", "snowfall", "showers",
-            "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "apparent_temperature",
-            "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m", "weather_code")
-        if (availableVariables[model]?.precipitationProbability == true)
-            variables.add("precipitation_probability")
-        if (availableVariables[model]?.snowDepth == true)
-            variables.add("snow_depth")
-        if (availableVariables[model]?.solarRadiation == true)
-            variables.addAll(listOf("shortwave_radiation", "direct_radiation", "diffuse_radiation"))
+    private fun getDailyVariables(): List<String> {
+        val variables = mutableListOf(
+            "temperature_2m_max", "temperature_2m_min", "weather_code", "sunset", "sunrise"
+        )
+        return variables
+    }
 
-        val response = get15MinutelyAndHourlyData(latitude, longitude, model,
-            *variables.toTypedArray()) ?: return null
-
-        val endDateTime = startDateTime.plusHours(23)
-
-        // Utiliser let pour s'assurer que toutes les listes de données requises ne sont pas nulles
+    private fun parseDailyData(response: WeatherApiResponse): List<DailyReading>? {
         try {
-            val hourlyData = response.let { response ->
-                val times = response.getDeterministicHourlyData("time")
-                val temperature = response.getDeterministicHourlyData("temperature_2m")
-                val apparentTemperature = response.getDeterministicHourlyData("apparent_temperature")
-                val precipitation = response.getDeterministicHourlyData("precipitation")
-                val precipitationProbability = response.getDeterministicHourlyData("precipitation_probability")
-                val rain = response.getDeterministicHourlyData("rain")
-                val showers = response.getDeterministicHourlyData("showers")
-                val snowfall = response.getDeterministicHourlyData("snowfall")
-                val snowDepth = response.getDeterministicHourlyData("snow_depth")
-                val totalCover = response.getDeterministicHourlyData("cloudcover")
-                val lowCover = response.getDeterministicHourlyData("cloudcover_low")
-                val midCover = response.getDeterministicHourlyData("cloudcover_mid")
-                val highCover = response.getDeterministicHourlyData("cloudcover_high")
-                val ghi = response.getDeterministicHourlyData("shortwave_radiation")
-                val dsi = response.getDeterministicHourlyData("direct_radiation")
-                val dhi = response.getDeterministicHourlyData("diffuse_radiation")
-                val windspeed = response.getDeterministicHourlyData("windspeed_10m")
-                val windDirection = response.getDeterministicHourlyData("wind_direction_10m")
-                val pressure = response.getDeterministicHourlyData("pressure_msl")
-                val humidity = response.getDeterministicHourlyData("relative_humidity_2m")
-                val dewpoint = response.getDeterministicHourlyData("dewpoint_2m")
-                val wmo = response.getDeterministicHourlyData("weather_code")
+            val times = response.getDeterministicDailyData("time") ?: return null
 
-                // 2. Vérifier que toutes les listes de données sont présentes et ont la même taille
-                if (times != null && temperature != null && precipitation != null && rain != null &&
-                    snowfall != null && showers != null && totalCover != null && lowCover != null &&
-                    midCover != null && highCover != null && windspeed != null && windDirection != null &&
-                    pressure != null && humidity != null && dewpoint != null && wmo != null &&
-                    apparentTemperature != null &&
-                    times.size == temperature.size && times.size == precipitation.size &&
-                    times.size == apparentTemperature.size && times.size == showers.size &&
-                    times.size == snowfall.size && times.size == rain.size &&
-                    times.size == totalCover.size && times.size == lowCover.size &&
-                    times.size == midCover.size && times.size == highCover.size &&
-                    times.size == (dsi?.size ?: times.size) && times.size == (ghi?.size ?: times.size) &&
-                    times.size == (dhi?.size ?: times.size) && times.size == windspeed.size &&
-                    times.size == pressure.size && times.size == humidity.size &&
-                    times.size == dewpoint.size && times.size == wmo.size && times.size == windDirection.size
-                ) {
-                    times.indices.map { index ->
-                        val dateTime =
-                            LocalDateTime.parse(times[index] as String,
-                                DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            // Récupération sécurisée de toutes les listes de données
+            val tempMax = response.getDeterministicDailyData("temperature_2m_max")
+            val tempMin = response.getDeterministicDailyData("temperature_2m_min")
+            val sunset = response.getDeterministicDailyData("sunset")
+            val sunrise = response.getDeterministicDailyData("sunrise")
+            val wmo = response.getDeterministicDailyData("weather_code")
 
-                        val o: Int? = if (ghi != null && dhi != null)
-                            (clamp(
-                                (dhi[index] as Double) / max(ghi[index] as Double, 1.0),
-                                0.0,
-                                1.0
-                            ) * 100.0).roundToInt()
-                        else null
-
-                        // 4. Créer l'objet SkyInfoReading avec les données de chaque liste à l'indice courant
-                        AllHourlyVarsReading(
-                            time = dateTime,
-                            temperature = temperature[index] as Double,
-                            apparentTemperature = apparentTemperature[index] as Double,
-                            precipitationData = PrecipitationData(
-                                precipitation = precipitation[index] as Double,
-                                precipitationProbability = (precipitationProbability?.get(index) as Double?)?.toInt(),
-                                rain = rain[index] as Double + showers[index] as Double,
-                                snowfall = snowfall[index] as Double,
-                                snowDepth = snowDepth?.get(index) as Double?
-                            ),
-                            skyInfo = SkyInfoData(
-                                cloudcoverTotal = (totalCover[index] as Double).toInt(),
-                                cloudcoverLow = (lowCover[index] as Double).toInt(),
-                                cloudcoverMid = (midCover[index] as Double).toInt(),
-                                cloudcoverHigh = (highCover[index] as Double).toInt(),
-                                shortwaveRadiation = ghi?.get(index) as Double?,
-                                directRadiation = dsi?.get(index) as Double?,
-                                diffuseRadiation = dhi?.get(index) as Double?,
-                                opacity = o
-                            ),
-                            windspeed = windspeed[index] as Double,
-                            windDirection = windDirection[index] as Double,
-                            pressure = pressure[index] as Double,
-                            humidity = (humidity[index] as Double).toInt(),
-                            dewpoint = dewpoint[index] as Double,
-                            wmo = (wmo[index] as Double).toInt()
-                        )
-                    }
-                        .filter {
-                            it.time.isAfter(startDateTime.minusMinutes(1)) &&
-                                    it.time.isBefore(endDateTime.plusMinutes(1))
-                        }
-                        .take(24)
-
-                } else {
-                    Log.e(
-                        "get24hAllVariablesForecastPlus15Minutely",
-                        "Erreur: Erreur lors de la récupération des données horaires."
+            return times.indices.mapNotNull { i ->
+                try {
+                    DailyReading(
+                        date = LocalDate.parse(times[i] as String),
+                        maxTemperature = tempMax?.get(i) as Double,
+                        minTemperature = tempMin?.get(i) as Double,
+                        wmo = (wmo?.get(i) as Double).toInt(),
+                        sunset = sunset?.get(i) as String,
+                        sunrise = sunrise?.get(i) as String
                     )
-                    return null
+                } catch (e: Exception) {
+                    Log.w("WeatherServiceParser", "Impossible de parser l'heure à l'index $i", e)
+                    null
                 }
             }
-
-            var minutely15: List<MinutelyReading>?
-
-            val minutelyTimes = response.getDeterministicMinutely15Data("time")
-            val minutelyRain = response.getDeterministicMinutely15Data("rain")
-            val minutelySnowfall = response.getDeterministicMinutely15Data("snowfall")
-
-            if (minutelyTimes != null && minutelyRain != null && minutelySnowfall != null) {
-                minutely15 = minutelyTimes.zip(minutelyRain.zip(minutelySnowfall))
-                    .map { (timeStr, rainSnowfall) ->
-                        MinutelyReading(
-                            time = LocalDateTime.parse(
-                                timeStr as String,
-                                DateTimeFormatter.ISO_LOCAL_DATE_TIME
-                            ),
-                            rain = rainSnowfall.first as Double,
-                            snowfall = rainSnowfall.second as Double
-                        )
-                    }
-            } else {
-                Log.e(
-                    "get24hAllVariablesForecastPlus15Minutely",
-                    "Erreur: Erreur lors de la récupération des données '15 minutely'."
-                )
-                return null
-            }
-
-            var daily: List<DailyReading?>
-
-            val dailyTimes = response.getDeterministicDailyData("time")
-            val dailySunset = response.getDeterministicDailyData("sunset")
-            val dailySunrise = response.getDeterministicDailyData("sunrise")
-
-            if (dailyTimes != null && dailySunset != null && dailySunrise != null) {
-                daily = dailyTimes.zip(dailySunset.zip(dailySunrise))
-                    .map { (timeStr, sunsetSunrise) ->
-                        DailyReading(
-                            date = LocalDate.parse(timeStr as String, DateTimeFormatter.ISO_LOCAL_DATE),
-                            maxTemperature = .0,
-                            minTemperature = .0,
-                            wmo = -1,
-                            sunset = sunsetSunrise.first as String,
-                            sunrise = sunsetSunrise.second as String
-                        )
-                    }
-            } else {
-                Log.e(
-                    "get24hAllVariablesForecastPlus15Minutely",
-                    "Erreur: Erreur lors de la récupération des données '15 minutely'."
-                )
-                return null
-            }
-
-            return Triple(hourlyData, minutely15, daily)
         } catch (e: Exception) {
-            Log.e(
-                "get24hAllVariablesForecast",
-                "Erreur lors de la récupération des données : ${e.message}"
-            )
+            Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données horaires", e)
             return null
         }
     }

@@ -37,9 +37,8 @@
     <string name="chose_model">Choisissez le modèle pour les prévisions.</string>
     <string name="precipitation">Précipitations</string>
     <string name="hourly_forecast">Prévisions heure par heure</string>
-    <string name="temperature_unit">Température °C</string>
-    <string name="a_temperature_unit">Température ressentie °C</string>
-    <string name="precipitation_unit">Précipitation mm/h</string>
+    <string name="a_temperature_unit">Temp. ress. °C</string>
+    <string name="precipitation_unit">Précip. mm/h</string>
     <string name="daily_forecast">Prévision par Jour</string>
     <string name="_15_minutely_precipitation_forecast">Prévision de Précipitation</string>
     <string name="day_duration">Durée du jour %s</string>
@@ -55,4 +54,7 @@
     <string name="day_duration_no_value">Durée du jour</string>
     <string name="day">Jour</string>
     <string name="night">Nuit</string>
+    <string name="snowfall">Chute de neige en cm</string>
+    <string name="snow_depth">Épaisseur de neige en cm</string>
+    <string name="wind_direction">Direction du vent</string>
 </resources>

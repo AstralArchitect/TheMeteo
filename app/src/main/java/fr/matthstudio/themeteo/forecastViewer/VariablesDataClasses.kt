@@ -64,7 +64,7 @@ data class EnsembleStat(val avg: Double, val min: Double, val max: Double)
 /**
  * Calcule la moyenne, le minimum et le maximum pour chaque pas de temps.
  *
- * @param ensembleMatrix La matrice [Membre][Heure] obtenue via getEnsembleData
+ * @param ensembleMatrix La matrice [Membre][Pas de temps] obtenue via getEnsembleData
  * @return Une liste de Triple où :
  * - first = Moyenne (Average)
  * - second = Minimum
@@ -106,7 +106,7 @@ fun calculateEnsembleStats(ensembleMatrix: List<List<Double?>>): List<EnsembleSt
  */
 fun WeatherApiResponse.getDeterministicHourlyData(variableName: String): List<Any>? {
     // On cherche directement la clé dans la map hourly
-    val dataElement = hourly?.get(variableName) ?: return emptyList()
+    val dataElement = hourly?.get(variableName) ?: return null
 
     return try {
         dataElement.jsonArray.map { element ->

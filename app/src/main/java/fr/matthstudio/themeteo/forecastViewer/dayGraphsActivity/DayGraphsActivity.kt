@@ -1,14 +1,12 @@
-package fr.matthstudio.themeteo.forecastViewer
+package fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity
 
 import android.graphics.Paint
-import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -35,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -52,24 +49,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.R
-import fr.matthstudio.themeteo.forecastViewer.data.WeatherViewModelFactory
+import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.forecastViewer.forecastMainActivity.SimpleWeatherWord
+import fr.matthstudio.themeteo.forecastViewer.forecastMainActivity.getSimpleWeather
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.roundToInt
 import android.graphics.Color as AndroidColor
 
 class DayGraphsActivity : ComponentActivity() {
 
-    // On récupère le ViewModel via la factory pour avoir l'instance partagée
-    private val weatherViewModel: WeatherViewModel by viewModels { WeatherViewModelFactory }
+    private lateinit var weatherViewModel: WeatherViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // initialiser la factory
-        WeatherViewModelFactory.initialize(this)
 
         // Récupération sécurisée du Parcelable pour toutes les versions d'Android
         // On vérifie la version du SDK pour appeler la bonne méthode
@@ -85,13 +80,13 @@ class DayGraphsActivity : ComponentActivity() {
 
         if (startDateTime == null)
         {
-            Log.e("DayGraphsActivity", "dayReading is null. Defaulting to now.")
+            Log.e("DayGraphsActivity", "start date time is null. Defaulting to now.")
             // On prend l'heure actuelle, puis on met les minutes, secondes et nanosecondes à 0.
             startDateTime = LocalDateTime.now()
-                .withMinute(0)
-                .withSecond(0)
-                .withNano(0)
         }
+
+        // Instancier le viewModel
+        weatherViewModel = WeatherViewModel((this.application as TheMeteo).weatherCache, startDateTime)
 
         enableEdgeToEdge()
         setContent {
@@ -111,32 +106,7 @@ class DayGraphsActivity : ComponentActivity() {
 @Composable
 fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
 
-    // On ajoute un LaunchedEffect qui réagit au lieu ET à la date
-    val selectedLocation by viewModel.selectedLocation.collectAsState()
-
-    // On ne lance l'appel réseau QUE si les données ne sont pas déjà chargées pour la date demandée.
-    LaunchedEffect(startDateTime) {
-        if (viewModel.hourlyForecast.value.isEmpty())
-            Log.w("DayGraphActivity", "Hourly Forecast is empty !!!")
-        val currentForecastDate = viewModel.hourlyForecast.value.firstOrNull()?.time?.toLocalDate()
-        val requestedDate = startDateTime.toLocalDate()
-
-        // Si la liste est vide OU si elle ne correspond pas à la date demandée, on charge.
-        if (viewModel.hourlyForecast.value.isEmpty() || currentForecastDate != requestedDate) {
-            val (latitude, longitude) = when (val locationIdentifier = selectedLocation) {
-                is LocationIdentifier.CurrentUserLocation -> {
-                    viewModel.userLocation.value?.let { Pair(it.latitude, it.longitude) } ?: Pair(48.85, 2.35)
-                }
-                is LocationIdentifier.Saved -> {
-                    Pair(locationIdentifier.location.latitude, locationIdentifier.location.longitude)
-                }
-            }
-            // On lance la fonction de chargement (appel réseau).
-            viewModel.load24hForecast(latitude, longitude, startDateTime)
-        }
-    }
-
-    val isLoading by viewModel.isLoading.collectAsState()
+    val forecast by viewModel.hourlyForecast.collectAsState()
 
     Column(
         modifier = Modifier
@@ -158,7 +128,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
 
         val scrollState = rememberScrollState()
 
-        if (viewModel.hourlyForecast.collectAsState().value.isNotEmpty()) {
+        if ((forecast as? WeatherDataState.SuccessHourly)?.data?.isNotEmpty() ?: false) {
             WeatherIconGraph(viewModel, scrollState = scrollState)
         }
 
@@ -169,9 +139,9 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
         ) {
 
             // On affiche un indicateur de chargement pendant la récupération des données
-            if (isLoading) {
+            if (forecast == WeatherDataState.Loading) {
                 CircularProgressIndicator(modifier = Modifier.padding(vertical = 50.dp))
-            } else if (viewModel.hourlyForecast.collectAsState().value.isNotEmpty()) {
+            } else if (forecast is WeatherDataState.SuccessHourly && (forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
                 // Le graphique ne s'affiche QUE si les données sont prêtes
                 Text(stringResource(R.string.temperature))
                 GenericGraph(
@@ -180,7 +150,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     Color(0xFFFFF176),
                     scrollState = scrollState
                 )
-                if (viewModel.hourlyForecast.collectAsState().value.first().apparentTemperature != null) {
+                if ((forecast as WeatherDataState.SuccessHourly).data.first().apparentTemperature != null) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(stringResource(R.string.apparent_temperature))
                     GenericGraph(
@@ -208,7 +178,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     valueRange = 0f..100f
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.precipitation } != 0.0) {
+                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.precipitation } != 0.0) {
                     Text(stringResource(R.string.precipitation))
                     GenericGraph(
                         viewModel,
@@ -219,7 +189,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                 }
-                if (viewModel.hourlyForecast.collectAsState().value.first().precipitationData.precipitationProbability != null)
+                if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.precipitationProbability != null)
                 {
                     Text(stringResource(R.string.precipitation_prob))
                     GenericGraph(
@@ -231,7 +201,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                 }
-                if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.rain } != 0.0) {
+                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.rain } != 0.0) {
                     Text(stringResource(R.string.rain))
                     GenericGraph(
                         viewModel,
@@ -242,7 +212,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                 }
-                if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.snowfall } != 0.0)
+                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowfall } != 0.0)
                 {
                     Text("Snowfall (cm/h)")
                     GenericGraph(
@@ -253,8 +223,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                 }
-                if (viewModel.hourlyForecast.collectAsState().value.first().precipitationData.snowDepth != null) {
-                    if (viewModel.hourlyForecast.collectAsState().value.maxOf { it.precipitationData.snowDepth!! } != 0.0) {
+                if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.snowDepth != null) {
+                    if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowDepth!! } != 0) {
                         Text("Snow depth (cm)")
                         GenericGraph(
                             viewModel,
@@ -290,15 +260,17 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     valueRange = 0f..100f
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                if (viewModel.hourlyForecast.collectAsState().value.first().skyInfo.opacity != null) {
-                    Text("Opacity")
-                    GenericGraph(
-                        viewModel,
-                        GraphType.OPACITY,
-                        Color(0xFF9D9D9D),
-                        scrollState = scrollState,
-                        valueRange = 0f..100f
-                    )
+                if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.opacity != null) {
+                    if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
+                        Text("Opacity")
+                        GenericGraph(
+                            viewModel,
+                            GraphType.OPACITY,
+                            Color(0xFF9D9D9D),
+                            scrollState = scrollState,
+                            valueRange = 0f..100f
+                        )
+                    }
                 }
             } else {
                 // Message si aucune donnée n'est disponible après le chargement
@@ -322,110 +294,80 @@ fun GenericGraph(
     graphType: GraphType,
     graphColor: Color,
     valueRange: ClosedFloatingPointRange<Float>? = null,
-    sublist: Pair<Int, Int>? = null,
     scrollState: ScrollState = rememberScrollState()
 ) {
     Box(
         modifier = Modifier
-            .width(1000.dp)
+            .fillMaxWidth()
             .horizontalScroll(scrollState),
     ) {
-        val fullForecast = viewModel.hourlyForecast.collectAsState().value
+        val fullForecast by viewModel.hourlyForecast.collectAsState()
         var forecast: List<Double>
-        var times: List<String>
+        val times: List<String> =
+            (fullForecast as WeatherDataState.SuccessHourly).data
+                .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
         when (graphType) {
             GraphType.TEMP -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.temperature }
-                } ?: fullForecast.map { it.temperature }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data.map { f -> f.temperature }
             }
 
             GraphType.A_TEMP -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.apparentTemperature ?: return }
-                } ?: fullForecast.map { it.apparentTemperature ?: return}
-                times =
-                    fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.apparentTemperature ?: return }
             }
 
             GraphType.DEW_POINT -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.dewpoint }
-                } ?: fullForecast.map { it.dewpoint }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data.map { it.dewpoint }
             }
 
             GraphType.PRECIPITATION_PROB -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.precipitationProbability?.toDouble() ?: return }
-                } ?: fullForecast.map { it.precipitationData.precipitationProbability?.toDouble() ?: return }
-                times =
-                    fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.precipitationData.precipitationProbability?.toDouble() ?: return }
             }
 
             GraphType.PRECIPITATION -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.precipitation }
-                } ?: fullForecast.map { it.precipitationData.precipitation }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.precipitationData.precipitation }
             }
 
             GraphType.RAIN -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.rain }
-                } ?: fullForecast.map { it.precipitationData.rain }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.precipitationData.rain }
             }
 
             GraphType.SNOWFALL -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.snowfall }
-                } ?: fullForecast.map { it.precipitationData.snowfall }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.precipitationData.snowfall }
             }
 
             GraphType.SNOW_DEPTH -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.precipitationData.snowDepth ?: return }
-                } ?: fullForecast.map { it.precipitationData.snowDepth ?: return }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.precipitationData.snowDepth?.toDouble() ?: return }
             }
 
             GraphType.WIND_SPEED -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.windspeed }
-                } ?: fullForecast.map { it.windspeed }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.windspeed }
             }
 
             GraphType.PRESSURE -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.pressure }
-                } ?: fullForecast.map { it.pressure }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.pressure }
             }
 
             GraphType.HUMIDITY -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.humidity.toDouble() }
-                } ?: fullForecast.map { it.humidity.toDouble() }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.humidity.toDouble() }
             }
 
             GraphType.CLOUD_COVER -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second)
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
                         .map { f -> f.skyInfo.cloudcoverTotal.toDouble() }
-                } ?: fullForecast.map { it.skyInfo.cloudcoverTotal.toDouble() }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
             }
 
             GraphType.OPACITY -> {
-                forecast = sublist?.let {
-                    fullForecast.subList(it.first, it.second).map { f -> f.skyInfo.opacity?.toDouble() ?: return }
-                } ?: fullForecast.map { it.skyInfo.opacity?.toDouble() ?: return }
-                times = fullForecast.map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.skyInfo.opacity?.toDouble() ?: return }
             }
         }
         val roundToInt = viewModel.userSettings.collectAsState().value.roundToInt ?: true
@@ -461,8 +403,7 @@ fun GenericGraph(
             // Premier point pour initialiser les chemins
             val firstX = xPadding
             val firstY = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
-                graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
-                graphType == GraphType.SNOW_DEPTH || !roundToInt)
+                graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL || !roundToInt)
                 forecast.first() else forecast.first().roundToInt().toDouble()) - minValue) * yScale)
             linePath.moveTo(firstX, firstY.toFloat())
             gradientPath.moveTo(firstX, size.height) // Commence en bas à gauche
@@ -472,8 +413,7 @@ fun GenericGraph(
             forecast.forEachIndexed { i, point ->
                 val x = xPadding + (i * xStep)
                 val y = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
-                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
-                    graphType == GraphType.SNOW_DEPTH || !roundToInt)
+                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL || !roundToInt)
                     point else point.roundToInt().toDouble()) - minValue) * yScale)
                 linePath.lineTo(x, y.toFloat())
                 gradientPath.lineTo(x, y.toFloat())
@@ -502,8 +442,7 @@ fun GenericGraph(
             forecast.forEachIndexed { i, point ->
                 val x = xPadding + (i * xStep)
                 val y = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
-                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
-                    graphType == GraphType.SNOW_DEPTH || !roundToInt)
+                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL || !roundToInt)
                     point else point.roundToInt().toDouble()) - minValue) * yScale)
 
                 // Point
@@ -513,7 +452,7 @@ fun GenericGraph(
                 drawContext.canvas.nativeCanvas.drawText(
                     (if (graphType == GraphType.RAIN ||
                         graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
-                        graphType == GraphType.SNOW_DEPTH || (!roundToInt && graphType != GraphType.PRESSURE))
+                        (!roundToInt && graphType != GraphType.PRESSURE))
                         point else point.roundToInt()).toString(),
                     x,
                     y.toFloat() - 20f,
@@ -546,20 +485,22 @@ fun GenericGraph(
 
 @Composable
 fun WindVectors(viewModel: WeatherViewModel, scrollState: ScrollState = rememberScrollState()) {
+    // Get the forecast
+    val forecast by viewModel.hourlyForecast.collectAsState()
     // Draw the icon
     Box(
         modifier = Modifier
-            .width(1000.dp)
+            .fillMaxWidth()
             .horizontalScroll(scrollState), // ScrollState partagé
     ) {
-        if (viewModel.hourlyForecast.collectAsState().value.isNotEmpty())
+        if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty())
         {
             Row(
-                modifier = Modifier.fillMaxWidth(), // Make the Row fill the 1000.dp width
+                modifier = Modifier.width(1000.dp), // Largeur fixe, identique à GenericGraph
                 // This will space your items evenly across the width of the graph
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
-                viewModel.hourlyForecast.collectAsState().value.forEach { allVarsReading ->
+                (forecast as WeatherDataState.SuccessHourly).data.forEach { allVarsReading ->
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
@@ -576,7 +517,7 @@ fun WindVectors(viewModel: WeatherViewModel, scrollState: ScrollState = remember
     }
 }
 
-@Composable
+/*@Composable
 fun BarsGraph(
     viewModel: WeatherViewModel,
     valueRange: ClosedFloatingPointRange<Float>? = null,
@@ -692,14 +633,15 @@ fun BarsGraph(
             }
         }
     }
-}
+}*/
 
 @Composable
 fun WeatherIconGraph(
     viewModel: WeatherViewModel,
-    //sublist: Pair<Int, Int>? = null,
     scrollState: ScrollState = rememberScrollState()
 ) {
+    // Get the forecast
+    val forecast by viewModel.hourlyForecast.collectAsState()
     // Charger les icônes
     val iconWeatherFolder = "file:///android_asset/icons/weather/"
     val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
@@ -728,28 +670,28 @@ fun WeatherIconGraph(
 
     val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord, Boolean?>>()
 
-    if (viewModel.hourlyForecast.collectAsState().value.first().skyInfo.shortwaveRadiation != null) {
+    if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation != null) {
         for (index in 0..23) {
             simpleWeatherList.add(
                 Pair(
-                    getSimpleWeather(viewModel, index).word,
-                    viewModel.hourlyForecast.collectAsState().value[index].skyInfo.shortwaveRadiation!! >= 1.0
+                    getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word,
+                    (forecast as WeatherDataState.SuccessHourly).data[index].skyInfo.shortwaveRadiation!! >= 1.0
                 )
             )
         }
     } else {
         for (index in 0..23) {
-            simpleWeatherList.add(Pair(getSimpleWeather(viewModel, index).word, null))
+            simpleWeatherList.add(Pair(getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word, null))
         }
     }
 
     Box(
         modifier = Modifier
-            .width(1000.dp) // Largeur fixe, identique à GenericGraph
+            .fillMaxWidth()
             .horizontalScroll(scrollState), // ScrollState partagé
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(), // La Row prend toute la largeur du Box (1000.dp)
+            modifier = Modifier.width(1000.dp), // Largeur fixe, identique à GenericGraph
             horizontalArrangement = Arrangement.SpaceAround, // L'arrangement gère l'espacement
             verticalAlignment = Alignment.CenterVertically
         ) {

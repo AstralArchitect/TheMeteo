@@ -5,7 +5,7 @@ coilCompose = "2.7.0"
 coilSvg = "2.7.0"
 datastoreCore = "1.2.0"
 glanceAppwidget = "1.2.0-rc01"
-kotlin = "2.2.21"
+kotlin = "2.3.0"
 coreKtx = "1.17.0"
 kotlinxSerializationJson = "1.9.0"
 ktor = "3.3.3"
@@ -20,6 +20,9 @@ playServicesLocation = "21.3.0"
 protobufKotlinLite = "4.33.1"
 uiGraphics = "1.9.5"
 workRuntimeKtx = "2.11.0"
+uiTextGoogleFonts = "1.10.0"
+lifecycleProcess = "2.10.0"
+uiGraphicsVersion = "1.10.1"
 
 [libraries]
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }
@@ -54,6 +57,9 @@ photoview = { module = "com.github.chrisbanes:PhotoView", version.ref = "photovi
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphics" }
 protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobufKotlinLite" }
+androidx-compose-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text-google-fonts", version.ref = "uiTextGoogleFonts" }
+androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycleProcess" }
+ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphicsVersion" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
