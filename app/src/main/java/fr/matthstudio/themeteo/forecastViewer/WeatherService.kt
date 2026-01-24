@@ -49,6 +49,8 @@ data class SkyInfoData(
     val directRadiation: Double?, // en W/m^2
     val diffuseRadiation: Double?, // en W/m^2
     val opacity: Int?, // en %
+    val uvIndex: Int?, // index UV
+    val visibility: Int?, // en km
 )
 
 @Serializable
@@ -61,7 +63,7 @@ data class AllHourlyVarsReading(
     val skyInfo: SkyInfoData,
     val windspeed: Double,
     val windDirection: Double,
-    val pressure: Double,
+    val pressure: Int,
     val humidity: Int,
     val dewpoint: Double,
     val wmo: Int
@@ -206,7 +208,7 @@ class WeatherService {
             "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "weather_code",
             "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m",
             "precipitation_probability", "snow_depth", "shortwave_radiation", "direct_radiation",
-            "diffuse_radiation"
+            "diffuse_radiation", "uv_index", "visibility"
         )
         return variables
     }
@@ -231,6 +233,8 @@ class WeatherService {
             val ghi = response.getDeterministicHourlyData("shortwave_radiation")
             val dhi = response.getDeterministicHourlyData("diffuse_radiation")
             val dsi = response.getDeterministicHourlyData("direct_radiation")
+            val wui = response.getDeterministicHourlyData("uv_index")
+            val visibility = response.getDeterministicHourlyData("visibility")
             val windspeed = response.getDeterministicHourlyData("windspeed_10m")
             val windDir = response.getDeterministicHourlyData("wind_direction_10m")
             val pressure = response.getDeterministicHourlyData("pressure_msl")
@@ -262,11 +266,13 @@ class WeatherService {
                             shortwaveRadiation = ghi?.get(i) as Double,
                             directRadiation = dsi?.get(i) as Double,
                             diffuseRadiation = dhi?.get(i) as Double,
-                            opacity = o
+                            opacity = o,
+                            uvIndex = (wui?.get(i) as Double?)?.toInt(),
+                            visibility = (visibility?.get(i) as Double?)?.toInt()
                         ),
                         windspeed = windspeed?.get(i) as Double? ?: 0.0,
                         windDirection = windDir?.get(i) as Double? ?: 0.0,
-                        pressure = pressure?.get(i) as Double? ?: 0.0,
+                        pressure = (pressure?.get(i) as Double? ?: 0.0).roundToInt(),
                         humidity = (humidity?.get(i) as Double?)?.toInt() ?: 0,
                         dewpoint = dewpoint?.get(i) as Double? ?: 0.0,
                         wmo = (wmo?.get(i) as Double?)?.toInt() ?: 0

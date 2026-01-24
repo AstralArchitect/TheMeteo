@@ -66,4 +66,12 @@
     <string name="snowfall">Snowfall in cm</string>
     <string name="snow_depth">Snow depth in cm</string>
     <string name="wind_direction">Wind Direction</string>
+    <string name="uv_low">Low</string>
+    <string name="uv_moderate">Medium</string>
+    <string name="uv_high">High</string>
+    <string name="uv_very_high">Very High</string>
+    <string name="uv_extreme">Extrem</string>
+    <string name="uv_index">UV Index</string>
+    <string name="visibility">Visibility</string>
+    <string name="opacity_graph">"Opacity "</string>
 </resources>

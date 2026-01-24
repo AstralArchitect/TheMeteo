@@ -89,6 +89,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.glance.visibility
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -473,6 +474,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     viewModel = viewModel,
                     onCloudIconClick = { showCloudInfoDialog = true }
                 )
+
+                // Visibility and UV index
+                UVIndexVisibilityCards(viewModel)
 
                 //Sunset/Sunrise
                 SunsetSunriseCard(viewModel)
@@ -1168,6 +1172,105 @@ fun ActualSituationCard(
 }
 
 @Composable
+fun UVIndexVisibilityCards(viewModel: WeatherViewModel) {
+    val forecast by viewModel.hourlyForecast.collectAsState()
+    val context = LocalContext.current
+
+    // Check if data is loaded
+    if (forecast !is WeatherDataState.SuccessHourly) {
+        return
+    }
+
+    val currentData = (forecast as WeatherDataState.SuccessHourly).data.firstOrNull() ?: return
+
+    // Attempt to get UV and Visibility (with fallbacks if names differ in your model)
+    // Note: Adjust these property names if they are nested differently in your AllHourlyVarsReading
+    val uvIndex = currentData.skyInfo.uvIndex ?: 0
+    val visibility = currentData.skyInfo.visibility ?: 0 // Assuming visibility is in meters or km
+
+    // Load Icons
+    val folder = "icons/variables/"
+    val uvIcon: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, folder + "uvIcon.png")) }
+    val visibilityIcon: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, folder + "visibilityIcon.png")) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // --- UV Index Card ---
+        Card(
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.uv_index),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = uvIndex.toString(),
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                // Optional: add a small description like "Low", "High"
+                Text(
+                    text = getUVDescription(uvIndex),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        // --- Visibility Card ---
+        Card(
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.visibility),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                // Formating: if > 1000m show km, else meters
+                val visibilityText = if (visibility >= 1000) {
+                    "${visibility / 1000} km"
+                } else {
+                    "$visibility m"
+                }
+                Text(
+                    text = visibilityText,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            }
+        }
+    }
+}
+
+// Helper function for UV levels
+@Composable
+fun getUVDescription(uv: Int): String {
+    return when {
+        uv < 3 -> stringResource(R.string.uv_low)
+        uv < 6 -> stringResource(R.string.uv_moderate)
+        uv < 8 -> stringResource(R.string.uv_high)
+        uv < 11 -> stringResource(R.string.uv_very_high)
+        else -> stringResource(R.string.uv_extreme)
+    }
+}
+
+@Composable
 fun CloudInfoDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     val houryForecast = (viewModel.hourlyForecast.collectAsState().value as WeatherDataState.SuccessHourly).data
 
@@ -1712,7 +1815,7 @@ fun GenericGraph(
             .horizontalScroll(scrollState),
     ) {
         val fullForecast by viewModel.hourlyForecast.collectAsState()
-        var forecast: List<Double>
+        var forecast: List<Number>
         val times: List<String> =
             (fullForecast as WeatherDataState.SuccessHourly).data
                 .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
@@ -1732,7 +1835,7 @@ fun GenericGraph(
 
             GraphType.PRECIPITATION_PROB -> {
                 forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.precipitationData.precipitationProbability?.toDouble() ?: return }
+                    .map { f -> f.precipitationData.precipitationProbability ?: return }
             }
 
             GraphType.PRECIPITATION -> {
@@ -1752,7 +1855,7 @@ fun GenericGraph(
 
             GraphType.SNOW_DEPTH -> {
                 forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.precipitationData.snowDepth?.toDouble() ?: return }
+                    .map { f -> f.precipitationData.snowDepth ?: return }
             }
 
             GraphType.WIND_SPEED -> {
@@ -1767,17 +1870,27 @@ fun GenericGraph(
 
             GraphType.HUMIDITY -> {
                 forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.humidity.toDouble() }
+                    .map { f -> f.humidity }
             }
 
             GraphType.CLOUD_COVER -> {
                 forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.skyInfo.cloudcoverTotal.toDouble() }
+                    .map { f -> f.skyInfo.cloudcoverTotal }
             }
 
             GraphType.OPACITY -> {
                 forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.skyInfo.opacity?.toDouble() ?: return }
+                    .map { f -> f.skyInfo.opacity ?: return }
+            }
+
+            GraphType.UV_INDEX -> {
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.skyInfo.uvIndex ?: return }
+            }
+
+            GraphType.VISIBILITY -> {
+                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
+                    .map { f -> f.skyInfo.visibility ?: return }
             }
         }
         val roundToInt = viewModel.userSettings.collectAsState().value.roundToInt ?: true
@@ -1798,13 +1911,13 @@ fun GenericGraph(
             // 2. Ajuster le padding pour qu'il soit raisonnable
             val xPadding = 50f // Padding sur les côtés à l'intérieur du Canvas
             val yPadding = 100f
-            val maxValue = valueRange?.endInclusive?.let { (if (it < forecast.max()) forecast.max() else valueRange.endInclusive) }?.toDouble() ?: forecast.max()
-            val minValue = valueRange?.start?.let { (if (it > forecast.min()) forecast.min() else valueRange.start) }?.toDouble() ?: forecast.min()
+            val maxValue = valueRange?.endInclusive?.let { (if (it < forecast.maxOf { it.toDouble() }) forecast.maxOf { it.toDouble() } else valueRange.endInclusive) }?.toDouble() ?: forecast.maxOf { it.toDouble() }
+            val minValue = valueRange?.start?.let { (if (it > forecast.minOf { it.toDouble() }) forecast.minOf { it.toDouble() } else valueRange.start) }?.toDouble() ?: forecast.minOf { it.toDouble() }
 
             // 3. Baser le calcul du pas sur la largeur totale du contenu
             val canvasWidth = size.width
             val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
-            val yScale = (size.height - 2 * yPadding) / (maxValue - minValue).coerceAtLeast(1.0)
+            val yScale = (size.height - 2 * yPadding) / (maxValue.toDouble() - minValue.toDouble()).coerceAtLeast(1.0)
 
             // Préparation des chemins
             val linePath = Path()
@@ -1812,9 +1925,7 @@ fun GenericGraph(
 
             // Premier point pour initialiser les chemins
             val firstX = xPadding
-            val firstY = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
-                graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL || !roundToInt)
-                forecast.first() else forecast.first().roundToInt().toDouble()) - minValue) * yScale)
+            val firstY = size.height - yPadding - (((if(roundToInt) forecast.first().toDouble().roundToInt().toDouble() else forecast.first().toDouble()) - minValue) * yScale)
             linePath.moveTo(firstX, firstY.toFloat())
             gradientPath.moveTo(firstX, size.height) // Commence en bas à gauche
             gradientPath.lineTo(firstX, firstY.toFloat())     // Monte au premier point
@@ -1822,9 +1933,7 @@ fun GenericGraph(
             // Construction des chemins pour la courbe et le dégradé
             forecast.forEachIndexed { i, point ->
                 val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
-                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL || !roundToInt)
-                    point else point.roundToInt().toDouble()) - minValue) * yScale)
+                val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
                 linePath.lineTo(x, y.toFloat())
                 gradientPath.lineTo(x, y.toFloat())
             }
@@ -1851,19 +1960,14 @@ fun GenericGraph(
             // Points + labels
             forecast.forEachIndexed { i, point ->
                 val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if (graphType == GraphType.RAIN ||
-                    graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL || !roundToInt)
-                    point else point.roundToInt().toDouble()) - minValue) * yScale)
+                val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
 
                 // Point
                 drawCircle(Color.White, radius = 6f, center = Offset(x, y.toFloat()))
 
                 // Value
                 drawContext.canvas.nativeCanvas.drawText(
-                    (if (graphType == GraphType.RAIN ||
-                        graphType == GraphType.PRECIPITATION || graphType == GraphType.SNOWFALL ||
-                        (!roundToInt && graphType != GraphType.PRESSURE))
-                        point else point.roundToInt()).toString(),
+                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toString(),
                     x,
                     y.toFloat() - 20f,
                     AndroidPaint().apply {

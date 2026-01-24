@@ -57,4 +57,11 @@
     <string name="snowfall">Chute de neige en cm</string>
     <string name="snow_depth">Épaisseur de neige en cm</string>
     <string name="wind_direction">Direction du vent</string>
+    <string name="uv_low">Faible</string>
+    <string name="uv_moderate">Modéré</string>
+    <string name="uv_high">Fort</string>
+    <string name="uv_very_high">Très Fort</string>
+    <string name="uv_extreme">Extrème</string>
+    <string name="uv_index">Indice UV</string>
+    <string name="visibility">Visibilité</string>
 </resources>
