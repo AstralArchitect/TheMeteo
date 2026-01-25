@@ -89,8 +89,8 @@ fun calculateEnsembleStats(ensembleMatrix: List<List<Double?>>): List<EnsembleSt
 
         if (valuesAtHour.isNotEmpty()) {
             val average = valuesAtHour.average()
-            val min = valuesAtHour.minOrNull() ?: 0.0
-            val max = valuesAtHour.maxOrNull() ?: 0.0
+            val min = valuesAtHour.min()
+            val max = valuesAtHour.max()
 
             EnsembleStat(average, min, max)
         } else {
