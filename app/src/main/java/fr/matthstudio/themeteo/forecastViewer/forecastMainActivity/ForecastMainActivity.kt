@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.graphics.Paint as AndroidPaint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -37,7 +36,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
@@ -70,12 +68,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
@@ -89,7 +87,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.glance.visibility
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -103,6 +100,7 @@ import fr.matthstudio.themeteo.forecastViewer.SettingsActivity
 import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
 import fr.matthstudio.themeteo.forecastViewer.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity.DayGraphsActivity
+import fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity.GraphType
 import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.satImgs.MapActivity
@@ -118,7 +116,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
-import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -718,6 +716,7 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
                     viewModel,
                     GraphType.PRECIPITATION,
                     Color(0xFF039BE5),
+                    valueRange = 0f..3f,
                     scrollState = scrollState
                 )
                 ChosenVar.WIND -> GenericGraph(
@@ -1174,7 +1173,6 @@ fun ActualSituationCard(
 @Composable
 fun UVIndexVisibilityCards(viewModel: WeatherViewModel) {
     val forecast by viewModel.hourlyForecast.collectAsState()
-    val context = LocalContext.current
 
     // Check if data is loaded
     if (forecast !is WeatherDataState.SuccessHourly) {
@@ -1190,8 +1188,8 @@ fun UVIndexVisibilityCards(viewModel: WeatherViewModel) {
 
     // Load Icons
     val folder = "icons/variables/"
-    val uvIcon: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, folder + "uvIcon.png")) }
-    val visibilityIcon: ImageBitmap? by remember { mutableStateOf(loadImageBitmapFromAssets(context, folder + "visibilityIcon.png")) }
+    // Ajoutez le préfixe pour Coil
+    val visibilityIcon: String = "file:///android_asset/" + folder + "visibility.svg"
 
     Row(
         modifier = Modifier
@@ -1219,11 +1217,18 @@ fun UVIndexVisibilityCards(viewModel: WeatherViewModel) {
                     text = uvIndex.toString(),
                     style = MaterialTheme.typography.headlineSmall
                 )
-                // Optional: add a small description like "Low", "High"
-                Text(
-                    text = getUVDescription(uvIndex),
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Surface(
+                    color = getUVColor(uvIndex),
+                    shape = MaterialTheme.shapes.small,
+                    shadowElevation = 2.dp
+                ) {
+                    Text(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        text = getUVDescription(uvIndex),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
             }
         }
 
@@ -1251,7 +1256,15 @@ fun UVIndexVisibilityCards(viewModel: WeatherViewModel) {
                 }
                 Text(
                     text = visibilityText,
-                    style = MaterialTheme.typography.headlineSmall
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                AsyncImage(
+                    model = visibilityIcon,
+                    contentDescription = "Icône Visibilité",
+                    modifier = Modifier
+                        .size(25.dp),
+                    contentScale = ContentScale.Fit,
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface)
                 )
             }
         }
@@ -1267,6 +1280,17 @@ fun getUVDescription(uv: Int): String {
         uv < 8 -> stringResource(R.string.uv_high)
         uv < 11 -> stringResource(R.string.uv_very_high)
         else -> stringResource(R.string.uv_extreme)
+    }
+}
+
+@Composable
+fun getUVColor(uv: Int): Color {
+    return when {
+        uv < 3 -> Color(0xFFB2FF59)
+        uv < 6 -> Color(0xFFFFAB40)
+        uv < 8 -> Color(0xFFFF5252)
+        uv < 11 -> Color(0xFFE040FB)
+        else -> Color(0x00FFFFFF)
     }
 }
 
@@ -1809,226 +1833,22 @@ fun GenericGraph(
     valueRange: ClosedFloatingPointRange<Float>? = null,
     scrollState: ScrollState = rememberScrollState()
 ) {
-    Box(
-        modifier = Modifier
-            .width(1000.dp)
-            .horizontalScroll(scrollState),
-    ) {
-        val fullForecast by viewModel.hourlyForecast.collectAsState()
-        var forecast: List<Number>
-        val times: List<String> =
-            (fullForecast as WeatherDataState.SuccessHourly).data
-                .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
-        when (graphType) {
-            GraphType.TEMP -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data.map { f -> f.temperature }
-            }
+    val fullForecast by viewModel.hourlyForecast.collectAsState()
+    var roundToInt = viewModel.userSettings.collectAsState().value.roundToInt ?: true
 
-            GraphType.A_TEMP -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.apparentTemperature ?: return }
-            }
+    if (graphType == GraphType.PRECIPITATION || graphType == GraphType.RAIN ||
+        graphType == GraphType.SNOWFALL
+    )
+        roundToInt = false
 
-            GraphType.DEW_POINT -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data.map { it.dewpoint }
-            }
-
-            GraphType.PRECIPITATION_PROB -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.precipitationData.precipitationProbability ?: return }
-            }
-
-            GraphType.PRECIPITATION -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.precipitationData.precipitation }
-            }
-
-            GraphType.RAIN -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.precipitationData.rain }
-            }
-
-            GraphType.SNOWFALL -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.precipitationData.snowfall }
-            }
-
-            GraphType.SNOW_DEPTH -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.precipitationData.snowDepth ?: return }
-            }
-
-            GraphType.WIND_SPEED -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.windspeed }
-            }
-
-            GraphType.PRESSURE -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.pressure }
-            }
-
-            GraphType.HUMIDITY -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.humidity }
-            }
-
-            GraphType.CLOUD_COVER -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.skyInfo.cloudcoverTotal }
-            }
-
-            GraphType.OPACITY -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.skyInfo.opacity ?: return }
-            }
-
-            GraphType.UV_INDEX -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.skyInfo.uvIndex ?: return }
-            }
-
-            GraphType.VISIBILITY -> {
-                forecast = (fullForecast as WeatherDataState.SuccessHourly).data
-                    .map { f -> f.skyInfo.visibility ?: return }
-            }
-        }
-        val roundToInt = viewModel.userSettings.collectAsState().value.roundToInt ?: true
-
-        // 1. Définir une largeur totale pour le contenu du graphique, plus grande que la fenêtre
-        val contentWidth = 1000.dp
-
-        val textColor: Int = AndroidColor.rgb(
-            MaterialTheme.colorScheme.onBackground.red,
-            MaterialTheme.colorScheme.onBackground.green,
-            MaterialTheme.colorScheme.onBackground.blue)
-
-        Canvas(
-            modifier = Modifier
-                .width(contentWidth) // La largeur du contenu défilable
-                .height(150.dp)
-        ) {
-            // 2. Ajuster le padding pour qu'il soit raisonnable
-            val xPadding = 50f // Padding sur les côtés à l'intérieur du Canvas
-            val yPadding = 100f
-            val maxValue = valueRange?.endInclusive?.let { (if (it < forecast.maxOf { it.toDouble() }) forecast.maxOf { it.toDouble() } else valueRange.endInclusive) }?.toDouble() ?: forecast.maxOf { it.toDouble() }
-            val minValue = valueRange?.start?.let { (if (it > forecast.minOf { it.toDouble() }) forecast.minOf { it.toDouble() } else valueRange.start) }?.toDouble() ?: forecast.minOf { it.toDouble() }
-
-            // 3. Baser le calcul du pas sur la largeur totale du contenu
-            val canvasWidth = size.width
-            val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
-            val yScale = (size.height - 2 * yPadding) / (maxValue.toDouble() - minValue.toDouble()).coerceAtLeast(1.0)
-
-            // Préparation des chemins
-            val linePath = Path()
-            val gradientPath = Path()
-
-            // Premier point pour initialiser les chemins
-            val firstX = xPadding
-            val firstY = size.height - yPadding - (((if(roundToInt) forecast.first().toDouble().roundToInt().toDouble() else forecast.first().toDouble()) - minValue) * yScale)
-            linePath.moveTo(firstX, firstY.toFloat())
-            gradientPath.moveTo(firstX, size.height) // Commence en bas à gauche
-            gradientPath.lineTo(firstX, firstY.toFloat())     // Monte au premier point
-
-            // Construction des chemins pour la courbe et le dégradé
-            forecast.forEachIndexed { i, point ->
-                val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
-                linePath.lineTo(x, y.toFloat())
-                gradientPath.lineTo(x, y.toFloat())
-            }
-
-            // 4. Correction de la fermeture du chemin du dégradé
-            val lastX = xPadding + ((forecast.size - 1) * xStep)
-            gradientPath.lineTo(lastX, size.height)
-            gradientPath.close()
-
-            // Dégradé sous la courbe
-            val gradientColor = graphColor
-            drawPath(
-                path = gradientPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(gradientColor.copy(alpha = 0.4f), Color.Transparent),
-                    startY = 0f,
-                    endY = size.height
-                ),
-            )
-
-            // Courbe
-            drawPath(linePath, gradientColor, style = Stroke(width = 8f))
-
-            // Points + labels
-            forecast.forEachIndexed { i, point ->
-                val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
-
-                // Point
-                drawCircle(Color.White, radius = 6f, center = Offset(x, y.toFloat()))
-
-                // Value
-                drawContext.canvas.nativeCanvas.drawText(
-                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toString(),
-                    x,
-                    y.toFloat() - 20f,
-                    AndroidPaint().apply {
-                        textAlign = AndroidPaint.Align.CENTER
-                        textSize = 40f
-                        color = textColor
-                    }
-                )
-
-                // Heure
-                drawContext.canvas.nativeCanvas.drawText(
-                    times[i],
-                    x,
-                    size.height - yPadding + 70f, // Positionnement relatif au bas du graphique
-                    AndroidPaint().apply {
-                        textAlign = AndroidPaint.Align.CENTER
-                        textSize = 40f // Légèrement augmenté pour la lisibilité
-                        color = textColor
-                    }
-                )
-            }
-        }
-    }
-    // Si le graphique de vent a été choisi, alors afficher le vecteur de direction du vent
-    if (graphType == GraphType.WIND_SPEED) {
-        WindVectors(viewModel, scrollState)
-    }
-}
-
-@Composable
-fun WindVectors(viewModel: WeatherViewModel, scrollState: ScrollState = rememberScrollState()) {
-    // Get the forecast
-    val forecast by viewModel.hourlyForecast.collectAsState()
-    // Draw the icon
-    Box(
-        modifier = Modifier
-            .width(1000.dp)
-            .horizontalScroll(scrollState), // ScrollState partagé
-    ) {
-        if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty())
-        {
-            Row(
-                modifier = Modifier.fillMaxWidth(), // Make the Row fill the 1000.dp width
-                // This will space your items evenly across the width of the graph
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                (forecast as WeatherDataState.SuccessHourly).data.forEach { allVarsReading ->
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier
-                            // Use a fixed width that matches the spacing of your graph points.
-                            // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
-                            .width(41.5.dp)
-                            .rotate(allVarsReading.windDirection.toFloat() - 180)
-                    )
-                }
-            }
-        }
-    }
+    GenericGraphGlobal(
+        fullForecast,
+        roundToInt,
+        graphType,
+        graphColor,
+        valueRange,
+        scrollState
+    )
 }
 
 /*@Composable
