@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.dayChoserActivity
+package fr.matthstudio.themeteo.dayChoserActivity
 
 import android.content.Intent
 import android.os.Bundle
@@ -34,14 +34,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.forecastViewer.DailyReading
-import fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity.DayGraphsActivity
-import fr.matthstudio.themeteo.forecastViewer.forecastMainActivity.SimpleWeatherWord
-import fr.matthstudio.themeteo.forecastViewer.forecastMainActivity.weatherCodeToSimpleWord
-import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
+import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
+import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale

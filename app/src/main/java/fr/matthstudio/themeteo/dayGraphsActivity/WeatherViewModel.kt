@@ -1,17 +1,16 @@
-package fr.matthstudio.themeteo.forecastViewer.dayChoserActivity
+package fr.matthstudio.themeteo.dayGraphsActivity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.forecastViewer.WeatherService
+import fr.matthstudio.themeteo.WeatherService
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
-import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * Ce ViewModel sert d'intermédiaire entre l'UI (WeatherScreen) et la logique de données (WeatherCache).
@@ -19,7 +18,7 @@ import java.time.LocalDate
  * Il gère également la logique de recherche de villes.
  */
 @OptIn(FlowPreview::class) // Nécessaire pour l'opérateur debounce
-class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
+class WeatherViewModel(weatherCache: WeatherCache, startDateTime: LocalDateTime) : ViewModel() {
 
     private val weatherService = WeatherService()
 
@@ -32,20 +31,12 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
     val userSettings: StateFlow<UserSettings> = weatherCache.userSettings
 
     /**
-     * Expose la localisation actuellement sélectionnée depuis le WeatherCache.
-     */
-    val selectedLocation: StateFlow<LocationIdentifier> = weatherCache.selectedLocation
-
-    /**
      * Forecast pour 24 heures à partir de l'heure actuelle
      */
-    val forecast = weatherCache.get(LocalDate.now(),
-        weatherModelPredictionTime[userSettings.value.model]?.toLong() ?: 3
-    )
+    val hourlyForecast = weatherCache.get(startDateTime, 24)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
 
-    // --- 4. NETTOYAGE ---
-
+    // --- 2. NETTOYAGE ---
     /**
      * S'assure de fermer les connexions réseau (client Ktor) lorsque le ViewModel est détruit
      * pour éviter les fuites de ressources.

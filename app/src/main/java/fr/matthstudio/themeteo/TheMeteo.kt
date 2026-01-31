@@ -6,18 +6,15 @@ import android.util.Log
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
-import fr.matthstudio.themeteo.forecastViewer.AllHourlyVarsReading
-import fr.matthstudio.themeteo.forecastViewer.DailyReading
-import fr.matthstudio.themeteo.forecastViewer.WeatherService
-import fr.matthstudio.themeteo.forecastViewer.data.AppContainer
-import fr.matthstudio.themeteo.forecastViewer.data.AppDataContainer
-import fr.matthstudio.themeteo.forecastViewer.data.GpsCoordinates
-import fr.matthstudio.themeteo.forecastViewer.data.LocalDateSerializer
-import fr.matthstudio.themeteo.forecastViewer.data.LocalDateTimeSerializer
-import fr.matthstudio.themeteo.forecastViewer.data.LocationProvider
-import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
-import fr.matthstudio.themeteo.forecastViewer.data.UserLocationsRepository
-import fr.matthstudio.themeteo.forecastViewer.data.UserSettingsRepository
+import fr.matthstudio.themeteo.data.AppContainer
+import fr.matthstudio.themeteo.data.AppDataContainer
+import fr.matthstudio.themeteo.data.GpsCoordinates
+import fr.matthstudio.themeteo.data.LocalDateSerializer
+import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
+import fr.matthstudio.themeteo.data.LocationProvider
+import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.UserLocationsRepository
+import fr.matthstudio.themeteo.data.UserSettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -132,7 +129,7 @@ sealed class LocationIdentifier : Parcelable {
 
 data class UserSettings(
     val model: String,
-    val roundToInt: Boolean?
+    val roundToInt: Boolean
 )
 
 private data class LocationKey(val latitude: Double, val longitude: Double)
@@ -188,7 +185,7 @@ class WeatherCache(
     private var locationCollectionJob: Job? = null
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", null))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -208,7 +205,7 @@ class WeatherCache(
         // Collecte les settings
         applicationScope.launch {
             userSettingsRepository.model.combine(userSettingsRepository.roundToInt) { model, round ->
-                UserSettings(model ?: "best_match", round ?: false)
+                UserSettings(model ?: "best_match", round)
             }.collect { settings ->
                 _userSettings.value = settings
             }
@@ -536,6 +533,20 @@ class WeatherCache(
         // Forcer le rafraîchissement des flows en ré-émettant la localisation
         val current = _selectedLocation.value
         _selectedLocation.value = current
+    }
+
+    fun refreshCurrentLocation() {
+        val identifier = _selectedLocation.value
+        if (identifier is LocationIdentifier.CurrentUserLocation) {
+            // On annule et on relance manuellement le job de collecte GPS
+            locationCollectionJob?.cancel()
+            locationCollectionJob = applicationScope.launch {
+                locationProvider.locationFlow.collect { newCoordinates ->
+                    Log.d("WeatherCache", "New GPS coordinate: $newCoordinates")
+                    _currentGpsPosition.value = newCoordinates
+                }
+            }
+        }
     }
 }
 

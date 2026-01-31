@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.forecastMainActivity
+package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -85,24 +85,31 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.data.position
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.rememberCameraPositionState
+import fr.matthstudio.themeteo.AllHourlyVarsReading
+import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.SettingsActivity
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.forecastViewer.AllHourlyVarsReading
-import fr.matthstudio.themeteo.forecastViewer.DailyReading
-import fr.matthstudio.themeteo.forecastViewer.SettingsActivity
-import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
-import fr.matthstudio.themeteo.forecastViewer.dayChoserActivity.DayChooserActivity
-import fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity.DayGraphsActivity
-import fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity.GenericGraphGlobal
-import fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity.GraphType
-import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.data.GpsCoordinates
+import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
+import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
+import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
+import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.satImgs.MapActivity
 import io.ktor.utils.io.InternalAPI
 import java.io.IOException
@@ -209,7 +216,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     var showCloudInfoDialog by remember { mutableStateOf(false) }
 
     // Demander les permissions
-    LocationPermissionHandler()
+    LocationPermissionHandler(viewModel)
 
     // Charger les images
     val imagesFolder = "images/"
@@ -1183,14 +1190,17 @@ fun UVIndexVisibilityCards(viewModel: WeatherViewModel) {
 
     // Attempt to get UV and Visibility (with fallbacks if names differ in your model)
     // Note: Adjust these property names if they are nested differently in your AllHourlyVarsReading
-    val uvIndex = currentData.skyInfo.uvIndex ?: 0
-    val visibility = currentData.skyInfo.visibility ?: 0 // Assuming visibility is in meters or km
+    val uvIndex = currentData.skyInfo.uvIndex
+    val visibility = currentData.skyInfo.visibility
 
     // Load Icons
     val folder = "icons/variables/"
     // Ajoutez le préfixe pour Coil
     val visibilityIcon: String = "file:///android_asset/" + folder + "visibility.svg"
 
+    if (uvIndex == null && visibility == null) {
+        return
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1198,74 +1208,78 @@ fun UVIndexVisibilityCards(viewModel: WeatherViewModel) {
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // --- UV Index Card ---
-        Card(
-            modifier = Modifier.weight(1f)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+        if (uvIndex != null) {
+            Card(
+                modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = stringResource(R.string.uv_index),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = uvIndex.toString(),
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Surface(
-                    color = getUVColor(uvIndex),
-                    shape = MaterialTheme.shapes.small,
-                    shadowElevation = 2.dp
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        text = getUVDescription(uvIndex),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                        text = stringResource(R.string.uv_index),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = uvIndex.toString(),
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Surface(
+                        color = getUVColor(uvIndex),
+                        shape = MaterialTheme.shapes.small,
+                        shadowElevation = 2.dp
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            text = getUVDescription(uvIndex),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
                 }
             }
         }
 
         // --- Visibility Card ---
-        Card(
-            modifier = Modifier.weight(1f)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+        if (visibility != null) {
+            Card(
+                modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = stringResource(R.string.visibility),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                // Formating: if > 1000m show km, else meters
-                val visibilityText = if (visibility >= 1000) {
-                    "${visibility / 1000} km"
-                } else {
-                    "$visibility m"
-                }
-                Text(
-                    text = visibilityText,
-                    style = MaterialTheme.typography.headlineMedium
-                )
-                AsyncImage(
-                    model = visibilityIcon,
-                    contentDescription = "Icône Visibilité",
+                Column(
                     modifier = Modifier
-                        .size(25.dp),
-                    contentScale = ContentScale.Fit,
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface)
-                )
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = stringResource(R.string.visibility),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Formating: if > 1000m show km, else meters
+                    val visibilityText = if (visibility >= 1000) {
+                        "${visibility / 1000} km"
+                    } else {
+                        "$visibility m"
+                    }
+                    Text(
+                        text = visibilityText,
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    AsyncImage(
+                        model = visibilityIcon,
+                        contentDescription = "Icône Visibilité",
+                        modifier = Modifier
+                            .size(25.dp),
+                        contentScale = ContentScale.Fit,
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface)
+                    )
+                }
             }
         }
     }
@@ -1762,6 +1776,22 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     var searchQuery by remember { mutableStateOf("") }
     val searchResults by viewModel.geocodingResults.collectAsState()
 
+    var showMapPicker by remember { mutableStateOf(false) }
+
+    if (showMapPicker) {
+        Dialog(onDismissRequest = { showMapPicker = false }) {
+            MapPickerScreen(
+                viewModel = viewModel,
+                onLocationSelected = { coords, name ->
+                    viewModel.addLocationFromMap(coords, name)
+                    showMapPicker = false
+                    onDismiss()
+                },
+                onDismiss = { showMapPicker = false ; onDismiss() }
+            )
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.add_city)) },
@@ -1798,6 +1828,10 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                         )
                     }
                 }
+                // Bouton pour ouvrir la carte
+                Button(onClick = { showMapPicker = true }) {
+                    Text("Choisir sur la carte")
+                }
             }
         },
         confirmButton = {
@@ -1806,10 +1840,71 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     )
 }
 
+@Composable
+fun MapPickerScreen(
+    viewModel: WeatherViewModel,
+    onLocationSelected: (GpsCoordinates, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    // Position initiale : GPS, fallback Paris
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(
+            LatLng(
+                viewModel.userLocation.value?.latitude ?: 48.8566,
+                viewModel.userLocation.value?.longitude ?: 2.3522
+            ),
+            10f
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        GoogleMap(
+            modifier = Modifier.fillMaxSize(),
+            cameraPositionState = cameraPositionState
+        )
+
+        // Indicateur visuel au centre de la carte (une épingle fixe)
+        Icon(
+            imageVector = Icons.Default.LocationOn,
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(40.dp),
+            tint = Color.Red
+        )
+
+        // Bouton de confirmation
+        Button(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp),
+            onClick = {
+                val target = cameraPositionState.position.target
+                val coords = GpsCoordinates(target.latitude, target.longitude)
+
+                // Utilisation du Geocoder pour trouver le nom de la ville
+                val cityName = try {
+                    val geocoder = android.location.Geocoder(context, Locale.getDefault())
+                    val addresses = geocoder.getFromLocation(target.latitude, target.longitude, 1)
+                    addresses?.firstOrNull()?.locality ?: "Position personnalisée"
+                } catch (e: Exception) {
+                    "Position personnalisée"
+                }
+
+                onLocationSelected(coords, cityName)
+            }
+        ) {
+            Text("Choisir ce lieu")
+        }
+    }
+}
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun LocationPermissionHandler() {
-    // État des permissions pour la localisation précise et approximative
+fun LocationPermissionHandler(
+    viewModel: WeatherViewModel
+) {
     val locationPermissionState = rememberMultiplePermissionsState(
         listOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -1817,7 +1912,14 @@ fun LocationPermissionHandler() {
         )
     )
 
-    // Si les permissions ne sont pas accordées, on les demandes
+    LaunchedEffect(locationPermissionState.allPermissionsGranted) {
+        if (locationPermissionState.allPermissionsGranted) {
+            // Si l'utilisateur vient d'accepter, on force le rafraîchissement
+            // Cela va invalider le cache et relancer la recherche GPS dans WeatherCache
+            viewModel.refresh()
+        }
+    }
+
     if (!locationPermissionState.allPermissionsGranted) {
         LaunchedEffect(Unit) {
             locationPermissionState.launchMultiplePermissionRequest()

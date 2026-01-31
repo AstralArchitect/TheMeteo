@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization") version "2.3.0" // Utilisez la même version que votre Kotlin
     id("kotlin-parcelize")
+    id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
 }
 
 // Fonction pour obtenir la date formatée
@@ -99,8 +100,12 @@ dependencies {
     // Pour la gestion des permissions avec Compose
     implementation(libs.accompanist.permissions)
 
-    // Osmdroid pour la carte
+    // Osmdroid pour la carte satellite
     implementation(libs.osmdroid.android)
+
+    // Google Maps API pour la carte de choix de lieu
+    implementation(libs.maps.compose)
+    implementation(libs.play.services.maps)
 
     // Dépendance de base pour Coil
     implementation(libs.coil.compose)
@@ -112,6 +117,7 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.client.logging)
     implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.okhttp)
 
     // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)
@@ -128,6 +134,10 @@ dependencies {
     implementation(libs.google.material)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.photoview)
+    // Icônes de base (Menu, ArrowBack, etc.)
+    implementation("androidx.compose.material:material-icons-core")
+    // TOUTES les autres icônes (nécessaire pour la plupart des projets)
+    implementation("androidx.compose.material:material-icons-extended")
 
     // Glance pour les widgets d'écran d'accueil
     implementation(libs.androidx.glance.appwidget)
@@ -140,10 +150,8 @@ dependencies {
     implementation(libs.androidx.datastore.core)
     implementation(libs.androidx.datastore.preferences) // Alternative plus simple pour clé-valeur
     implementation(libs.protobuf.kotlin.lite)
-    implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.compose.ui.text.google.fonts)
     implementation(libs.androidx.lifecycle.process)
-    implementation(libs.ui.graphics)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 

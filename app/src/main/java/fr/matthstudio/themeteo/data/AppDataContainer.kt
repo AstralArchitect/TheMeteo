@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.data
+package fr.matthstudio.themeteo.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore

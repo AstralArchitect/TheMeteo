@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.ui.theme
+package fr.matthstudio.themeteo.ui.theme
 import androidx.compose.ui.graphics.Color
 
 val primaryLight = Color(0xFF4C662B)

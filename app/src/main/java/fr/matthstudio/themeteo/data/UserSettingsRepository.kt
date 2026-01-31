@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.data
+package fr.matthstudio.themeteo.data
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -30,8 +30,8 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
      * Flow pour le réglage d'arrondi des températures.
      * La valeur par défaut est `true`.
      */
-    val roundToInt: Flow<Boolean?> = dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.ROUND_TO_INT]
+    val roundToInt: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ROUND_TO_INT] ?: true
     }
 
     // 3. Fonctions pour mettre à jour les paramètres

@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer
+package fr.matthstudio.themeteo
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,10 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import fr.matthstudio.themeteo.R
-import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherCache
-import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.launch
 
 class SettingsActivity : ComponentActivity() {

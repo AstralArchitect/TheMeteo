@@ -1,16 +1,16 @@
-package fr.matthstudio.themeteo.forecastViewer.forecastMainActivity
+package fr.matthstudio.themeteo.forecastMainActivity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import fr.matthstudio.themeteo.GeocodingResult
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.forecastViewer.GeocodingResult
-import fr.matthstudio.themeteo.forecastViewer.WeatherService
-import fr.matthstudio.themeteo.forecastViewer.data.GpsCoordinates
-import fr.matthstudio.themeteo.forecastViewer.data.SavedLocation
-import fr.matthstudio.themeteo.forecastViewer.dayChoserActivity.weatherModelPredictionTime
+import fr.matthstudio.themeteo.WeatherService
+import fr.matthstudio.themeteo.data.GpsCoordinates
+import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.dayChoserActivity.weatherModelPredictionTime
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -64,6 +64,7 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
      */
     private val _refreshCounter = MutableStateFlow(0)
     val refreshCounter: StateFlow<Int> = _refreshCounter.asStateFlow()
+
 
     /**
      * Forecast pour 24 heures à partir de l'heure actuelle
@@ -149,6 +150,7 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
      */
     fun selectLocation(location: LocationIdentifier) {
         weatherCache.setCurrentLocation(location)
+        _refreshCounter.value = 0
     }
 
     /**
@@ -167,11 +169,25 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
         weatherCache.addLocation(location)
     }
 
+    // Dans WeatherViewModel.kt
+    fun addLocationFromMap(coords: GpsCoordinates, name: String) {
+        val newLocation = SavedLocation(
+            name = name,
+            latitude = coords.latitude,
+            longitude = coords.longitude,
+            country = "Unknown"
+        )
+        addLocation(newLocation)
+        // Optionnel : Sélectionner immédiatement cette nouvelle position
+        selectLocation(LocationIdentifier.Saved(newLocation))
+    }
+
     /**
      * Méthode appelée par l'UI pour invalider le cache
      */
     fun refresh() {
         weatherCache.invalidateCache()
+        weatherCache.refreshCurrentLocation()
         _refreshCounter.value++
     }
 

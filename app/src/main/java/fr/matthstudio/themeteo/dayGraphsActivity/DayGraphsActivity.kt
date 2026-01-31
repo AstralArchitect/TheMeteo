@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.dayGraphsActivity
+package fr.matthstudio.themeteo.dayGraphsActivity
 
 import android.graphics.Paint
 import android.os.Build
@@ -51,9 +51,9 @@ import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.forecastViewer.forecastMainActivity.SimpleWeatherWord
-import fr.matthstudio.themeteo.forecastViewer.forecastMainActivity.getSimpleWeather
-import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
+import fr.matthstudio.themeteo.forecastMainActivity.getSimpleWeather
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt

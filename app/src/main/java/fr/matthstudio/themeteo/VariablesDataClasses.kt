@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer
+package fr.matthstudio.themeteo
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

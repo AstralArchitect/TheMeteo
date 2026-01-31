@@ -1,18 +1,19 @@
-package fr.matthstudio.themeteo.forecastViewer
+package fr.matthstudio.themeteo
 
 import android.os.Parcelable
 import android.util.Log
-import fr.matthstudio.themeteo.forecastViewer.data.LocalDateSerializer
-import fr.matthstudio.themeteo.forecastViewer.data.LocalDateTimeSerializer
+import fr.matthstudio.themeteo.data.LocalDateSerializer
+import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.*
 
 // Commenter lorsqu'on utilise pas le logging
-/*import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
-import io.ktor.client.plugins.logging.Logger*/
+import io.ktor.client.plugins.logging.Logger
 
 import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
@@ -102,24 +103,27 @@ data class GeocodingResult(
 )
 
 class WeatherService {
-
     private val client =
-        HttpClient(CIO) {
+        HttpClient(OkHttp) {
             install(ContentNegotiation) {
                 json(Json {
                     ignoreUnknownKeys = true
                     prettyPrint = true
                 })
             }
+            install(HttpTimeout) {
+                requestTimeoutMillis = 15000 // 15 secondes max
+                connectTimeoutMillis = 10000
+            }
             // DÉCOMMENTER CE BLOC POUR LE LOGGING
-            /*install(Logging) {
+            install(Logging) {
                 logger = object : Logger {
                     override fun log(message: String) {
                         Log.d("HTTP Client", message) // Affiche les logs dans Logcat
                     }
                 }
                 level = LogLevel.ALL // Log toutes les informations, y compris l'URL et le corps de la réponse
-            }*/
+            }
         }
 
     suspend fun searchCity(query: String): List<GeocodingResult>? {
@@ -152,7 +156,7 @@ class WeatherService {
         val localZoneId = ZoneId.systemDefault()
 
         return try {
-            val response: WeatherApiResponse = client.get(apiUrl) {
+            val response = client.get(apiUrl) {
                 parameter("latitude", latitude)
                 parameter("longitude", longitude)
                 parameter("models", model)
@@ -160,9 +164,19 @@ class WeatherService {
                 parameter("timezone", localZoneId.id)
                 parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
                 parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-            }.body()
+            }
 
-            parseHourlyData(response)
+            // 1. Log le code de statut (200, 400, 500 ?)
+            Log.d("WeatherService", "Status: ${response.status}")
+
+            if (response.status.value == 200) {
+                return parseHourlyData(response.body())
+            } else {
+                // 2. Si c'est avant 8h, tu verras probablement un code 400 ici
+                val errorText = response.body<String>()
+                Log.e("WeatherService", "Erreur API : $errorText")
+                return null
+            }
 
         } catch (e: Exception) {
             Log.e("getCompleteForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")

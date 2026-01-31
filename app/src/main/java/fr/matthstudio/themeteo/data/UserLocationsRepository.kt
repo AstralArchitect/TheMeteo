@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.data
+package fr.matthstudio.themeteo.data
 
 import android.os.Parcelable
 import androidx.datastore.core.DataStore
@@ -43,18 +43,40 @@ class UserLocationsRepository(private val dataStore: DataStore<Preferences>) {
     // Fonction pour ajouter un lieu
     suspend fun addLocation(location: SavedLocation) {
         dataStore.edit { preferences ->
-            // 1. Lire la liste actuelle en utilisant .first() pour obtenir la valeur immédiate du Flow
+            // 1. Lire la liste actuelle
             val currentListJson = preferences[LOCATIONS_KEY]
             val currentList = if (currentListJson != null) {
-                Json.decodeFromString<List<SavedLocation>>(currentListJson)
+                try {
+                    Json.decodeFromString<List<SavedLocation>>(currentListJson)
+                } catch (e: Exception) {
+                    emptyList()
+                }
             } else {
                 emptyList()
             }
 
-            // 2. Ajouter le nouvel élément (en s'assurant qu'il n'est pas déjà présent)
-            if (!currentList.contains(location)) {
-                val newList = currentList + location
-                // 3. Encoder la nouvelle liste en JSON et la sauvegarder
+            // 2. Vérifier si cette position exacte (lat/lon) est déjà enregistrée
+            // On compare les coordonnées plutôt que l'objet entier car le nom peut varier
+            val isDuplicateCoordinates = currentList.any {
+                it.latitude == location.latitude && it.longitude == location.longitude
+            }
+
+            if (!isDuplicateCoordinates) {
+                // 3. Gérer la collision de noms (ex: "Paris", "Paris 1", "Paris 2"...)
+                var finalName = location.name
+                var counter = 1
+
+                // Tant qu'il existe un lieu avec le même nom dans la liste
+                while (currentList.any { it.name.equals(finalName, ignoreCase = true) }) {
+                    finalName = "${location.name} $counter"
+                    counter++
+                }
+
+                // Créer la nouvelle localisation avec le nom unique
+                val locationToAdd = location.copy(name = finalName)
+
+                // 4. Ajouter et sauvegarder
+                val newList = currentList + locationToAdd
                 preferences[LOCATIONS_KEY] = Json.encodeToString(newList)
             }
         }

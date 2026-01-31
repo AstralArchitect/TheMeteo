@@ -1,4 +1,4 @@
-package fr.matthstudio.themeteo.forecastViewer.data
+package fr.matthstudio.themeteo.data
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.PrimitiveKind
