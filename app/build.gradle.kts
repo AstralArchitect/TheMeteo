@@ -44,10 +44,10 @@ android {
         // Configuration pour le build de production
         release {
             // Ajout du suffixe pour la version de release
-            // Note : Pas de suffixe pour l'applicationID en release
-            versionNameSuffix = "-${getBuildDate()} Beta"
+            versionNameSuffix = "-${getBuildDate()} Stable"
 
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
