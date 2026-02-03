@@ -271,7 +271,14 @@ class WeatherCache(
         val currentSettings = userSettings.value
         val currentLocationIdentifier = selectedLocation.value
 
-        val endTime = startTime.plusHours(hours.toLong())
+        val maxAllowedDate = LocalDate.now().plusDays(15) // Limite de 16 jours (0 à 15)
+        var endTime = startTime.plusHours(hours.toLong())
+
+        // Si l'heure de fin dépasse la date max autorisée par l'API
+        if (endTime.toLocalDate().isAfter(maxAllowedDate)) {
+            endTime = maxAllowedDate.atTime(23, 59)
+        }
+
         val modelCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentSettings.model) { ModelDataCache() }
 
         // 1. Tentative de récupération depuis le cache
@@ -322,7 +329,7 @@ class WeatherCache(
                     if (gpsPos != null) {
                         LocationKey(gpsPos.latitude, gpsPos.longitude)
                     } else {
-                        emit(WeatherDataState.Error)
+                        emit(WeatherDataState.Error("Cannot get GPS position, please ensure that you athorized the app"))
                         return@flow
                     }
                 }
@@ -361,10 +368,10 @@ class WeatherCache(
                 if (finalData != null && finalData.isNotEmpty()) {
                     emit(WeatherDataState.SuccessHourly(finalData))
                 } else {
-                    emit(WeatherDataState.Error)
+                    emit(WeatherDataState.Error("Error"))
                 }
             } else if (modelCache.dailyBlocks.isEmpty()) {
-                emit(WeatherDataState.Error)
+                emit(WeatherDataState.Error("Error"))
             }
         }
     }
@@ -382,7 +389,14 @@ class WeatherCache(
         val currentLocationIdentifier = selectedLocation.value
 
         val modelCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentSettings.model) { ModelDataCache() }
-        val endDate = date.plusDays(days)
+        // CALCUL SÉCURISÉ
+        val maxAllowedDate = LocalDate.now().plusDays(15)
+        var endDate = date.plusDays(days)
+
+        if (endDate.isAfter(maxAllowedDate)) {
+            endDate = maxAllowedDate.plusDays(1) // subMap est souvent exclusif sur la fin ou inclut selon votre logique,
+            // ici on s'assure de ne pas demander au service au delà de maxAllowedDate
+        }
 
         // 1. Tentative de récupération depuis le cache
         val cachedData = getDailyFromCache(modelCache, date, endDate)
@@ -428,7 +442,7 @@ class WeatherCache(
                     if (gpsPos != null) {
                         LocationKey(gpsPos.latitude, gpsPos.longitude)
                     } else {
-                        emit(WeatherDataState.Error)
+                        emit(WeatherDataState.Error("Cannot get GPS position, please ensure that you athorized the app"))
                         return@flow
                     }
                 }
@@ -462,10 +476,10 @@ class WeatherCache(
                 if (data != null && data.isNotEmpty()) {
                     emit(WeatherDataState.SuccessDaily(data))
                 } else {
-                    emit(WeatherDataState.Error)
+                    emit(WeatherDataState.Error("Erreur"))
                 }
             } else if (modelCache.dailyBlocks.isEmpty()) {
-                emit(WeatherDataState.Error)
+                emit(WeatherDataState.Error("Erreur"))
             }
         }
     }
@@ -554,5 +568,5 @@ sealed class WeatherDataState {
     object Loading : WeatherDataState()
     data class SuccessHourly(val data: List<AllHourlyVarsReading>) : WeatherDataState()
     data class SuccessDaily(val data: List<DailyReading>) : WeatherDataState()
-    object Error : WeatherDataState()
+    data class Error(val message: String) : WeatherDataState()
 }

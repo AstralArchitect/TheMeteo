@@ -74,4 +74,6 @@
     <string name="uv_index">UV Index</string>
     <string name="visibility">Visibility</string>
     <string name="opacity_graph">"Opacity "</string>
+    <string name="details">Details</string>
+    <string name="show_more">Show more</string>
 </resources>

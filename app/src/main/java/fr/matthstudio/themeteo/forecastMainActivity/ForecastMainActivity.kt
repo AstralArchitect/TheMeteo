@@ -679,7 +679,7 @@ fun HourlyForecast(viewModel: WeatherViewModel) {
             return@Card
         }
 
-        if (forecast == WeatherDataState.Error) {
+        if (forecast is WeatherDataState.Error) {
             Card(
                 modifier = Modifier.padding(16.dp),
                 colors = CardDefaults.cardColors(
@@ -802,7 +802,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel) {
             modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
         )
 
-        if (dailyForecast == WeatherDataState.Error)
+        if (dailyForecast is WeatherDataState.Error)
             return@Card
 
         if ((dailyForecast as WeatherDataState.SuccessDaily).data.isEmpty())
@@ -984,7 +984,7 @@ fun ActualSituationCard(
             return@Card
         }
 
-        if (forecast == WeatherDataState.Error)
+        if (forecast is WeatherDataState.Error)
             return@Card
 
         val temp = (forecast as WeatherDataState.SuccessHourly).data.first().temperature

@@ -110,7 +110,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel) {
 
         if (dailyForecast == WeatherDataState.Loading) {
             CircularProgressIndicator(modifier = Modifier.padding(16.dp))
-        } else if (dailyForecast == WeatherDataState.Error || (dailyForecast as WeatherDataState.SuccessDaily).data.isEmpty()) {
+        } else if (dailyForecast is WeatherDataState.Error || (dailyForecast as WeatherDataState.SuccessDaily).data.isEmpty()) {
             Text("No daily forecast available.", modifier = Modifier.padding(16.dp))
         } else {
             // Use LazyColumn for efficient display of a scrollable list
