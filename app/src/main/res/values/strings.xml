@@ -81,4 +81,16 @@
     <string name="weather_details">Weather Details</string>
     <string name="manage_locations">Manage Locations</string>
     <string name="pick_on_map">Pick on the map</string>
+    <string name="heavy_snow">Heavy Snow</string>
+    <string name="rainy">Rainy</string>
+    <string name="drizzle">Drizzle</string>
+    <string name="stormy">Stormy</string>
+    <string name="hail">Hail</string>
+    <string name="light_snow">Light Snow</string>
+    <string name="mixed_rain_snow">Mixed Rain Snow</string>
+    <string name="dust_storm">Dust Storm</string>
+    <string name="foggy">Foggy</string>
+    <string name="cloudy">Cloudy</string>
+    <string name="sunny_cloudy">Sunny Cloudy</string>
+    <string name="clear">Clear</string>
 </resources>

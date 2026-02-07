@@ -72,4 +72,16 @@
     <string name="weather_details">Détails Météo</string>
     <string name="manage_locations">Gérer les lieux</string>
     <string name="pick_on_map">Choisir sur la carte</string>
+    <string name="drizzle">Bruine</string>
+    <string name="stormy">Orageux</string>
+    <string name="hail">Grêle</string>
+    <string name="light_snow">Neige légère</string>
+    <string name="mixed_rain_snow">Pluie et Neige mêlées</string>
+    <string name="dust_storm">Tempête de poussière</string>
+    <string name="foggy">Brouillard</string>
+    <string name="cloudy">Nuageux</string>
+    <string name="sunny_cloudy">Partiellement Nuageux</string>
+    <string name="clear">Ensoleillé</string>
+    <string name="heavy_snow">Neige forte</string>
+    <string name="rainy">Pluvieux</string>
 </resources>

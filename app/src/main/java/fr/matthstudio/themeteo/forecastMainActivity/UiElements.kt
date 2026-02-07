@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -589,7 +590,10 @@ fun MapPickerScreen(
             contentDescription = null,
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(40.dp),
+                .size(40.dp)
+                // On remonte l'icône de 20dp (la moitié de sa taille)
+                // pour que le bas de l'icône soit au centre du parent
+                .offset(y = (-20).dp),
             tint = Color.Red
         )
 
