@@ -1,9 +1,7 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
-import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.location.Geocoder
 import android.os.Build
 import androidx.compose.foundation.ScrollState
@@ -30,18 +28,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,7 +51,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -81,7 +74,6 @@ import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
-import java.io.IOException
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.max
@@ -112,18 +104,6 @@ data class SimpleWeather (
     var word: SimpleWeatherWord,
     var image: ImageBitmap? = null
 )
-
-fun loadImageBitmapFromAssets(context: Context, fileName: String): ImageBitmap? {
-    return try {
-        context.assets.open(fileName).use { inputStream ->
-            BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
-        }
-    } catch (e: IOException) {
-        e.printStackTrace()
-        // Gérer l'erreur, par exemple en retournant null ou une image par défaut
-        null
-    }
-}
 
 fun getModelSourceText(model: String?): String {
     return when (model) {
