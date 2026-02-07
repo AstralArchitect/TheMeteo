@@ -36,7 +36,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalContext
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.SettingsActivity
@@ -48,18 +47,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.Brush
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
 import fr.matthstudio.themeteo.satImgs.MapActivity
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZonedDateTime
-import java.time.temporal.TemporalAmount
 import java.util.Locale
 import kotlin.math.roundToInt
 import java.time.Duration
@@ -334,7 +330,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                         // Affiche le nom du lieu actuellement sélectionné
                         Text(
                             text = when (val loc = selectedLocation) {
-                                is LocationIdentifier.CurrentUserLocation -> "Position Actuelle"
+                                is LocationIdentifier.CurrentUserLocation -> stringResource(R.string.current_location)
                                 is LocationIdentifier.Saved -> loc.location.name
                             },
                             style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
@@ -526,19 +522,19 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                     // Today's events (Data index 0)
                     val todayReading = data[0]
                     todayReading.sunrise.toEventLocalDateTime()?.let { dt ->
-                        allEvents.add(NextSunEvent("Lever", dt, "Aujourd'hui"))
+                        allEvents.add(NextSunEvent(stringResource(R.string.sunrise), dt, stringResource(R.string.today)))
                     }
                     todayReading.sunset.toEventLocalDateTime()?.let { dt ->
-                        allEvents.add(NextSunEvent("Coucher", dt, "Aujourd'hui"))
+                        allEvents.add(NextSunEvent(stringResource(R.string.sunset), dt, stringResource(R.string.today)))
                     }
 
                     // Tomorrow's events (Data index 1, if available)
                     val tomorrowReading = data[1]
                     tomorrowReading.sunrise.toEventLocalDateTime()?.let { dt ->
-                        allEvents.add(NextSunEvent("Lever", dt, "Demain"))
+                        allEvents.add(NextSunEvent(stringResource(R.string.sunrise), dt, stringResource(R.string.tomorrow)))
                     }
                     tomorrowReading.sunset.toEventLocalDateTime()?.let { dt ->
-                        allEvents.add(NextSunEvent("Coucher", dt, "Demain"))
+                        allEvents.add(NextSunEvent(stringResource(R.string.sunset), dt, stringResource(R.string.tomorrow)))
                     }
 
                     // Filter out past events and sort by time (chronological order)
@@ -548,13 +544,13 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                         .take(2)
 
                     var text: String
-                    if (futureEvents[0].type == "Lever")
+                    if (futureEvents[0].type == stringResource(R.string.sunrise))
                     {
                         val duration = Duration.between(todayReading.sunset.toEventLocalDateTime(), tomorrowReading.sunrise.toEventLocalDateTime())
-                        text = "Nuit : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
+                        text = "${stringResource(R.string.day)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
                     } else {
                         val duration = Duration.between(todayReading.sunrise.toEventLocalDateTime(), todayReading.sunset.toEventLocalDateTime())
-                        text = "Jour : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
+                        text = "${stringResource(R.string.night)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
                     }
 
                     // Determine which events to display
@@ -674,7 +670,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                     ) {
                         Icon(Icons.Rounded.Map, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Ouvrir la carte")
+                        Text(stringResource(R.string.open_satellite_map))
                     }
                 }
             }
@@ -703,7 +699,7 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Soleil", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.sun), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             Text(
@@ -717,7 +713,7 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
             Column {
                 val time1 = event1.dateTime.formatTime()
                 // If the event is today, only show the type (Lever/Coucher). If it's tomorrow, add the day label.
-                val label1 = if (event1.dayLabel == "Aujourd'hui") event1.type else "${event1.type} (${event1.dayLabel})"
+                val label1 = if (event1.dayLabel == stringResource(R.string.today)) event1.type else "${event1.type} (${event1.dayLabel})"
 
                 Text(
                     "$label1: $time1",
@@ -729,7 +725,7 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
                 // Second next event (Event 2)
                 event2?.let { event ->
                     val time2 = event.dateTime.formatTime()
-                    val label2 = if (event.dayLabel == "Aujourd'hui") event.type else "${event.type} (${event.dayLabel})"
+                    val label2 = if (event.dayLabel == stringResource(R.string.today)) event.type else "${event.type} (${event.dayLabel})"
 
                     Text(
                         "$label2: $time2",
@@ -807,16 +803,18 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
             Icons.Rounded.Umbrella,
             stringResource(R.string.precipitation),
             "${actualReading.precipitationData.precipitation} mm",
-            actualReading.precipitationData.precipitationProbability?.let { "Proba: $it% | Pluie: ${actualReading.precipitationData.rain}mm" } ?: "Pluie: ${actualReading.precipitationData.rain}mm"
+            actualReading.precipitationData.precipitationProbability?.let { "Proba: $it% | ${stringResource(R.string.rain)}: ${actualReading.precipitationData.rain}mm" } ?: "${stringResource(R.string.rain)}: ${actualReading.precipitationData.rain}mm"
         ),
         WeatherDetailItem(Icons.Rounded.Air, stringResource(R.string.wind_speed), "${actualReading.windspeed} km/h", "Direction : ${actualReading.windDirection}°"),
         WeatherDetailItem(Icons.Rounded.Compress, stringResource(R.string.pressure), "${actualReading.pressure} hPa"),
         WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${actualReading.skyInfo.cloudcoverTotal}%", "Low : ${actualReading.skyInfo.cloudcoverLow} | Mid : ${actualReading.skyInfo.cloudcoverMid} | High : ${actualReading.skyInfo.cloudcoverHigh}"),
         actualReading.skyInfo.opacity?.let { op ->
-            WeatherDetailItem(Icons.Rounded.Opacity, stringResource(R.string.opacity), "$op%", "Radiation: ${actualReading.skyInfo.shortwaveRadiation?.roundToInt()} kWh")
+            WeatherDetailItem(Icons.Rounded.Opacity, stringResource(R.string.opacity), "$op%", "Radiation: ${actualReading.skyInfo.shortwaveRadiation?.roundToInt()} W/m²")
         },
         actualReading.skyInfo.visibility?.let { vis ->
-            WeatherDetailItem(Icons.Rounded.Visibility, stringResource(R.string.visibility), "$vis km")
+            val visibility = if (vis < 1000) vis else (vis.toDouble() / 1000.0).roundToInt()
+            val unit = if (vis >= 1000) "km" else "m"
+            WeatherDetailItem(Icons.Rounded.Visibility, stringResource(R.string.visibility), "$visibility $unit")
         }
     )
 
@@ -824,7 +822,11 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(alpha = 0.6f))
+            .background(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                    alpha = 0.6f
+                )
+            )
             .clickable { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
@@ -854,7 +856,7 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                 ) {
                     Column(modifier = Modifier.padding(24.dp)) {
                         Text(
-                            "Détails Météo",
+                            stringResource(R.string.weather_details),
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(bottom = 16.dp)

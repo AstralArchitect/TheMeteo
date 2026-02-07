@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.location.Geocoder
 import android.os.Build
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,13 +24,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -406,47 +411,49 @@ fun LocationManagementSheet(
         containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MaterialTheme.colorScheme.surface.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
         scrimColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(alpha = 0.5f)
     ) {
-        Scaffold(
-            containerColor = Color.Transparent,
-            floatingActionButton = {
-                FloatingActionButton(onClick = onAddLocationClick) {
-                    Icon(Icons.Default.Add, contentDescription = "Ajouter un lieu")
+        Column(modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp))
+        {
+            Text(stringResource(R.string.manage_locations), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
+            LazyColumn {
+                // Item pour la position actuelle
+                item {
+                    LocationRow(
+                        name = stringResource(R.string.current_location),
+                        isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
+                        onClick = {
+                            viewModel.selectLocation(LocationIdentifier.CurrentUserLocation)
+                            onDismiss()
+                        },
+                        onDelete = null // On ne peut pas supprimer la position actuelle
+                    )
+                }
+
+                // Liste des lieux sauvegardés
+                items(savedLocations) { location ->
+                    LocationRow(
+                        name = location.name,
+                        isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
+                        onClick = {
+                            viewModel.selectLocation(LocationIdentifier.Saved(location))
+                            onDismiss()
+                        },
+                        onDelete = { viewModel.removeLocation(location) }
+                    )
                 }
             }
-        ) { paddingValues ->
-            Column(modifier = Modifier
-                .padding(paddingValues)
-                .padding(16.dp))
-            {
-                Text("Gérer les lieux", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
 
-                LazyColumn {
-                    // Item pour la position actuelle
-                    item {
-                        LocationRow(
-                            name = "Position Actuelle",
-                            isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
-                            onClick = {
-                                viewModel.selectLocation(LocationIdentifier.CurrentUserLocation)
-                                onDismiss()
-                            },
-                            onDelete = null // On ne peut pas supprimer la position actuelle
-                        )
-                    }
-
-                    // Liste des lieux sauvegardés
-                    items(savedLocations) { location ->
-                        LocationRow(
-                            name = location.name,
-                            isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
-                            onClick = {
-                                viewModel.selectLocation(LocationIdentifier.Saved(location))
-                                onDismiss()
-                            },
-                            onDelete = { viewModel.removeLocation(location) }
-                        )
-                    }
-                }
+            Button(
+                onClick = onAddLocationClick,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(vertical = 16.dp)
+                    .size(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(24.dp))
             }
         }
     }
@@ -542,7 +549,7 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                 }
                 // Bouton pour ouvrir la carte
                 Button(onClick = { showMapPicker = true }) {
-                    Text("Choisir sur la carte")
+                    Text(stringResource(R.string.pick_on_map))
                 }
             }
         },
@@ -597,7 +604,7 @@ fun MapPickerScreen(
 
                 // Utilisation du Geocoder pour trouver le nom de la ville
                 val cityName = try {
-                    val geocoder = android.location.Geocoder(context, Locale.getDefault())
+                    val geocoder = Geocoder(context, Locale.getDefault())
                     val addresses = geocoder.getFromLocation(target.latitude, target.longitude, 1)
                     addresses?.firstOrNull()?.locality ?: "Position personnalisée"
                 } catch (e: Exception) {

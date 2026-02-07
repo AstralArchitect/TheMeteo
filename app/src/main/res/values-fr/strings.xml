@@ -42,8 +42,8 @@
     <string name="daily_forecast">Prévision par Jour</string>
     <string name="_15_minutely_precipitation_forecast">Prévision de Précipitation</string>
     <string name="day_duration">Durée du jour %s</string>
-    <string name="sunrise">Lever %1$s</string>
-    <string name="sunset">Coucher %1$s</string>
+    <string name="sunrise">Lever</string>
+    <string name="sunset">Coucher</string>
     <string name="sun">Soleil</string>
     <string name="sun_infos">Infos Solaires</string>
     <string name="today_s_sunrise">Coucher du Soleil</string>
@@ -67,4 +67,9 @@
     <string name="opacity_graph">Opacité</string>
     <string name="details">Détails</string>
     <string name="show_more">Voir plus</string>
+    <string name="current_location">Position Actuelle</string>
+    <string name="open_satellite_map">Ouvrir la carte satellitte</string>
+    <string name="weather_details">Détails Météo</string>
+    <string name="manage_locations">Gérer les lieux</string>
+    <string name="pick_on_map">Choisir sur la carte</string>
 </resources>

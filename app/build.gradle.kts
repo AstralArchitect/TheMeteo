@@ -26,7 +26,7 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        versionCode = 3
         versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -38,7 +38,7 @@ android {
             // Le suffixe sera ajouté au nom de l'application (ex: Themeteo-Alpha)
             applicationIdSuffix = ".debug"
             // Le suffixe sera ajouté au nom de la version
-            versionNameSuffix = "-${getBuildDate()}"
+            versionNameSuffix = "-${getBuildDate()} Alpha"
             isDebuggable = true // Cette ligne est implicite pour le debug, mais la laisser est clair
         }
 
@@ -48,7 +48,8 @@ android {
             // Note : Pas de suffixe pour l'applicationID en release
             versionNameSuffix = "-${getBuildDate()} Beta"
 
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

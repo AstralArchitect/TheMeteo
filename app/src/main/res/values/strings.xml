@@ -51,8 +51,8 @@
     <string name="_15_minutely_precipitation_forecast">15 Minutely Precipitation Forecast</string>
     <string name="day_duration">Day Duration %s</string>
     <string name="sun">Sun</string>
-    <string name="sunrise">Sunrise %1$s</string>
-    <string name="sunset">Sunset %1$s</string>
+    <string name="sunrise">Sunrise</string>
+    <string name="sunset">Sunset</string>
     <string name="sun_infos">Sun Infos</string>
     <string name="today_s_sunrise">Today\'s Sunrise</string>
     <string name="today">Today</string>
@@ -76,4 +76,9 @@
     <string name="opacity_graph">"Opacity "</string>
     <string name="details">Details</string>
     <string name="show_more">Show more</string>
+    <string name="current_location">Current Location</string>
+    <string name="open_satellite_map">Open satellite map</string>
+    <string name="weather_details">Weather Details</string>
+    <string name="manage_locations">Manage Locations</string>
+    <string name="pick_on_map">Pick on the map</string>
 </resources>

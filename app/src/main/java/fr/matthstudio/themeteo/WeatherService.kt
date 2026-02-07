@@ -225,8 +225,8 @@ class WeatherService {
             "temperature_2m", "apparent_temperature", "precipitation", "rain", "showers", "snowfall",
             "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "weather_code",
             "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m",
-            "precipitation_probability", "snow_depth", "shortwave_radiation", "direct_radiation",
-            "diffuse_radiation", "uv_index", "visibility"
+            "precipitation_probability", "snow_depth", "shortwave_radiation_instant", "direct_radiation_instant",
+            "diffuse_radiation_instant", "uv_index", "visibility"
         )
         return variables
     }
@@ -248,9 +248,9 @@ class WeatherService {
             val cloudLow = response.getDeterministicHourlyData("cloudcover_low")
             val cloudMid = response.getDeterministicHourlyData("cloudcover_mid")
             val cloudHigh = response.getDeterministicHourlyData("cloudcover_high")
-            val ghi = response.getDeterministicHourlyData("shortwave_radiation")
-            val dhi = response.getDeterministicHourlyData("diffuse_radiation")
-            val dsi = response.getDeterministicHourlyData("direct_radiation")
+            val ghi = response.getDeterministicHourlyData("shortwave_radiation_instant")
+            val dhi = response.getDeterministicHourlyData("diffuse_radiation_instant")
+            val dsi = response.getDeterministicHourlyData("direct_radiation_instant")
             val wui = response.getDeterministicHourlyData("uv_index")
             val visibility = response.getDeterministicHourlyData("visibility")
             val windspeed = response.getDeterministicHourlyData("windspeed_10m")
