@@ -24,7 +24,7 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
 
-        <activity android:name=".forecastMainActivity.NewDesignActivity"
+        <activity android:name=".forecastMainActivity.ForecastMainActivity"
             android:exported="true"
             android:theme="@style/AppTheme.Compose">
         <intent-filter>
@@ -39,10 +39,6 @@
             android:exported="false"
             android:label="@string/title_activity_settings_activity.kt"
             android:theme="@style/AppTheme.Compose" />
-        <activity
-            android:name=".forecastMainActivity.ForecastMainActivity"
-            android:exported="true"
-            android:theme="@style/AppTheme.Compose"/>
         <activity
             android:name=".dayChoserActivity.DayChooserActivity"
             android:exported="false"

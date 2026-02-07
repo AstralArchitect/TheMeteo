@@ -15,6 +15,7 @@ import fr.matthstudio.themeteo.data.LocationProvider
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.UserLocationsRepository
 import fr.matthstudio.themeteo.data.UserSettingsRepository
+import fr.matthstudio.themeteo.dayChoserActivity.weatherModelPredictionTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -271,7 +272,7 @@ class WeatherCache(
         val currentSettings = userSettings.value
         val currentLocationIdentifier = selectedLocation.value
 
-        val maxAllowedDate = LocalDate.now().plusDays(15) // Limite de 16 jours (0 à 15)
+        val maxAllowedDate = LocalDate.now().plusDays((weatherModelPredictionTime[userSettings.value.model]?.toLong() ?: 3) - 1) // Limite de 16 jours (0 à 15)
         var endTime = startTime.plusHours(hours.toLong())
 
         // Si l'heure de fin dépasse la date max autorisée par l'API

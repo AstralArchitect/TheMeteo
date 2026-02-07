@@ -4,6 +4,7 @@ import android.os.Parcelable
 import android.util.Log
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
+import fr.matthstudio.themeteo.BuildConfig
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.OkHttp
@@ -116,13 +117,16 @@ class WeatherService {
                 connectTimeoutMillis = 10000
             }
             // DÉCOMMENTER CE BLOC POUR LE LOGGING
-            install(Logging) {
-                logger = object : Logger {
-                    override fun log(message: String) {
-                        Log.d("HTTP Client", message) // Affiche les logs dans Logcat
+            if (BuildConfig.DEBUG)
+            {
+                install(Logging) {
+                    logger = object : Logger {
+                        override fun log(message: String) {
+                            Log.d("HTTP Client", message) // Affiche les logs dans Logcat
+                        }
                     }
+                    level = LogLevel.ALL // Log toutes les informations, y compris l'URL et le corps de la réponse
                 }
-                level = LogLevel.ALL // Log toutes les informations, y compris l'URL et le corps de la réponse
             }
         }
 

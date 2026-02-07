@@ -12,7 +12,7 @@
     <string name="open_satellite_view">Open Satellite View</string>
     <string name="loc_unavaiable">Location unavailable, using Paris\' location</string>
     <string name="temperature">Temperature</string>
-    <string name="apparent_temperature">Apparent Temperature</string>
+    <string name="apparent_temperature">Feeling</string>
     <string name="dew_point">Dew Point</string>
     <string name="humidity">Humidity</string>
     <string name="rain">Rain + Showers</string>
@@ -42,7 +42,7 @@
     <string name="chose_model">Chose the weather forcasting model.</string>
     <string name="precipitation">Precipitation (rain + snowfall + showers)</string>
     <string name="hourly_forecast">Hourly forecast</string>
-    <string name="a_temperature_unit">App. Temp. °C</string>
+    <string name="a_temperature_unit">Feeling °C</string>
     <string name="precipitation_unit">Precip. mm/h</string>
     <string name="wind_speed_unit">Wind Speed kph</string>
     <string name="settings">Settings</string>
