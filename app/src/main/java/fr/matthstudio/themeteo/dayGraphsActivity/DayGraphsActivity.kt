@@ -46,6 +46,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.intl.Locale
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.R
@@ -54,6 +56,8 @@ import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.getSimpleWeather
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
@@ -347,8 +351,16 @@ fun GenericGraphGlobal(
     graphType: GraphType,
     graphColor: Color,
     valueRange: ClosedFloatingPointRange<Float>? = null,
-    scrollState: ScrollState = rememberScrollState()
+    scrollState: ScrollState = rememberScrollState(),
+    contentWidth: Dp = 1000.dp,
+    contentHeight: Dp = 150.dp,
+    compactHourFormat: Boolean = false
 ) {
+    fun Double.toSmartString(): String {
+        val df = DecimalFormat("0.0#", DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
+        return df.format(this)
+    }
+
     Box(
         modifier = Modifier
             .width(1000.dp)
@@ -357,7 +369,7 @@ fun GenericGraphGlobal(
         var forecast: List<Number>
         val times: List<String> =
             (fullForecast as WeatherDataState.SuccessHourly).data
-                .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + "h" }
+                .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + if (!compactHourFormat) "h" else "" }
         when (graphType) {
             GraphType.TEMP -> {
                 forecast = fullForecast.data.map { f -> f.temperature }
@@ -433,9 +445,6 @@ fun GenericGraphGlobal(
             }
         }
 
-        // 1. Définir une largeur totale pour le contenu du graphique, plus grande que la fenêtre
-        val contentWidth = 1000.dp
-
         val textColor: Int = AndroidColor.rgb(
             MaterialTheme.colorScheme.onBackground.red,
             MaterialTheme.colorScheme.onBackground.green,
@@ -444,7 +453,7 @@ fun GenericGraphGlobal(
         Canvas(
             modifier = Modifier
                 .width(contentWidth) // La largeur du contenu défilable
-                .height(150.dp)
+                .height(contentHeight)
         ) {
             // 2. Ajuster le padding pour qu'il soit raisonnable
             val xPadding = 50f // Padding sur les côtés à l'intérieur du Canvas
@@ -510,7 +519,7 @@ fun GenericGraphGlobal(
 
                 // Value
                 drawContext.canvas.nativeCanvas.drawText(
-                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toString(),
+                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toDouble().toSmartString(),
                     x,
                     y.toFloat() - 20f,
                     Paint().apply {

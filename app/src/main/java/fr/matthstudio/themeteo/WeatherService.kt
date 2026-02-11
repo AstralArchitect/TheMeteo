@@ -2,9 +2,11 @@ package fr.matthstudio.themeteo
 
 import android.os.Parcelable
 import android.util.Log
+import android.content.Context
+import android.location.Geocoder
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
-import fr.matthstudio.themeteo.BuildConfig
+import fr.matthstudio.themeteo.data.SavedLocation
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.OkHttp
@@ -22,11 +24,16 @@ import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.decodeFromJsonElement
 import java.lang.Math.clamp
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Collections.emptyList
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -78,6 +85,8 @@ data class DailyReading(
     val date: LocalDate,
     val maxTemperature: Double,
     val minTemperature: Double,
+    val precipitation: Double,
+    val max_uvIndex: Int?,
     val wmo: Int,
     val sunset: String,
     val sunrise: String
@@ -88,6 +97,12 @@ data class MinutelyReading(
     val time: LocalDateTime,
     val snowfall: Double,
     val rain: Double
+) : Parcelable
+
+@Parcelize
+data class CurrentWeatherReading(
+    val temperature: Double,
+    val wmo: Int
 ) : Parcelable
 
 @Serializable
@@ -104,13 +119,16 @@ data class GeocodingResult(
 )
 
 class WeatherService {
+    // On définit la config une seule fois ici
+    private val jsonParser = Json {
+        ignoreUnknownKeys = true
+        prettyPrint = true
+        coerceInputValues = true
+    }
     private val client =
         HttpClient(OkHttp) {
             install(ContentNegotiation) {
-                json(Json {
-                    ignoreUnknownKeys = true
-                    prettyPrint = true
-                })
+                json(jsonParser)
             }
             install(HttpTimeout) {
                 requestTimeoutMillis = 15000 // 15 secondes max
@@ -145,17 +163,67 @@ class WeatherService {
         }
     }
 
+    suspend fun getCurrentWeather(positions: List<Pair<Double, Double>>) : Map<Pair<Double, Double>, CurrentWeatherReading>? {
+        val apiUrl = "https://api.open-meteo.com/v1/forecast"
+
+        try {
+            val latitudes = positions.joinToString(",") { it.first.toString() }
+            val longitudes = positions.joinToString(",") { it.second.toString() }
+            val response = client.get(apiUrl) {
+                parameter("latitude", latitudes)
+                parameter("longitude", longitudes)
+                parameter("current", "temperature_2m,weather_code")
+            }
+
+            // 1. Log le code de statut (200, 400, 500 ?)
+            Log.d("WeatherService", "Status: ${response.status}")
+
+            if (response.status.value == 200) {
+                // 1. On récupère le corps en String brute
+                val bodyText = response.body<String>()
+                val jsonElement = jsonParser.parseToJsonElement(bodyText)
+
+                // 2. On transforme en liste de WeatherApiResponse
+                val apiResponses: List<WeatherApiResponse> = if (jsonElement is JsonArray) {
+                    // C'est déjà une liste (plusieurs positions)
+                    jsonParser.decodeFromJsonElement<List<WeatherApiResponse>>(jsonElement)
+                } else {
+                    // C'est un objet simple (une seule position), on le met dans une liste
+                    listOf(jsonParser.decodeFromJsonElement<WeatherApiResponse>(jsonElement))
+                }
+
+                val results: MutableMap<Pair<Double, Double>, CurrentWeatherReading> = mutableMapOf()
+                val parsedData = parseCurrentWeatherData(apiResponses) ?: return null
+                if (parsedData.size != positions.size) return null
+                for (i in parsedData.indices) {
+                    results[positions[i]] = parsedData[i]
+                }
+
+                return results
+            } else {
+                // 2. Si c'est avant 8h, tu verras probablement un code 400 ici
+                val errorText = response.body<String>()
+                Log.e("WeatherService", "Erreur API : $errorText")
+                return null
+            }
+
+        } catch (e: Exception) {
+            Log.e("getCurrentWeather", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            return null
+        }
+    }
+
     /**
-     * Récupère l'intégralité des prévisions horaires pour une période étendue.
+     * Récupère l'intégralité des prévisions pour une période étendue.
      * C'est la fonction que le WeatherCache utilisera.
      */
-    suspend fun getCompleteHourlyForecast(
+    suspend fun getForecast(
         latitude: Double,
         longitude: Double,
         model: String,
         startDate: LocalDate,
         endDate: LocalDate
-    ): List<AllHourlyVarsReading>? {
+    ): Pair<List<AllHourlyVarsReading>, List<DailyReading>>? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
         val localZoneId = ZoneId.systemDefault()
 
@@ -165,6 +233,7 @@ class WeatherService {
                 parameter("longitude", longitude)
                 parameter("models", model)
                 parameter("hourly", getHourlyVariables().joinToString(","))
+                parameter("daily", getDailyVariables().joinToString(","))
                 parameter("timezone", localZoneId.id)
                 parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
                 parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
@@ -174,7 +243,8 @@ class WeatherService {
             Log.d("WeatherService", "Status: ${response.status}")
 
             if (response.status.value == 200) {
-                return parseHourlyData(response.body())
+                return Pair(parseHourlyData(response.body()) as List<AllHourlyVarsReading>,
+                    parseDailyData(response.body()) as List<DailyReading>)
             } else {
                 // 2. Si c'est avant 8h, tu verras probablement un code 400 ici
                 val errorText = response.body<String>()
@@ -183,39 +253,7 @@ class WeatherService {
             }
 
         } catch (e: Exception) {
-            Log.e("getCompleteForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
-            null
-        }
-    }
-    /**
-     * Récupère l'intégralité des prévisions journalières pour une période étendue.
-     * C'est la fonction que le WeatherCache utilisera.
-     */
-    suspend fun getCompleteDailyForecast(
-        latitude: Double,
-        longitude: Double,
-        model: String,
-        startDate: LocalDate,
-        endDate: LocalDate
-    ): List<DailyReading>? {
-        val apiUrl = "https://api.open-meteo.com/v1/forecast"
-        val localZoneId = ZoneId.systemDefault()
-
-        return try {
-            val response: WeatherApiResponse = client.get(apiUrl) {
-                parameter("latitude", latitude)
-                parameter("longitude", longitude)
-                parameter("models", model)
-                parameter("daily", getDailyVariables().joinToString(","))
-                parameter("timezone", localZoneId.id)
-                parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-                parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-            }.body()
-
-            parseDailyData(response)
-
-        } catch (e: Exception) {
-            Log.e("getCompleteForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            Log.e("getForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
             null
         }
     }
@@ -308,7 +346,7 @@ class WeatherService {
 
     private fun getDailyVariables(): List<String> {
         val variables = mutableListOf(
-            "temperature_2m_max", "temperature_2m_min", "weather_code", "sunset", "sunrise"
+            "temperature_2m_max", "temperature_2m_min", "precipitation_sum", "uv_index_max", "weather_code", "sunset", "sunrise"
         )
         return variables
     }
@@ -320,6 +358,8 @@ class WeatherService {
             // Récupération sécurisée de toutes les listes de données
             val tempMax = response.getDeterministicDailyData("temperature_2m_max")
             val tempMin = response.getDeterministicDailyData("temperature_2m_min")
+            val precip = response.getDeterministicDailyData("precipitation_sum")
+            val uvIndex = response.getDeterministicDailyData("uv_index_max")
             val sunset = response.getDeterministicDailyData("sunset")
             val sunrise = response.getDeterministicDailyData("sunrise")
             val wmo = response.getDeterministicDailyData("weather_code")
@@ -330,6 +370,8 @@ class WeatherService {
                         date = LocalDate.parse(times[i] as String),
                         maxTemperature = tempMax?.get(i) as Double,
                         minTemperature = tempMin?.get(i) as Double,
+                        precipitation = precip?.get(i) as Double,
+                        max_uvIndex = (uvIndex?.get(i) as Double?)?.toInt(),
                         wmo = (wmo?.get(i) as Double).toInt(),
                         sunset = sunset?.get(i) as String,
                         sunrise = sunrise?.get(i) as String
@@ -341,6 +383,24 @@ class WeatherService {
             }
         } catch (e: Exception) {
             Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données horaires", e)
+            return null
+        }
+    }
+
+    fun parseCurrentWeatherData(response: List<WeatherApiResponse>): List<CurrentWeatherReading>? {
+        try {
+            val result: MutableList<CurrentWeatherReading> = mutableListOf()
+            for (currentLocationData in response) {
+                val temp = currentLocationData.getCurrentWeatherData("temperature_2m")
+                val wmo = currentLocationData.getCurrentWeatherData("weather_code")
+                result.add(CurrentWeatherReading(
+                    temperature = temp as Double,
+                    wmo = (wmo as Double).toInt()
+                ))
+            }
+            return result
+        } catch (e: Exception) {
+            Log.e("WeatherServiceParser", "Erreur lors du parsing des données actuelles", e)
             return null
         }
     }

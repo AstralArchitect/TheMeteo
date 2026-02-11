@@ -33,7 +33,7 @@
     <string name="low_clouds">Low clouds :</string>
     <string name="total">Total cloud cover :</string>
     <string name="sky_details">Sky details :</string>
-    <string name="search_city">Search for a city…</string>
+    <string name="search_city">Search for an adress…</string>
     <string name="add_city">Add a city</string>
     <string name="widget_description" translatable="false">TheMeteo Widget</string>
     <string name="title_activity_settings_activity.kt" translatable="false">SettingsActivity.kt</string>
@@ -93,4 +93,9 @@
     <string name="cloudy">Cloudy</string>
     <string name="sunny_cloudy">Sunny Cloudy</string>
     <string name="clear">Clear</string>
+    <string name="currently">Maintenant</string>
+    <string name="goes_to_current_weather_page">Goes to Current Weather Page</string>
+    <string name="app_focus">App Focus</string>
+    <string name="curent_weather">Curent Weather</string>
+    <string name="daily_forecast_setting">Daily Forecast</string>
 </resources>

@@ -13,20 +13,28 @@ import kotlinx.serialization.json.jsonPrimitive
 // Ces classes modélisent la structure de la réponse JSON d'Open-Meteo.
 @Serializable
 data class WeatherApiResponse(
-    val latitude: Double? = null,
-    val longitude: Double? = null,
+    val latitude: Double,
+    val longitude: Double,
+    // --- Données Actuelles  ---
+    @SerialName("current_units")
+    val currentUnits: Map<String, String>? = null,
+    val current: Map<String, JsonElement>? = null,
+
+    // --- Données Horaires ---
     @SerialName("hourly_units")
     val hourlyUnits: Map<String, String>? = null,
     val hourly: Map<String, JsonElement>? = null,
+
+    // --- Données Journalières ---
     @SerialName("daily_units")
     val dailyUnits: Map<String, String>? = null,
     val daily: Map<String, JsonElement>? = null,
+
+    // --- Données 15 minutes ---
     @SerialName("minutely_15_units")
     val minutely15Units: Map<String, String>? = null,
     @SerialName("minutely_15")
-    val minutely15: Map<String, JsonElement>? = null,
-    @SerialName("elevation")
-    val elevation: Double
+    val minutely15: Map<String, JsonElement>? = null
 )
 
 /**
@@ -101,7 +109,7 @@ fun calculateEnsembleStats(ensembleMatrix: List<List<Double?>>): List<EnsembleSt
 
 /**
  * Récupère les données d'une variable spécifique pour le modèle déterministe.
- * * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
+ * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
  * @return Une liste de Double? (nullable pour gérer les données manquantes)
  */
 fun WeatherApiResponse.getDeterministicHourlyData(variableName: String): List<Any>? {
@@ -121,7 +129,7 @@ fun WeatherApiResponse.getDeterministicHourlyData(variableName: String): List<An
 
 /**
  * Récupère les données d'une variable spécifique pour le modèle déterministe.
- * * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
+ * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
  * @return Une liste de Double? (nullable pour gérer les données manquantes)
  */
 fun WeatherApiResponse.getDeterministicDailyData(variableName: String): List<Any>? {
@@ -141,7 +149,7 @@ fun WeatherApiResponse.getDeterministicDailyData(variableName: String): List<Any
 
 /**
  * Récupère les données d'une variable spécifique pour le modèle déterministe.
- * * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
+ * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
  * @return Une liste de Double? (nullable pour gérer les données manquantes)
  */
 fun WeatherApiResponse.getDeterministicMinutely15Data(variableName: String): List<Any>? {
@@ -153,6 +161,24 @@ fun WeatherApiResponse.getDeterministicMinutely15Data(variableName: String): Lis
             if (element.jsonPrimitive.isString) element.jsonPrimitive.content
             else element.jsonPrimitive.double
         }
+    } catch (_: Exception) {
+        // Au cas où l'élément n'est pas un tableau (sécurité)
+        null
+    }
+}
+
+/**
+ * Récupère les données d'une variable spécifique.
+ * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
+ * @return Un Double (nullable pour gérer les données manquantes)
+ */
+fun WeatherApiResponse.getCurrentWeatherData(variableName: String): Any? {
+    // On cherche directement la clé dans la map hourly
+    val dataElement = current?.get(variableName) ?: return null
+
+    return try {
+        if (dataElement.jsonPrimitive.isString) dataElement.jsonPrimitive.content
+        else dataElement.jsonPrimitive.double
     } catch (_: Exception) {
         // Au cas où l'élément n'est pas un tableau (sécurité)
         null

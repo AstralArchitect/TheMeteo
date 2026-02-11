@@ -5,6 +5,7 @@ import android.content.Intent
 import android.location.Geocoder
 import android.os.Build
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,20 +54,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.rememberCameraPositionState
 import fr.matthstudio.themeteo.AllHourlyVarsReading
+import fr.matthstudio.themeteo.CurrentWeatherReading
 import fr.matthstudio.themeteo.DailyReading
+import fr.matthstudio.themeteo.GeocodingResult
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.WeatherDataState
@@ -225,7 +232,7 @@ enum class ChosenVar {
 }
 
 @Composable
-fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel) {
+fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onClick: () -> Unit) {
     val context = LocalContext.current
 
     // Charger les icônes
@@ -250,13 +257,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel) {
             .width(85.dp)
             .padding(4.dp)
             .clickable { // Make the card clickable
-                // Create an Intent to launch DayGraphsActivity
-                val intent = Intent(context, DayGraphsActivity::class.java).apply {
-                    putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0))
-                    putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
-                }
-                // Start the activity
-                context.startActivity(intent)
+                onClick()
             },
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         shape = MaterialTheme.shapes.small
@@ -378,14 +379,15 @@ fun getUVColor(uv: Int): Color {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationManagementSheet(
-    viewModel: WeatherViewModel,
+    savedLocations: List<SavedLocation>,
+    selectedLocation: LocationIdentifier,
+    currentWeathers: WeatherDataState,
+    onSelectLocation: (LocationIdentifier) -> Unit,
+    onRemoveLocation: (SavedLocation) -> Unit,
+    onAddLocationClick: () -> Unit,
     onDismiss: () -> Unit,
-    onAddLocationClick: () -> Unit, // Pour ouvrir le dialogue d'ajout
-    sheetState: SheetState
+    sheetState: SheetState = rememberModalBottomSheetState()
 ) {
-    val savedLocations by viewModel.savedLocations.collectAsState()
-    val selectedLocation by viewModel.selectedLocation.collectAsState()
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -404,7 +406,7 @@ fun LocationManagementSheet(
                         name = stringResource(R.string.current_location),
                         isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
                         onClick = {
-                            viewModel.selectLocation(LocationIdentifier.CurrentUserLocation)
+                            onSelectLocation(LocationIdentifier.CurrentUserLocation)
                             onDismiss()
                         },
                         onDelete = null // On ne peut pas supprimer la position actuelle
@@ -413,14 +415,16 @@ fun LocationManagementSheet(
 
                 // Liste des lieux sauvegardés
                 items(savedLocations) { location ->
+                    val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
                     LocationRow(
                         name = location.name,
                         isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
+                        currentWeatherReading = currentWeather,
                         onClick = {
-                            viewModel.selectLocation(LocationIdentifier.Saved(location))
+                            onSelectLocation(LocationIdentifier.Saved(location))
                             onDismiss()
                         },
-                        onDelete = { viewModel.removeLocation(location) }
+                        onDelete = { onRemoveLocation(location) }
                     )
                 }
             }
@@ -445,26 +449,54 @@ fun LocationManagementSheet(
 fun LocationRow(
     name: String,
     isSelected: Boolean,
+    currentWeatherReading: CurrentWeatherReading? = null,
     onClick: () -> Unit,
     onDelete: (() -> Unit)? // Nullable car la position actuelle n'a pas de bouton de suppression
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
+            .height(64.dp)
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(vertical = 12.dp)
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .5f) else Color.Transparent,
+                MaterialTheme.shapes.small
+            )
     ) {
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
-            fontWeight = if (isSelected) FontWeight.Bold else null
-        )
-        if (onDelete != null) {
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Supprimer le lieu", tint = MaterialTheme.colorScheme.error)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                fontWeight = if (isSelected) FontWeight.Bold else null
+            )
+            Row {
+                if (currentWeatherReading != null) {
+                    Icon(
+                        imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)),
+                        contentDescription = "Icône météo actuelle",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${currentWeatherReading.temperature.roundToInt()}°",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (isSelected) FontWeight.Bold else null
+                    )
+                }
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Supprimer le lieu",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             }
         }
     }
@@ -472,18 +504,25 @@ fun LocationRow(
 
 // 3. LA BOÎTE DE DIALOGUE POUR LA RECHERCHE ET L'AJOUT
 @Composable
-fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
+fun AddLocationDialog(
+    searchResults: List<GeocodingResult>, // Remplacez par votre type réel de résultat
+    userLocation: GpsCoordinates?,
+    onSearch: (String) -> Unit,
+    onLocationSelected: (LocationIdentifier) -> Unit,
+    onAddLocation: (SavedLocation) -> Unit,
+    onMapLocationAdded: (GpsCoordinates, String) -> Unit,
+    onDismiss: () -> Unit
+) {
     var searchQuery by remember { mutableStateOf("") }
-    val searchResults by viewModel.geocodingResults.collectAsState()
 
     var showMapPicker by remember { mutableStateOf(false) }
 
     if (showMapPicker) {
         Dialog(onDismissRequest = { showMapPicker = false }) {
             MapPickerScreen(
-                viewModel = viewModel,
+                initialLocation = userLocation,
                 onLocationSelected = { coords, name ->
-                    viewModel.addLocationFromMap(coords, name)
+                    onMapLocationAdded(coords, name)
                     showMapPicker = false
                     onDismiss()
                 },
@@ -501,7 +540,7 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                     value = searchQuery,
                     onValueChange = {
                         searchQuery = it
-                        viewModel.searchCity(it) // Déclenche la recherche via le ViewModel
+                        onSearch(it) // Déclenche la recherche via le ViewModel
                     },
                     label = { Text(stringResource(R.string.search_city)) },
                     modifier = Modifier.fillMaxWidth()
@@ -520,8 +559,8 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                                         longitude = result.longitude,
                                         country = result.countryCode
                                     )
-                                    viewModel.addLocation(newLocation)
-                                    viewModel.selectLocation(LocationIdentifier.Saved(newLocation))
+                                    onAddLocation(newLocation)
+                                    onLocationSelected(LocationIdentifier.Saved(newLocation))
                                     onDismiss()
                                 }
                                 .padding(vertical = 8.dp)
@@ -542,7 +581,7 @@ fun AddLocationDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
 
 @Composable
 fun MapPickerScreen(
-    viewModel: WeatherViewModel,
+    initialLocation: GpsCoordinates?,
     onLocationSelected: (GpsCoordinates, String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -551,8 +590,8 @@ fun MapPickerScreen(
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
             LatLng(
-                viewModel.userLocation.value?.latitude ?: 48.8566,
-                viewModel.userLocation.value?.longitude ?: 2.3522
+                initialLocation?.latitude ?: 48.8566,
+                initialLocation?.longitude ?: 2.3522
             ),
             10f
         )
@@ -615,14 +654,6 @@ fun LocationPermissionHandler(
         )
     )
 
-    LaunchedEffect(locationPermissionState.allPermissionsGranted) {
-        if (locationPermissionState.allPermissionsGranted) {
-            // Si l'utilisateur vient d'accepter, on force le rafraîchissement
-            // Cela va invalider le cache et relancer la recherche GPS dans WeatherCache
-            viewModel.refresh()
-        }
-    }
-
     if (!locationPermissionState.allPermissionsGranted) {
         LaunchedEffect(Unit) {
             locationPermissionState.launchMultiplePermissionRequest()
@@ -653,6 +684,38 @@ fun GenericGraph(
         graphColor,
         valueRange,
         scrollState
+    )
+}
+
+@Composable
+fun AdvancedGraph(
+    fullForecast: WeatherDataState,
+    roundToInt: Boolean,
+    graphType: GraphType,
+    graphColor: Color,
+    valueRange: ClosedFloatingPointRange<Float>? = null,
+    scrollState: ScrollState = rememberScrollState(),
+    contentWidth: Dp = 1000.dp,
+    contentHeight: Dp = 150.dp,
+    compactHourFormat: Boolean = false
+) {
+    var roundToInt = roundToInt
+
+    if (graphType == GraphType.PRECIPITATION || graphType == GraphType.RAIN ||
+        graphType == GraphType.SNOWFALL
+    )
+        roundToInt = false
+
+    GenericGraphGlobal(
+        fullForecast,
+        roundToInt,
+        graphType,
+        graphColor,
+        valueRange,
+        scrollState,
+        contentWidth,
+        contentHeight,
+        compactHourFormat
     )
 }
 

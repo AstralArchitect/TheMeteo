@@ -24,25 +24,31 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
 
+        <!-- Main Activities -->
         <activity android:name=".forecastMainActivity.ForecastMainActivity"
-            android:exported="true"
-            android:theme="@style/AppTheme.Compose">
-        <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".SettingsActivity"
             android:exported="false"
-            android:label="@string/title_activity_settings_activity.kt"
-            android:theme="@style/AppTheme.Compose" />
+            android:theme="@style/AppTheme.Compose"/>
         <activity
             android:name=".dayChoserActivity.DayChooserActivity"
             android:exported="false"
-            android:label="@string/title_activity_temp_graphs"
+            android:theme="@style/AppTheme.Compose" />
+
+        <!-- Launcher Activity -->
+        <activity android:name=".utilsActivities.LauncherActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.Compose">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Other Activities -->
+        <activity
+            android:name=".utilsActivities.SettingsActivity"
+            android:exported="false"
+            android:label="@string/title_activity_settings_activity.kt"
             android:theme="@style/AppTheme.Compose" />
         <activity
             android:name=".dayGraphsActivity.DayGraphsActivity"

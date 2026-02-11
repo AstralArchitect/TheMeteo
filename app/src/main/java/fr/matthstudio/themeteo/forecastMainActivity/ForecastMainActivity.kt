@@ -3,6 +3,7 @@ package fr.matthstudio.themeteo.forecastMainActivity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -37,11 +38,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Dehaze
@@ -96,9 +99,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
-import fr.matthstudio.themeteo.SettingsActivity
+import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
@@ -108,6 +112,7 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -119,16 +124,34 @@ data class WeatherDetailItem(
 )
 
 data class NextSunEvent(
-    val type: String, // "Lever" or "Coucher"
+    val type: String,
     val dateTime: LocalDateTime,
-    val dayLabel: String // "Aujourd'hui" or "Demain"
+    val dayLabel: String
 )
+
+fun getStateIconFromWord(word: SimpleWeatherWord): ImageVector {
+    return when (word) {
+        SimpleWeatherWord.STORMY -> Icons.Rounded.Thunderstorm
+        SimpleWeatherWord.HAIL, SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2, SimpleWeatherWord.SNOWY3 -> Icons.Rounded.AcUnit // Flocon
+        SimpleWeatherWord.SNOWY_MIX -> Icons.Rounded.Grain // Pluie + Neige (approximation)
+        SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2 -> Icons.Rounded.Umbrella
+        SimpleWeatherWord.DRIZZLY -> Icons.Rounded.WaterDrop // Bruine
+        SimpleWeatherWord.DUST -> Icons.Rounded.Public // Vent (approximation poussière)
+        SimpleWeatherWord.FOGGY -> Icons.Rounded.Dehaze // Brouillard/Haze
+        SimpleWeatherWord.CLOUDY -> Icons.Rounded.Cloud
+        SimpleWeatherWord.SUNNY_CLOUDY -> Icons.Rounded.WbCloudy
+        SimpleWeatherWord.SUNNY -> Icons.Rounded.WbSunny
+    }
+}
+
 
 class ForecastMainActivity : ComponentActivity() {
     private lateinit var weatherViewModel: WeatherViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val isLauncherActivity = intent.getBooleanExtra("LAUNCHER", false)
 
         // Instancier le viewModel
         weatherViewModel = WeatherViewModel((this.application as TheMeteo).weatherCache)
@@ -141,7 +164,7 @@ class ForecastMainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ForecastMainActivityScreen(weatherViewModel)
+                    ForecastMainActivityScreen(weatherViewModel, isLauncherActivity)
                 }
             }
         }
@@ -189,7 +212,7 @@ fun BlurredBackground(state: SimpleWeatherWord) {
     }
 
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-        // Dégradé simple pour les versions récentes
+        // Dégradé simple pour les versions anciennes
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -200,7 +223,7 @@ fun BlurredBackground(state: SimpleWeatherWord) {
                 )
         )
     } else {
-        // Effet de cercles floutés (Mesh) pour les versions antérieures
+        // Effet de cercles floutés (Mesh) pour les versions récentes
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -233,7 +256,7 @@ fun BlurredBackground(state: SimpleWeatherWord) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
+fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: Boolean) {
     val context = LocalContext.current
     val hourlyForecast by viewModel.hourlyForecast.collectAsState()
 
@@ -246,18 +269,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
         else -> SimpleWeather("Error", SimpleWeatherWord.SUNNY)
     }
 
-    val stateIcon = when (weatherState.word) {
-        SimpleWeatherWord.STORMY -> Icons.Rounded.Thunderstorm
-        SimpleWeatherWord.HAIL, SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2, SimpleWeatherWord.SNOWY3 -> Icons.Rounded.AcUnit // Flocon
-        SimpleWeatherWord.SNOWY_MIX -> Icons.Rounded.Grain // Pluie + Neige (approximation)
-        SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2 -> Icons.Rounded.Umbrella
-        SimpleWeatherWord.DRIZZLY -> Icons.Rounded.WaterDrop // Bruine
-        SimpleWeatherWord.DUST -> Icons.Rounded.Public // Vent (approximation poussière)
-        SimpleWeatherWord.FOGGY -> Icons.Rounded.Dehaze // Brouillard/Haze
-        SimpleWeatherWord.CLOUDY -> Icons.Rounded.Cloud
-        SimpleWeatherWord.SUNNY_CLOUDY -> Icons.Rounded.WbCloudy
-        SimpleWeatherWord.SUNNY -> Icons.Rounded.WbSunny
-    }
+    val stateIcon = getStateIconFromWord(weatherState.word)
 
     val description = when(weatherState.word) {
         SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)
@@ -278,30 +290,49 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
     val selectedLocation by viewModel.selectedLocation.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
     var showAddLocationDialog by remember { mutableStateOf(false) }
-    var showCloudInfoDialog by remember { mutableStateOf(false) }
     var showDetailsDialog by remember { mutableStateOf(false) }
 
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
     val isRefreshing = false
 
 
     // --- AFFICHAGE CONDITIONNEL DES PANNEAUX ---
     if (showLocationSheet) {
+        val savedLocations by viewModel.savedLocations.collectAsState()
+        val selectedLocation by viewModel.selectedLocation.collectAsState()
+        val currentWeathers by viewModel.currentWeather.collectAsState()
+
         LocationManagementSheet(
-            viewModel = viewModel,
+            savedLocations = savedLocations,
+            selectedLocation = selectedLocation,
+            currentWeathers = currentWeathers,
+            onSelectLocation = { viewModel.selectLocation(it) },
+            onRemoveLocation = { viewModel.removeLocation(it) },
             onDismiss = { showLocationSheet = false },
             onAddLocationClick = {
                 showLocationSheet = false // Ferme le premier panneau
                 showAddLocationDialog = true // Ouvre le second
             },
-            sheetState
+            sheetState = sheetState
         )
     }
 
     if (showAddLocationDialog) {
+        val searchResults by viewModel.geocodingResults.collectAsState()
+        val userLocation by viewModel.userLocation.collectAsState()
+
         AddLocationDialog(
-            viewModel = viewModel,
-            onDismiss = { showAddLocationDialog = false }
+            searchResults = searchResults,
+            userLocation = userLocation,
+            onSearch = { viewModel.searchCity(it) },
+            onLocationSelected = { viewModel.selectLocation(it) },
+            onAddLocation = { viewModel.addLocation(it) },
+            onMapLocationAdded = { gpsCoordinates, name ->
+                viewModel.addLocationFromMap(gpsCoordinates, name)
+            },
+            onDismiss = { showAddLocationDialog = false },
         )
     }
 
@@ -343,7 +374,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
         PullToRefreshBox(
             modifier = Modifier.fillMaxSize(),
             onRefresh = { viewModel.refresh() },
-            isRefreshing = isRefreshing,
+            isRefreshing = isRefreshing
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -358,22 +389,27 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                 ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Settings button
-                item {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
-                        FilledIconButton(
-                            onClick = {
-                                val intent = Intent(context, SettingsActivity::class.java)
-                                context.startActivity(intent)
-                            },
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
-                                    alpha = 0.6f
-                                ),
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
+                if (isLauncherActivity) {
+                    // Settings button
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.TopEnd
                         ) {
-                            Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+                            FilledIconButton(
+                                onClick = {
+                                    val intent = Intent(context, SettingsActivity::class.java)
+                                    context.startActivity(intent)
+                                },
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                                        alpha = 0.6f
+                                    ),
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            ) {
+                                Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+                            }
                         }
                     }
                 }
@@ -385,29 +421,34 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                             .fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .clickable { showLocationSheet = true }, // OUVRE LE PANNEAU
-                        ) {
-                            Icon(
-                                Icons.Default.LocationOn,
-                                contentDescription = "Lieu actuel",
-                                tint = Color.White
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            // Affiche le nom du lieu actuellement sélectionné
-                            Text(
-                                text = when (val loc = selectedLocation) {
-                                    is LocationIdentifier.CurrentUserLocation -> stringResource(R.string.current_location)
-                                    is LocationIdentifier.Saved -> loc.location.name
-                                },
-                                style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
-                            )
-                            Icon(
-                                Icons.Default.ArrowDropDown,
-                                contentDescription = "Changer de lieu",
-                                tint = Color.White
-                            )
+                        if (isLauncherActivity) {
+                            Row(
+                                modifier = Modifier
+                                    .clickable { showLocationSheet = true }, // OUVRE LE PANNEAU
+                            ) {
+                                Icon(
+                                    Icons.Default.LocationOn,
+                                    contentDescription = "Lieu actuel",
+                                    tint = Color.White
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                // Affiche le nom du lieu actuellement sélectionné
+                                Text(
+                                    text = when (val loc = selectedLocation) {
+                                        is LocationIdentifier.CurrentUserLocation -> stringResource(
+                                            R.string.current_location
+                                        )
+
+                                        is LocationIdentifier.Saved -> loc.location.name
+                                    },
+                                    style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Changer de lieu",
+                                    tint = Color.White
+                                )
+                            }
                         }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -469,14 +510,27 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                             })
                     ) {
                         Column(
-                            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 0.dp)
+                            modifier = Modifier.padding(start = 8.dp, top = 0.dp)
                         ) {
-                            Text(
-                                text = stringResource(R.string.hourly_forecast),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(start = 12.dp, top = 20.dp)
-                            )
+                            Row (
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.hourly_forecast),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(start = 12.dp, top = 20.dp)
+                                )
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.ArrowForward,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .padding(end = 20.dp)
+                                )
+                            }
 
                             if ((hourlyForecast as WeatherDataState.SuccessHourly).data.isEmpty())
                                 return@BentoCard
@@ -637,6 +691,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                             .take(2)
 
                         var text: String
+                        if (futureEvents.isEmpty())
+                            return@item
+                        if (futureEvents.size < 2)
+                            return@item
+
                         if (futureEvents[0].type == stringResource(R.string.sunrise)) {
                             val duration = Duration.between(
                                 todayReading.sunset.toEventLocalDateTime(),
@@ -674,7 +733,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                     }
                 }
 
-                // Daily Graph
+                // Daily Boxes
                 item {
                     val dailyForecast by viewModel.dailyForecast.collectAsState()
                     BentoCard(
@@ -700,15 +759,33 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                         if ((dailyForecast as WeatherDataState.SuccessDaily).data.isEmpty())
                             return@BentoCard
 
+                        var selectedDayReading by remember { mutableStateOf(
+                            (dailyForecast as WeatherDataState.SuccessDaily).data[0]
+                        ) }
+                        var shouldExpand by remember { mutableStateOf(false) }
+
                         Column {
-                            Text(
-                                text = stringResource(R.string.daily_forecast),
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.padding(
-                                    start = 20.dp,
-                                    top = 20.dp
+                            Row (
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.daily_forecast),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.padding(
+                                        start = 20.dp,
+                                        top = 20.dp
+                                    )
                                 )
-                            )
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.ArrowForward,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .padding(end = 20.dp)
+                                )
+                            }
 
                             LazyRow(
                                 modifier = Modifier
@@ -721,7 +798,133 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel) {
                                     (dailyForecast as? WeatherDataState.SuccessDaily)?.data
                                         ?: emptyList()
                                 ) { dayReading ->
-                                    DailyWeatherBox(dayReading, viewModel)
+                                    DailyWeatherBox(dayReading, viewModel) {
+                                        shouldExpand =
+                                            if (dayReading == selectedDayReading) !shouldExpand else true
+                                        selectedDayReading = dayReading
+                                    }
+                                }
+                            }
+                            if (shouldExpand) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(true, onClick = {
+                                            // Create an Intent to launch DayGraphsActivity
+                                            val intent = Intent(
+                                                context,
+                                                DayGraphsActivity::class.java
+                                            ).apply {
+                                                putExtra(
+                                                    "START_DATE_TIME",
+                                                    selectedDayReading.date.atTime(0, 0)
+                                                )
+                                                putExtra(
+                                                    "SELECTED_LOCATION",
+                                                    viewModel.selectedLocation.value
+                                                )
+                                            }
+                                            // Start the activity
+                                            context.startActivity(intent)
+                                        })
+                                ) {
+                                    // get the hourly forecast for the selected day
+                                    val hourlyForecast by viewModel.getForecastForRange(
+                                            selectedDayReading.date.atTime(0, 0),
+                                            selectedDayReading.date.plusDays(1).atTime(0, 0)
+                                        ).collectAsState(
+                                            initial = WeatherDataState.Loading
+                                        )
+                                    Text(
+                                        text = selectedDayReading.date.format(DateTimeFormatter.ofPattern("EEEE dd MMM")),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    )
+                                    Row (
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (hourlyForecast is WeatherDataState.SuccessHourly) {
+                                            Box (
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .padding(end = 16.dp)
+                                            ) {
+                                                Log.w("DEBUG", "${(hourlyForecast as WeatherDataState.SuccessHourly).data.size}")
+                                                AdvancedGraph(
+                                                    hourlyForecast,
+                                                    viewModel.userSettings.collectAsState().value.roundToInt,
+                                                    GraphType.TEMP,
+                                                    Color(0xFFFFF176),
+                                                    contentWidth = 750.dp, contentHeight = 100.dp,
+                                                    compactHourFormat = true
+                                                )
+                                            }
+                                        }
+                                        Icon(
+                                            imageVector = getStateIconFromWord(weatherCodeToSimpleWord(selectedDayReading.wmo)),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(100.dp),
+                                            tint = Color.White
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row (
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Thermostat,
+                                                contentDescription = null,
+                                            )
+                                            Text(
+                                                text = "${selectedDayReading.maxTemperature}° / ${selectedDayReading.minTemperature}°",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Row {
+                                            Icon(
+                                                imageVector = Icons.Rounded.WaterDrop,
+                                                contentDescription = null,
+                                            )
+                                            Text(
+                                                text = "${selectedDayReading.precipitation} mm",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        if (selectedDayReading.max_uvIndex != null) {
+                                            Row {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.WbSunny,
+                                                    contentDescription = null,
+                                                )
+                                                Spacer(modifier = Modifier.width(1.dp))
+                                                Text(
+                                                    text = "${selectedDayReading.max_uvIndex}",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(modifier = Modifier.width(1.dp))
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Circle,
+                                                    contentDescription = null,
+                                                    tint = getUVColor(selectedDayReading.max_uvIndex!!)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

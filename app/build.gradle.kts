@@ -26,8 +26,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.0.0"
+        versionCode = 7
+        versionName = "2.0.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,7 +38,7 @@ android {
             // Le suffixe sera ajouté au nom de l'application (ex: Themeteo-Alpha)
             applicationIdSuffix = ".debug"
             // Le suffixe sera ajouté au nom de la version
-            versionNameSuffix = "-${getBuildDate()} Alpha"
+            versionNameSuffix = "-${getBuildDate()}"
             isDebuggable = true // Cette ligne est implicite pour le debug, mais la laisser est clair
         }
 
@@ -46,7 +46,7 @@ android {
         release {
             // Ajout du suffixe pour la version de release
             // Note : Pas de suffixe pour l'applicationID en release
-            versionNameSuffix = "-${getBuildDate()} Beta"
+            versionNameSuffix = "-${getBuildDate()}"
 
             isMinifyEnabled = true
             isShrinkResources = true
@@ -155,6 +155,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.text.google.fonts)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.compose.material.core)
+    implementation(libs.androidx.compose.foundation)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 

@@ -1,5 +1,7 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
+import android.annotation.SuppressLint
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fr.matthstudio.themeteo.GeocodingResult
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import java.time.LocalDate
@@ -75,7 +78,7 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
         userSettings,
         refreshCounter
     ) { _, _, _ ->
-        // On combine les deux. Peu importe la valeur reçue,
+        // On combine les trois. Peu importe la valeur reçue,
         // flatMapLatest relancera le flux ci-dessous.
     }.flatMapLatest {
         weatherCache.get(LocalDateTime.now(), 24)
@@ -95,6 +98,24 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
         weatherModelPredictionTime[settings.model]?.toLong() ?: 3
     }.flatMapLatest { duration ->
         weatherCache.get(LocalDate.now(), duration)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        WeatherDataState.Loading
+    )
+
+    /**
+     * Flow de WeatherDataState pour les donnnées actuelles à toutes les villes enregistrées.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentWeather: StateFlow<WeatherDataState> = combine(
+        savedLocations,
+        refreshCounter
+    ) { _, _ ->
+        // On combine les deux. Peu importe la valeur reçue,
+        // flatMapLatest relancera le flux ci-dessous.
+    }.flatMapLatest {
+        weatherCache.getCurrentWeatherForSavedLocations()
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -169,7 +190,6 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
         weatherCache.addLocation(location)
     }
 
-    // Dans WeatherViewModel.kt
     fun addLocationFromMap(coords: GpsCoordinates, name: String) {
         val newLocation = SavedLocation(
             name = name,
@@ -180,6 +200,29 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
         addLocation(newLocation)
         // Optionnel : Sélectionner immédiatement cette nouvelle position
         selectLocation(LocationIdentifier.Saved(newLocation))
+    }
+
+    /**
+     * Retourne un Flow de WeatherDataState pour une période précise.
+     * Combine la localisation, les paramètres et le compteur de rafraîchissement
+     * pour garantir que les données sont à jour.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getForecastForRange(startDateTime: LocalDateTime, endDateTime: LocalDateTime): Flow<WeatherDataState> {
+        return combine(
+            selectedLocation,
+            userSettings,
+            refreshCounter
+        ) { _, _, _ ->
+        }.flatMapLatest {
+            // On calcule le nombre d'heures entre les deux dates pour l'API du cache
+            val durationInHours = java.time.Duration.between(startDateTime, endDateTime).toHours()
+            weatherCache.get(startDateTime, durationInHours.toInt())
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            WeatherDataState.Loading
+        )
     }
 
     /**
