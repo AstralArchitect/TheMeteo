@@ -15,8 +15,8 @@
     <string name="wind_speed">Vitesse du vent</string>
     <string name="pressure">Pression</string>
     <string name="cloud_cover">Couverture nuageuse</string>
-    <string name="forecast_for_the">"Prévision pour le "</string>
-    <string name="next_24h_forecast">"Prévisions pour les prochaines 24 heures "</string>
+    <string name="forecast_for_the">Prévision pour le %s</string>
+    <string name="next_24h_forecast">Prévisions pour les prochaines 24 heures</string>
     <string name="mid_clouds">Nuages moyens :</string>
     <string name="high_clouds">Nuages hauts :</string>
     <string name="close">Fermer</string>
@@ -28,7 +28,7 @@
     <string name="low_clouds">Nuages bas :</string>
     <string name="total">Totale :</string>
     <string name="sky_details">Détails du ciel</string>
-    <string name="search_city">Rechercher une addresse…</string>
+    <string name="search_city">Rechercher une adresse…</string>
     <string name="add_city">Ajouter une ville</string>
     <string name="next_days_temperature_forecast">Prévisions pour les %1$d prochains jours</string>
     <string name="unknown_error">Erreur inconnue</string>
@@ -41,7 +41,6 @@
     <string name="precipitation_unit">Précip. mm/h</string>
     <string name="daily_forecast">Prévision par Jour</string>
     <string name="_15_minutely_precipitation_forecast">Prévision de Précipitation</string>
-    <string name="day_duration">Durée du jour %s</string>
     <string name="sunrise">Lever</string>
     <string name="sunset">Coucher</string>
     <string name="sun">Soleil</string>
@@ -61,14 +60,14 @@
     <string name="uv_moderate">Modéré</string>
     <string name="uv_high">Fort</string>
     <string name="uv_very_high">Très Fort</string>
-    <string name="uv_extreme">Extrème</string>
+    <string name="uv_extreme">Extrême</string>
     <string name="uv_index">Indice UV</string>
     <string name="visibility">Visibilité</string>
     <string name="opacity_graph">Opacité</string>
     <string name="details">Détails</string>
     <string name="show_more">Voir plus</string>
     <string name="current_location">Position Actuelle</string>
-    <string name="open_satellite_map">Ouvrir la carte satellitte</string>
+    <string name="open_satellite_map">Ouvrir la carte satellite</string>
     <string name="weather_details">Détails Météo</string>
     <string name="manage_locations">Gérer les lieux</string>
     <string name="pick_on_map">Choisir sur la carte</string>
@@ -78,6 +77,7 @@
     <string name="light_snow">Neige légère</string>
     <string name="mixed_rain_snow">Pluie et Neige mêlées</string>
     <string name="dust_storm">Tempête de poussière</string>
+    <string name="haze">Brume</string>
     <string name="foggy">Brouillard</string>
     <string name="cloudy">Nuageux</string>
     <string name="sunny_cloudy">Partiellement Nuageux</string>
@@ -87,6 +87,76 @@
     <string name="currently">Maintenant</string>
     <string name="goes_to_current_weather_page">Page Météo Actuelle</string>
     <string name="app_focus">Affichage par défaut</string>
-    <string name="curent_weather">Situation Actuelle</string>
-    <string name="daily_forecast_setting">Prévision Journalière</string>
+    <string name="curent_weather">Actuel</string>
+    <string name="daily_forecast_setting">Journalier</string>
+    <string name="no_current_risks">Aucun risque actuellement</string>
+    <string name="herbes">Herbes</string>
+    <string name="trees">Arbres</string>
+    <string name="weed">Herbacées</string>
+
+    <!-- Formatted Strings -->
+    <string name="vigilance_level_time_format">Niveau %1$d (%2$s) de %3$s à %4$s. Cliquez pour voir le détail.</string>
+    <string name="vigilance_level_ongoing_format">Niveau %1$d en cours ou prévu. Cliquez pour voir le détail.</string>
+    <string name="vigilance_dept_format">Alertes Vigilance (Dépt. %s)</string>
+    <string name="uv_index_format">Indice UV : %d</string>
+    <string name="pollen_index_format">Indice : %d</string>
+    <string name="major_pollutant_format">Polluant majeur : %s</string>
+
+    <!-- Weather Sentence Building -->
+    <string name="sky_sunny">Ciel ensoleillé</string>
+    <string name="sky_clear">Ciel clair</string>
+    <string name="sky_veiled">Ciel voilé</string>
+    <string name="sky_scattered">Nuages épars</string>
+    <string name="sky_partly_cloudy">Ciel partiellement couvert</string>
+    <string name="sky_overcast">Ciel couvert</string>
+    
+    <string name="mod_with_veil">avec voile</string>
+    <string name="mod_with_veiled_sky">avec ciel voilé</string>
+    <string name="mod_with_light_snow">avec neige légère</string>
+    <string name="mod_with_moderate_snow">avec neige modérée</string>
+    <string name="mod_with_heavy_snow">avec neige forte</string>
+    <string name="mod_with_light_rain">avec pluie légère</string>
+    <string name="mod_with_moderate_rain">avec pluie modérée</string>
+    <string name="mod_with_heavy_rain">avec pluie forte</string>
+    <string name="mod_with_torrential_rain">avec pluie torrentielle</string>
+    <string name="mod_with_precipitation">avec précipitation</string>
+
+    <string name="no_data_available_for_day">Aucune donnée disponible pour ce jour</string>
+    <string name="snowfall_cm_h">Chute de Neige (cm/h)</string>
+    <string name="snow_depth_cm">Épaisseur de Neige (cm)</string>
+    <string name="air_quality_polen_title">Qualité de l\'Air et Pollen</string>
+    <string name="unknown">Inconnu</string>
+    <string name="no_pollen_data">Aucune données de pollen</string>
+    <string name="current_polluants">Polluants Actuels</string>
+    <string name="no_major_polluant">Pas de Polluant Majeur</string>
+    <string name="health_advice">Recommandation de Santé</string>
+    <string name="no_specific_recommendation">Pas de recommandation particulière</string>
+    <string name="pollen_for_the_next_days">Pollen pour les prochains jours</string>
+    <string name="pollen_data_unavailable">Données de pollen indisponibles</string>
+    <string name="out_of_season">Hors Saison</string>
+    <string name="low_risk_or_none">risque faible ou nul</string>
+    <string name="index_0">Indice: 0</string>
+    <string name="today_lower">aujourd\'hui</string>
+    <string name="tomorrow_lower">demain</string>
+    <string name="vigilance_alerts_dept_code">Vigilances (Dept. %1$s)</string>
+    <string name="official_website">Site Officiel</string>
+    <string name="custom_location">Position Personnalisée</string>
+    <string name="pick_this_location">Chosir ce lieu</string>
+    <string name="violent_wind">VENT VIOLENT</string>
+    <string name="rain_flood">PLUIE-INNONDATION</string>
+    <string name="thunderstorms_phenomenon">ORAGES</string>
+    <string name="floods">CRUES</string>
+    <string name="snow_ice">NEIGE-VERGLAS</string>
+    <string name="heatwave">CANICULE</string>
+    <string name="extreme_cold">GRAND FROID</string>
+    <string name="flooding">AVALANCHES</string>
+    <string name="waves_submersion">VAGUES-SUBMERSION</string>
+    <string name="unknown_phenomenon">INCONNU</string>
+    <string name="weather_model_title">Modèle Météo</string>
+    <string name="round_values_title">Arrondir les valeurs</string>
+    <string name="round_values_desc">Arrondir les valeurs dans les graphiques, les graphiques de précipitation ne peuvent pas êtres arrondis</string>
+    <string name="animated_icons_title">Icônes animées</string>
+    <string name="animated_icons_desc">Animer les icônes météo, désactivé lorsque l\'économiseur de batterie est activé</string>
+    <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
+    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du \"Meilleur Modèle\"</string>
 </resources>

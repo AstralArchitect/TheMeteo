@@ -21,9 +21,25 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val ROUND_TO_INT = booleanPreferencesKey("round_to_int")
         val DEFAULT_LOCATION = stringPreferencesKey("default_location")
         val DEFAULT_SCREEN = intPreferencesKey("default_screen")
+        val ENABLE_MODEL_FALLBACK = booleanPreferencesKey("enable_model_fallback")
+        val ENABLE_ANIMATED_ICONS = booleanPreferencesKey("enable_animated_icons")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour l'activation des icônes animées.
+     */
+    val enableAnimatedIcons: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENABLE_ANIMATED_ICONS] ?: true
+    }
+
+    /**
+     * Flow pour l'activation du fallback de modèle (complétion des données).
+     */
+    val enableModelFallback: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENABLE_MODEL_FALLBACK] ?: true
+    }
 
     /**
      * Flow pour le modèle météo sélectionné.
@@ -87,6 +103,24 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit {
             preferences ->
             preferences[PreferencesKeys.DEFAULT_LOCATION] = Json.encodeToString(newLocation)
+        }
+    }
+
+    /**
+     * Met à jour le paramètre d'activation du fallback de modèle.
+     */
+    suspend fun updateEnableModelFallback(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENABLE_MODEL_FALLBACK] = enabled
+        }
+    }
+
+    /**
+     * Met à jour le paramètre d'activation des icônes animées.
+     */
+    suspend fun updateEnableAnimatedIcons(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENABLE_ANIMATED_ICONS] = enabled
         }
     }
 

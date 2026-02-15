@@ -26,8 +26,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "2.0.7"
+        versionCode = 11
+        versionName = "2.0.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -86,12 +86,6 @@ android {
 }
 
 kotlin {
-    jvmToolchain {
-        languageVersion.set(JavaLanguageVersion.of(11))
-    }
-    // Or shorter:
-    jvmToolchain(11)
-    // For example:
     jvmToolchain(11)
 }
 

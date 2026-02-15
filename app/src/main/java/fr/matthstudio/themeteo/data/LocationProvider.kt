@@ -4,10 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Looper
 import com.google.android.gms.location.*
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /**
  * Une classe de données simple pour représenter une coordonnée GPS.
@@ -21,6 +24,23 @@ data class GpsCoordinates(val latitude: Double, val longitude: Double)
 class LocationProvider(context: Context) {
 
     private val fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
+
+    @SuppressLint("MissingPermission")
+    suspend fun getCurrentLocation(): GpsCoordinates? = suspendCancellableCoroutine { continuation ->
+        val cancellationTokenSource = CancellationTokenSource()
+        fusedLocationClient.getCurrentLocation(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            cancellationTokenSource.token
+        ).addOnSuccessListener { location ->
+            continuation.resume(location?.let { GpsCoordinates(it.latitude, it.longitude) })
+        }.addOnFailureListener {
+            continuation.resume(null)
+        }
+
+        continuation.invokeOnCancellation {
+            cancellationTokenSource.cancel()
+        }
+    }
 
     /**
      * Un Flow qui émet des mises à jour de localisation.
@@ -47,7 +67,15 @@ class LocationProvider(context: Context) {
         }
 
         // Démarrer les mises à jour de localisation
-        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+        } catch (e: SecurityException) {
+            close(e)
+        }
 
         // Ce bloc est appelé lorsque le Flow est annulé (le collecteur s'arrête)
         awaitClose {

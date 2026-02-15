@@ -119,12 +119,24 @@ fun WeatherApiResponse.getDeterministicHourlyData(variableName: String): List<An
     return try {
         dataElement.jsonArray.map { element ->
             if (element.jsonPrimitive.isString) element.jsonPrimitive.content
+            else if (element is JsonNull) Double.NaN
             else element.jsonPrimitive.double
         }
     } catch (_: Exception) {
         // Au cas où l'élément n'est pas un tableau (sécurité)
         null
     }
+}
+
+/**
+ * Cherche une variable parmi plusieurs noms possibles (utile quand les noms sont préfixés par le modèle).
+ */
+fun WeatherApiResponse.findDeterministicHourlyData(variableNames: List<String>): List<Any>? {
+    for (name in variableNames) {
+        val data = getDeterministicHourlyData(name)
+        if (data != null) return data
+    }
+    return null
 }
 
 /**
@@ -139,12 +151,24 @@ fun WeatherApiResponse.getDeterministicDailyData(variableName: String): List<Any
     return try {
         dataElement.jsonArray.map { element ->
             if (element.jsonPrimitive.isString) element.jsonPrimitive.content
+            else if (element is JsonNull) Double.NaN
             else element.jsonPrimitive.double
         }
     } catch (_: Exception) {
         // Au cas où l'élément n'est pas un tableau (sécurité)
         null
     }
+}
+
+/**
+ * Cherche une variable parmi plusieurs noms possibles (utile quand les noms sont préfixés par le modèle).
+ */
+fun WeatherApiResponse.findDeterministicDailyData(variableNames: List<String>): List<Any>? {
+    for (name in variableNames) {
+        val data = getDeterministicDailyData(name)
+        if (data != null) return data
+    }
+    return null
 }
 
 /**

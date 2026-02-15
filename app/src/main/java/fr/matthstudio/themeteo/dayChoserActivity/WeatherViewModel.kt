@@ -51,6 +51,8 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
      */
     val savedLocations: StateFlow<List<SavedLocation>> = weatherCache.savedLocations
 
+    val defaultLocation: LocationIdentifier = weatherCache.userSettings.value.defaultLocation
+
     /**
      * Expose la position GPS actuelle directement depuis le WeatherCache.
      * La valeur sera `null` si la localisation n'est pas activée ou pas encore disponible.
@@ -79,8 +81,9 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val forecast: StateFlow<WeatherDataState> = combine(
-        userSettings
-    ) { _ ->
+        userSettings,
+        selectedLocation
+    ) { _, _ ->
         // On combine les deux. Peu importe la valeur reçue,
         // flatMapLatest relancera le flux ci-dessous.
     }.flatMapLatest {
@@ -170,6 +173,13 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
         addLocation(newLocation)
         // Optionnel : Sélectionner immédiatement cette nouvelle position
         selectLocation(LocationIdentifier.Saved(newLocation))
+    }
+
+    /**
+     * Méthode pour définir la position par défaut
+     */
+    fun setDefaultLocation(location: LocationIdentifier) {
+        weatherCache.setDefaultLocation(location)
     }
 
     // --- 4. NETTOYAGE ---

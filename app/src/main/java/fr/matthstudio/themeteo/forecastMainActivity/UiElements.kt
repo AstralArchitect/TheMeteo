@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -85,6 +87,7 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.text.lowercase
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -100,6 +103,7 @@ enum class SimpleWeatherWord {
     RAINY1,       // Pluvieux
     DRIZZLY,      // Bruine
     DUST,         // Dust storm
+    HAZE,         // Brume
     FOGGY,        // Brouillard
     CLOUDY,       // Nuageux
     SUNNY_CLOUDY, // Partiellement nuageux
@@ -123,7 +127,7 @@ fun getModelSourceText(model: String?): String {
         "gem_seamless" -> "GEM"
         "gfs_graphcast025" -> "GFS GraphCast"
         "ukmo_seamless" -> "UK Met Office"
-        else -> "Open-Meteo" // Fallback générique
+        else -> "Open-Meteo"
     }
 }
 
@@ -132,9 +136,22 @@ fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
         0 -> SimpleWeatherWord.SUNNY
         1, 2 -> SimpleWeatherWord.SUNNY_CLOUDY
         3 -> SimpleWeatherWord.CLOUDY                 // Overcast
-        in 4..19 -> SimpleWeatherWord.CLOUDY    // Haze, smoke, dust, etc. treated as "cloudy"
-        in 20..29 -> SimpleWeatherWord.CLOUDY   // Phenomena in the past hour
-        in 30..39 -> SimpleWeatherWord.CLOUDY   // Duststorms, sandstorms
+        4 -> SimpleWeatherWord.CLOUDY                 // Smoke
+        5 -> SimpleWeatherWord.HAZE                   // Haze
+        6, 7, 8, 9 -> SimpleWeatherWord.DUST          // Dust
+        in 10..12 -> SimpleWeatherWord.FOGGY          // Mist/Shallow fog
+        in 13..19 -> SimpleWeatherWord.CLOUDY         // Lightning, Squalls, etc.
+        20 -> SimpleWeatherWord.DRIZZLY               // Past hour: Drizzle/Snow grains
+        21 -> SimpleWeatherWord.RAINY1                // Past hour: Rain
+        22 -> SimpleWeatherWord.SNOWY1                // Past hour: Snow
+        23 -> SimpleWeatherWord.SNOWY_MIX             // Past hour: Rain and Snow
+        24 -> SimpleWeatherWord.DRIZZLY               // Past hour: Freezing rain
+        25 -> SimpleWeatherWord.RAINY2                // Past hour: Showers
+        26 -> SimpleWeatherWord.SNOWY2                // Past hour: Snow showers
+        27 -> SimpleWeatherWord.HAIL                  // Past hour: Hail
+        28 -> SimpleWeatherWord.FOGGY                 // Past hour: Fog
+        29 -> SimpleWeatherWord.STORMY                // Past hour: Thunderstorm
+        in 30..39 -> SimpleWeatherWord.DUST           // Duststorms, sandstorms
         in 40..49 -> SimpleWeatherWord.FOGGY    // Fog
         in 50..59 -> SimpleWeatherWord.DRIZZLY  // Drizzle
         in 60..69 -> SimpleWeatherWord.RAINY1   // Rain
@@ -143,7 +160,7 @@ fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
         74, 75 -> SimpleWeatherWord.SNOWY3            // Heavy Snow
         in 76..79 -> SimpleWeatherWord.SNOWY_MIX// Snow Grains
         in 80..82 -> SimpleWeatherWord.RAINY2   // Rain showers
-        83, 84 -> SimpleWeatherWord.SNOWY_MIX         // Rain and snow mixed showers -> classified as Snowy
+        83, 84 -> SimpleWeatherWord.SNOWY_MIX         // Rain and snow mixed showers
         85, 86 -> SimpleWeatherWord.SNOWY3            // Snow showers
         in 87..90 -> SimpleWeatherWord.HAIL     // Hail showers
         in 91..94 -> SimpleWeatherWord.STORMY   // Rain/Drizzle with Thunderstorm (but we will let STORMY override)
@@ -155,69 +172,78 @@ fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
 @Composable
 fun getSimpleWeather(value: AllHourlyVarsReading): SimpleWeather {
     var simpleWeather: SimpleWeather by remember {
-        mutableStateOf(SimpleWeather("Ciel clair", SimpleWeatherWord.SUNNY))
+        mutableStateOf(SimpleWeather("", SimpleWeatherWord.SUNNY))
     }
 
-    LaunchedEffect(value) {
+    val skySunny = stringResource(R.string.sky_sunny)
+    val skyClear = stringResource(R.string.sky_clear)
+    val skyVeiled = stringResource(R.string.sky_veiled)
+    val skyScattered = stringResource(R.string.sky_scattered)
+    val skyPartlyCloudy = stringResource(R.string.sky_partly_cloudy)
+    val skyOvercast = stringResource(R.string.sky_overcast)
+    
+    val modWithVeil = stringResource(R.string.mod_with_veil)
+    val modWithVeiledSky = stringResource(R.string.mod_with_veiled_sky)
+    val modWithLightSnow = stringResource(R.string.mod_with_light_snow)
+    val modWithModerateSnow = stringResource(R.string.mod_with_moderate_snow)
+    val modWithHeavySnow = stringResource(R.string.mod_with_heavy_snow)
+    val modWithLightRain = stringResource(R.string.mod_with_light_rain)
+    val modWithModerateRain = stringResource(R.string.mod_with_moderate_rain)
+    val modWithHeavyRain = stringResource(R.string.mod_with_heavy_rain)
+    val modWithTorrentialRain = stringResource(R.string.mod_with_torrential_rain)
+    val modWithPrecipitation = stringResource(R.string.mod_with_precipitation)
+    
+    val sentenceFormat = stringResource(R.string.weather_sentence_format)
 
+    LaunchedEffect(value) {
         val skyState = value.skyInfo
         val precipitation = value.precipitationData.precipitation
         val rain = value.precipitationData.rain
         val snow = value.precipitationData.snowfall
         val wCode = value.wmo
 
-        // Créer une NOUVELLE instance à chaque calcul.
-        val newWeather = SimpleWeather("Initial", SimpleWeatherWord.SUNNY) // Les valeurs sont temporaires
-
-        // Set the weather word
+        val newWeather = SimpleWeather("", SimpleWeatherWord.SUNNY)
         newWeather.word = weatherCodeToSimpleWord(wCode)
 
-        // Set the weather sentence
-        // 1. Tester d'abord l'opactité
+        var skySentence = ""
+        var modifier: String? = null
+
+        // 1. État du ciel
         if (skyState.opacity in 1..30) {
-            newWeather.sentence = "Ciel ensoleillé"
-            newWeather.image
-            if (skyState.cloudcoverHigh > 50)
-                newWeather.sentence += " avec voile"
-        }
-        // 2. tester par couverture nuageuse
-        else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 25) {
-            if (skyState.cloudcoverHigh > 50)
-                newWeather.sentence = "Ciel voilé"
-            else {
-                newWeather.sentence = "Ciel clair"
-            }
+            skySentence = skySunny
+            if (skyState.cloudcoverHigh > 50) modifier = modWithVeil
+        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 25) {
+            skySentence = if (skyState.cloudcoverHigh > 50) skyVeiled else skyClear
         } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 50) {
-            newWeather.sentence = "Nuages épars"
-            if (skyState.cloudcoverHigh > 50)
-                newWeather.sentence += " avec ciel voilé"
+            skySentence = skyScattered
+            if (skyState.cloudcoverHigh > 50) modifier = modWithVeiledSky
         } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 75) {
-            newWeather.sentence = "Ciel partiellement couvert"
-            if (skyState.cloudcoverHigh > 50)
-                newWeather.sentence += " avec voile"
+            skySentence = skyPartlyCloudy
+            if (skyState.cloudcoverHigh > 50) modifier = modWithVeil
         } else {
-            newWeather.sentence = "Ciel couvert"
-        }
-        // 3. Ajouter la pluie / neige
-        if (precipitation >= 0.1f) {
-            // prioriser la neige
-            if (snow >= 0.1f)
-            {
-                newWeather.sentence += if (snow < 0.5) " avec neige légère"
-                else if (snow < 1.0) " avec neige modérée"
-                else " avec neige forte"
-            } else if (rain >= 0.1f) {
-                newWeather.sentence += if (rain < 0.5) " avec pluie légère"
-                else if (rain < 3.0) " avec pluie modérée"
-                else if (rain < 10.0) " avec pluie forte"
-                else " avec pluie torrentielle"
-            }
-            else newWeather.sentence += " avec precipitation"
+            skySentence = skyOvercast
         }
 
-        // Remplacer l'état.
-        // `simpleWeather` passe de `null` (ou une ancienne instance) à `newWeather`.
-        // C'est CETTE ligne qui dit à Compose: "L'état a changé, redessine ce qui en dépend !"
+        // 2. Précipitations (Priorité à la neige)
+        var precipModifier: String? = null
+        if (precipitation >= 0.1f) {
+            precipModifier = if (snow >= 0.1f) {
+                if (snow < 0.5) modWithLightSnow else if (snow < 1.0) modWithModerateSnow else modWithHeavySnow
+            } else if (rain >= 0.1f) {
+                if (rain < 0.5) modWithLightRain else if (rain < 3.0) modWithModerateRain else if (rain < 10.0) modWithHeavyRain else modWithTorrentialRain
+            } else modWithPrecipitation
+        }
+
+        // Assemblage final
+        var finalSentence = skySentence
+        if (modifier != null) {
+            finalSentence = String.format(sentenceFormat, finalSentence, modifier)
+        }
+        if (precipModifier != null) {
+            finalSentence = String.format(sentenceFormat, finalSentence, precipModifier)
+        }
+        
+        newWeather.sentence = finalSentence
         simpleWeather = newWeather
     }
 
@@ -241,6 +267,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
     val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
     val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val foggyIconPath: String = iconWeatherFolder + "fog.svg"
+    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
     val dustIconPath: String = iconWeatherFolder + "dust.svg"
     val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
     val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
@@ -285,6 +312,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                     SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyDayIconPath
                     SimpleWeatherWord.CLOUDY -> cloudyIconPath
                     SimpleWeatherWord.FOGGY -> foggyIconPath
+                    SimpleWeatherWord.HAZE -> hazeIconPath
                     SimpleWeatherWord.DUST -> dustIconPath
                     SimpleWeatherWord.DRIZZLY -> drizzleIconPath
                     SimpleWeatherWord.RAINY1 -> rainy1IconPath
@@ -382,8 +410,10 @@ fun LocationManagementSheet(
     savedLocations: List<SavedLocation>,
     selectedLocation: LocationIdentifier,
     currentWeathers: WeatherDataState,
+    defaultLocation: LocationIdentifier,
     onSelectLocation: (LocationIdentifier) -> Unit,
     onRemoveLocation: (SavedLocation) -> Unit,
+    onSetDefaultLocation: (LocationIdentifier) -> Unit,
     onAddLocationClick: () -> Unit,
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState()
@@ -405,26 +435,32 @@ fun LocationManagementSheet(
                     LocationRow(
                         name = stringResource(R.string.current_location),
                         isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
+                        isDefault = defaultLocation is LocationIdentifier.CurrentUserLocation,
                         onClick = {
                             onSelectLocation(LocationIdentifier.CurrentUserLocation)
                             onDismiss()
                         },
-                        onDelete = null // On ne peut pas supprimer la position actuelle
+                        onDelete = null, // On ne peut pas supprimer la position actuelle
+                        onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.CurrentUserLocation) }
                     )
                 }
 
                 // Liste des lieux sauvegardés
                 items(savedLocations) { location ->
+                    // On vérifie si defaultLocation est un type 'Saved' et si sa localisation interne est la même
+                    val isDefault = (defaultLocation as? LocationIdentifier.Saved)?.location == location
                     val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
                     LocationRow(
                         name = location.name,
                         isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
                         currentWeatherReading = currentWeather,
+                        isDefault = isDefault,
                         onClick = {
                             onSelectLocation(LocationIdentifier.Saved(location))
                             onDismiss()
                         },
-                        onDelete = { onRemoveLocation(location) }
+                        onDelete = { onRemoveLocation(location) },
+                        onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) }
                     )
                 }
             }
@@ -449,7 +485,9 @@ fun LocationManagementSheet(
 fun LocationRow(
     name: String,
     isSelected: Boolean,
+    isDefault: Boolean,
     currentWeatherReading: CurrentWeatherReading? = null,
+    onSetAsDefault: () -> Unit,
     onClick: () -> Unit,
     onDelete: (() -> Unit)? // Nullable car la position actuelle n'a pas de bouton de suppression
 ) {
@@ -475,7 +513,7 @@ fun LocationRow(
                 color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
                 fontWeight = if (isSelected) FontWeight.Bold else null
             )
-            Row {
+            Row (verticalAlignment = Alignment.CenterVertically) {
                 if (currentWeatherReading != null) {
                     Icon(
                         imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)),
@@ -488,6 +526,15 @@ fun LocationRow(
                         fontWeight = if (isSelected) FontWeight.Bold else null
                     )
                 }
+                Icon (
+                    imageVector = if (isDefault) Icons.Default.Star else Icons.Default.StarOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable(
+                        enabled = true,
+                        onClick = onSetAsDefault
+                    )
+                )
                 if (onDelete != null) {
                     IconButton(onClick = onDelete) {
                         Icon(
@@ -629,15 +676,15 @@ fun MapPickerScreen(
                 val cityName = try {
                     val geocoder = Geocoder(context, Locale.getDefault())
                     val addresses = geocoder.getFromLocation(target.latitude, target.longitude, 1)
-                    addresses?.firstOrNull()?.locality ?: "Position personnalisée"
+                    addresses?.firstOrNull()?.locality ?: context.getString(R.string.custom_location)
                 } catch (e: Exception) {
-                    "Position personnalisée"
+                    context.getString(R.string.custom_location)
                 }
 
                 onLocationSelected(coords, cityName)
             }
         ) {
-            Text("Choisir ce lieu")
+            Text(stringResource(R.string.pick_this_location))
         }
     }
 }
@@ -657,6 +704,13 @@ fun LocationPermissionHandler(
     if (!locationPermissionState.allPermissionsGranted) {
         LaunchedEffect(Unit) {
             locationPermissionState.launchMultiplePermissionRequest()
+        }
+    }
+
+    // Bug fix: Trigger refresh when permissions are granted to immediately fetch location
+    LaunchedEffect(locationPermissionState.allPermissionsGranted) {
+        if (locationPermissionState.allPermissionsGranted) {
+            viewModel.refreshLocation()
         }
     }
 }
@@ -853,6 +907,7 @@ fun WeatherIconGraph(
     val sunnyCloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val foggyIconPath: String = iconWeatherFolder + "fog.svg"
+    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
     val dustIconPath: String = iconWeatherFolder + "dust.svg"
     val drizzleDayIconPath: String = iconWeatherFolder + "rainy-1-day.svg"
     val drizzleNightIconPath: String = iconWeatherFolder + "rainy-1-night.svg"
@@ -903,6 +958,7 @@ fun WeatherIconGraph(
                     SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay != null) if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath else sunnyCloudyIconPath
                     SimpleWeatherWord.CLOUDY -> cloudyIconPath
                     SimpleWeatherWord.FOGGY -> foggyIconPath
+                    SimpleWeatherWord.HAZE -> hazeIconPath
                     SimpleWeatherWord.DUST -> dustIconPath
                     SimpleWeatherWord.DRIZZLY -> if (isDay != null) if (isDay) drizzleDayIconPath else drizzleNightIconPath else drizzleIconPath
                     SimpleWeatherWord.RAINY1 -> if (isDay != null) if (isDay) rainy1DayIconPath else rainy1NightIconPath else rainy1IconPath
@@ -925,4 +981,21 @@ fun WeatherIconGraph(
             }
         }
     }
+}
+
+/**
+ * Mappe les identifiants numériques de phénomènes Météo-France vers leurs noms en français.
+ * Basé sur la nomenclature officielle de l'API Vigilance.
+ */
+fun mapPhenomenonIdToName(id: String): Int = when (id) {
+    "1" -> R.string.violent_wind
+    "2" -> R.string.rain_flood
+    "3" -> R.string.thunderstorms_phenomenon
+    "4" -> R.string.floods
+    "5" -> R.string.snow_ice
+    "6" -> R.string.heatwave
+    "7" -> R.string.extreme_cold
+    "8" -> R.string.flooding
+    "9" -> R.string.waves_submersion
+    else -> R.string.unknown_phenomenon
 }

@@ -66,7 +66,7 @@ fun SettingsScreen(cache: WeatherCache) {
                     IconButton(onClick = { activity?.finish() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Retour"
+                            contentDescription = "Back Arrow"
                         )
                     }
                 }
@@ -103,6 +103,28 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            ModelFallbackSetting(
+                isChecked = userSettings.enableModelFallback,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateEnableModelFallback(enabled)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            AnimatedIconsSetting(
+                isChecked = userSettings.enableAnimatedIcons,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateEnableAnimatedIcons(enabled)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text (
                 text = stringResource(R.string.app_focus),
                 style = MaterialTheme.typography.titleMedium,
@@ -111,8 +133,19 @@ fun SettingsScreen(cache: WeatherCache) {
                 isOn = userSettings.defaultScreen == DefaultScreen.FORECAST_MAIN,
                 onSettingChange = { isOn ->
                     scope.launch {
-                        // On met à jour via le repository contenu dans le cache
+                        // 1. Mettre à jour le paramètre
                         cache.userSettingsRepository.updateDefaultActivity(if (isOn) DefaultScreen.FORECAST_MAIN else DefaultScreen.DAY_CHOSER)
+                        
+                        // 2. Attendre 1 seconde
+                        kotlinx.coroutines.delay(1000)
+                        
+                        // 3. Relancer l'application
+                        val packageManager = activity?.packageManager
+                        val intent = packageManager?.getLaunchIntentForPackage(activity.packageName)
+                        val componentName = intent?.component
+                        val restartIntent = android.content.Intent.makeRestartActivityTask(componentName)
+                        activity?.startActivity(restartIntent)
+                        Runtime.getRuntime().exit(0)
                     }
                 }
             )
@@ -120,17 +153,17 @@ fun SettingsScreen(cache: WeatherCache) {
             Spacer(modifier = Modifier.height(24.dp))
 
             Text (
-                text = "Version name: ${BuildConfig.VERSION_NAME}",
+                text = "Version Name: ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
             )
             Text (
-                text = "Version code: ${BuildConfig.VERSION_CODE}",
+                text = "Version Code: ${BuildConfig.VERSION_CODE}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
             )
             Text (
-                text = "Build type: ${BuildConfig.BUILD_TYPE}",
+                text = "Build Type: ${BuildConfig.BUILD_TYPE}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -145,20 +178,20 @@ fun ModelSelectionSetting(
     onModelSelected: (String) -> Unit
 ) {
     val models = listOf(
-        "best_match" to "Meilleur Modèle (Défaut)",
-        "ecmwf_ifs" to "ECMWF IFS HRES 9km",
-        "ecmwf_aifs025_single" to "ECMWF AIFS 0.25° Single",
-        "meteofrance_seamless" to "Météo France Seamless",
-        "gfs_seamless" to "NCEP GFS Seamless",
-        "icon_seamless" to "DWD ICON Seamless",
-        "gem_seamless" to "GEM Seamless",
-        "ukmo_seamless" to "UK Met Office Seamless",
+        "best_match" to "Open Meteo",
+        "ecmwf_ifs" to "ECMWF IFS",
+        "ecmwf_aifs025_single" to "ECMWF AIFS",
+        "meteofrance_seamless" to "Météo France",
+        "gfs_seamless" to "NCEP GFS",
+        "icon_seamless" to "DWD ICON",
+        "gem_seamless" to "GEM",
+        "ukmo_seamless" to "UK Met Office",
     )
 
     var expanded by remember { mutableStateOf(false) }
 
     Column {
-        Text("Modèle Météo", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.weather_model_title), style = MaterialTheme.typography.titleMedium)
         Text(
             stringResource(R.string.chose_model),
             style = MaterialTheme.typography.bodySmall,
@@ -173,7 +206,7 @@ fun ModelSelectionSetting(
                 value = models.firstOrNull { it.first == currentModel }?.second ?: currentModel,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Modèle sélectionné") },
+                label = { Text("Selected Model") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier
                     .menuAnchor(MenuAnchorType.PrimaryEditable, true)
@@ -211,9 +244,9 @@ fun RoundTemperatureSetting(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("Arrondir les valeurs", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.round_values_title), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Affiche les valeurs en nombres entiers dans les graphiques.",
+                stringResource(R.string.round_values_desc),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -302,6 +335,62 @@ fun SegmentItem(
             color = textColor,
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun AnimatedIconsSetting(
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.animated_icons_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.animated_icons_desc),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+fun ModelFallbackSetting(
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.fill_missing_vars_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.fill_missing_vars_desc),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange
         )
     }
 }

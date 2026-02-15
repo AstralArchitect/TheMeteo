@@ -122,8 +122,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
     ) {
         Text(
             text = if (startDateTime.hour == 0)
-                stringResource(R.string.forecast_for_the) +
-                        "${startDateTime.format(DateTimeFormatter.ofPattern("dd MMMM yyyy"))}"
+                stringResource(R.string.forecast_for_the, startDateTime.format(DateTimeFormatter.ofPattern("dd MMMM yyyy")))
             else
                 stringResource(R.string.next_24h_forecast),
             style = MaterialTheme.typography.headlineSmall,
@@ -218,7 +217,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                 }
                 if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowfall } != 0.0)
                 {
-                    Text("Snowfall (cm/h)")
+                    Text(stringResource(R.string.snowfall_cm_h))
                     GenericGraph(
                         viewModel,
                         GraphType.SNOWFALL,
@@ -229,7 +228,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                 }
                 if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.snowDepth != null) {
                     if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowDepth!! } != 0) {
-                        Text("Snow depth (cm)")
+                        Text(stringResource(R.string.snow_depth_cm))
                         GenericGraph(
                             viewModel,
                             GraphType.SNOW_DEPTH,
@@ -303,7 +302,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                 }
             } else {
                 // Message si aucune donnée n'est disponible après le chargement
-                Text("Données non disponibles pour ce jour.")
+                Text(stringResource(R.string.no_data_available_for_day))
             }
         }
     }
@@ -715,6 +714,7 @@ fun WeatherIconGraph(
     val sunnyCloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val foggyIconPath: String = iconWeatherFolder + "fog.svg"
+    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
     val dustIconPath: String = iconWeatherFolder + "dust.svg"
     val drizzleDayIconPath: String = iconWeatherFolder + "rainy-1-day.svg"
     val drizzleNightIconPath: String = iconWeatherFolder + "rainy-1-night.svg"
@@ -765,6 +765,7 @@ fun WeatherIconGraph(
                     SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay != null) if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath else sunnyCloudyIconPath
                     SimpleWeatherWord.CLOUDY -> cloudyIconPath
                     SimpleWeatherWord.FOGGY -> foggyIconPath
+                    SimpleWeatherWord.HAZE -> hazeIconPath
                     SimpleWeatherWord.DUST -> dustIconPath
                     SimpleWeatherWord.DRIZZLY -> if (isDay != null) if (isDay) drizzleDayIconPath else drizzleNightIconPath else drizzleIconPath
                     SimpleWeatherWord.RAINY1 -> if (isDay != null) if (isDay) rainy1DayIconPath else rainy1NightIconPath else rainy1IconPath

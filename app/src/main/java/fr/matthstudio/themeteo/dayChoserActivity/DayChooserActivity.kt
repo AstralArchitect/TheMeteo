@@ -57,7 +57,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import android.view.ViewGroup
+import android.webkit.WebView
 import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
@@ -77,6 +80,80 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.roundToInt
+
+fun getWeatherIconPath(word: SimpleWeatherWord): String {
+    val folder = "file:///android_asset/icons/weather/"
+    return folder + when (word) {
+        SimpleWeatherWord.SUNNY -> "clear-day.svg"
+        SimpleWeatherWord.SUNNY_CLOUDY -> "cloudy-1-day.svg"
+        SimpleWeatherWord.CLOUDY -> "cloudy.svg"
+        SimpleWeatherWord.FOGGY -> "fog.svg"
+        SimpleWeatherWord.HAZE -> "haze.svg"
+        SimpleWeatherWord.DUST -> "dust.svg"
+        SimpleWeatherWord.DRIZZLY -> "rainy-1.svg"
+        SimpleWeatherWord.RAINY1 -> "rainy-2.svg"
+        SimpleWeatherWord.RAINY2 -> "rainy-3.svg"
+        SimpleWeatherWord.HAIL -> "hail.svg"
+        SimpleWeatherWord.SNOWY1 -> "snowy-1.svg"
+        SimpleWeatherWord.SNOWY2 -> "snowy-2.svg"
+        SimpleWeatherWord.SNOWY3 -> "snowy-3.svg"
+        SimpleWeatherWord.SNOWY_MIX -> "rain-and-snow-mix.svg"
+        SimpleWeatherWord.STORMY -> "thunderstorms.svg"
+    }
+}
+
+@Composable
+fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                settings.javaScriptEnabled = true
+                setBackgroundColor(0)
+                isVerticalScrollBarEnabled = false
+                isHorizontalScrollBarEnabled = false
+                settings.loadWithOverviewMode = false
+                settings.useWideViewPort = false
+            }
+        },
+        modifier = modifier,
+        update = { webView ->
+            val html = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                    <style>
+                        html, body { 
+                            margin: 0; 
+                            padding: 0; 
+                            width: 100%; 
+                            height: 100%; 
+                            overflow: hidden; 
+                            background: transparent; 
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        img { 
+                            width: 100%; 
+                            height: 100%; 
+                            object-fit: contain; 
+                        }
+                    </style>
+                </head>
+                <body>
+                    <img src="$iconPath">
+                </body>
+                </html>
+            """.trimIndent()
+            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+        }
+    )
+}
 
 val weatherModelPredictionTime = mapOf(
     "best_match" to 15,
@@ -141,13 +218,16 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         val savedLocations by weatherViewModel.savedLocations.collectAsState()
         val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
         val currentWeathers by weatherViewModel.currentWeather.collectAsState()
+        val defaultLocation = weatherViewModel.defaultLocation
 
         LocationManagementSheet(
             savedLocations = savedLocations,
             selectedLocation = selectedLocation,
             currentWeathers = currentWeathers,
+            defaultLocation = defaultLocation,
             onSelectLocation = { weatherViewModel.selectLocation(it) },
             onRemoveLocation = { weatherViewModel.removeLocation(it) },
+            onSetDefaultLocation = { weatherViewModel.setDefaultLocation(it) },
             onDismiss = { showLocationSheet = false },
             onAddLocationClick = {
                 showLocationSheet = false // Ferme le premier panneau
@@ -228,7 +308,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                 ) {
                     Icon(
                         Icons.Default.LocationOn,
-                        contentDescription = "Lieu actuel",
+                        contentDescription = "Current location icon",
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(Modifier.width(8.dp))
@@ -242,7 +322,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                     )
                     Icon(
                         Icons.Default.ArrowDropDown,
-                        contentDescription = "Changer de lieu",
+                        contentDescription = "Change location icon",
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -260,7 +340,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
             if (dailyForecast == WeatherDataState.Loading) {
                 CircularProgressIndicator(modifier = Modifier.padding(16.dp))
             } else if (dailyForecast is WeatherDataState.Error || (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.isEmpty() == true) {
-                Text("No daily forecast available.", modifier = Modifier.padding(16.dp))
+                Text("Données non disponibles", modifier = Modifier.padding(16.dp))
             } else {
                 val data = (dailyForecast as WeatherDataState.SuccessDaily).data
 
@@ -365,6 +445,7 @@ fun SingleDailyForecastCard(
     val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
     val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
     val foggyIconPath: String = iconWeatherFolder + "fog.svg"
+    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
     val dustIconPath: String = iconWeatherFolder + "dust.svg"
     val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
     val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
@@ -382,6 +463,7 @@ fun SingleDailyForecastCard(
         SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyDayIconPath
         SimpleWeatherWord.CLOUDY -> cloudyIconPath
         SimpleWeatherWord.FOGGY -> foggyIconPath
+        SimpleWeatherWord.HAZE -> hazeIconPath
         SimpleWeatherWord.DUST -> dustIconPath
         SimpleWeatherWord.DRIZZLY -> drizzleIconPath
         SimpleWeatherWord.RAINY1 -> rainy1IconPath
@@ -392,6 +474,40 @@ fun SingleDailyForecastCard(
         SimpleWeatherWord.SNOWY3 -> snowy3IconPath
         SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
         SimpleWeatherWord.STORMY -> stormyIconPath
+    }
+
+    val maxTemp = dayReading.maxTemperature.roundToInt()
+    val minTemp = dayReading.minTemperature.roundToInt()
+    val totalPrecipitation = dayReading.precipitation
+
+    // Build annotated string for bold and colored temperatures and precipitation
+    val tempText = buildAnnotatedString {
+        withStyle(
+            style = SpanStyle(
+                fontWeight = FontWeight.Bold,
+                color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
+            )
+        ) {
+            append("$maxTemp°")
+        }
+        append(" / ")
+        withStyle(
+            style = SpanStyle(
+                fontWeight = FontWeight.Bold,
+                color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
+            )
+        ) {
+            append("$minTemp°")
+        }
+    }
+    val precipitationText = buildAnnotatedString {
+        withStyle(
+            style = SpanStyle(
+                fontWeight = FontWeight.Bold
+            )
+        ) {
+            append("$totalPrecipitation mm")
+        }
     }
 
     Card(
@@ -411,66 +527,54 @@ fun SingleDailyForecastCard(
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Icon first and bigger as requested
-            AsyncImage(
-                model = fileName,
-                contentDescription = "Icône météo",
-                modifier = Modifier
-                    .size(56.dp)
-                    .padding(bottom = 4.dp),
-                contentScale = ContentScale.Fit
-            )
-
+            // First, display the full date
             val dateFormatter = DateTimeFormatter.ofPattern("dd MMM")
             Text(
-                text = dayReading.date.format(dateFormatter),
+                text = dayReading.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()) + " " + dayReading.date.format(dateFormatter),
                 style = MaterialTheme.typography.labelLarge
             )
-            
-            Text(
-                text = dayReading.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
-            val maxTemp = dayReading.maxTemperature.roundToInt()
-            val minTemp = dayReading.minTemperature.roundToInt()
-            val totalPrecipitation = dayReading.precipitation
+            // The image, the temperatures and the precipitation are displayed in a row
+            Row (
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val userSettings by viewModel.userSettings.collectAsState()
+                val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+                
+                if (userSettings.enableAnimatedIcons && !isBatterySaverActive) {
+                    AnimatedSvgIcon(
+                        iconPath = fileName,
+                        modifier = Modifier
+                            .size(85.dp)
+                            .padding(bottom = 4.dp)
+                    )
+                } else {
+                    AsyncImage(
+                        model = fileName,
+                        contentDescription = "Icône météo",
+                        modifier = Modifier
+                            .size(85.dp)
+                            .padding(bottom = 4.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
 
-            // Build annotated string for bold and colored temperatures
-            val tempText = buildAnnotatedString {
-                withStyle(
-                    style = SpanStyle(
-                        fontWeight = FontWeight.Bold,
-                        color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
-                    )
+                Column (
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.Bottom
                 ) {
-                    append("$maxTemp°")
-                }
-                append(" / ")
-                withStyle(
-                    style = SpanStyle(
-                        fontWeight = FontWeight.Bold,
-                        color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
+                    Text(
+                        text = tempText,
+                        style = MaterialTheme.typography.labelLarge
                     )
-                ) {
-                    append("$minTemp°")
-                }
-                append(" | ")
-                withStyle(
-                    style = SpanStyle(
-                        fontWeight = FontWeight.Bold
+                    Text(
+                        text = precipitationText,
+                        style = MaterialTheme.typography.labelSmall
                     )
-                ) {
-                    append("$totalPrecipitation mm")
                 }
             }
-
-            Text(
-                text = tempText,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 4.dp)
-            )
         }
     }
 }

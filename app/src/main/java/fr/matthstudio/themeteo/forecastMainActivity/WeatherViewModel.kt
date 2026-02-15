@@ -122,6 +122,42 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
         WeatherDataState.Loading
     )
 
+    /**
+     * Flow de WeatherDataState pour les données de qualité de l'air à la localisation selectionnée.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val airQualityResponse: StateFlow<WeatherDataState> = combine(
+        selectedLocation,
+        refreshCounter
+    ) { _, _ ->
+        // On combine les deux. Peu importe la valeur reçue,
+        // flatMapLatest relancera le flux ci-dessous.
+    }.flatMapLatest {
+        weatherCache.getAirQuality()
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        WeatherDataState.Loading
+    )
+
+    /**
+     * Flow de WeatherDataState pour les vigilances à la localisation selectionnée.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val weatherVigilanceInfo: StateFlow<WeatherDataState> = combine(
+        selectedLocation,
+        refreshCounter
+    ) { _, _ ->
+        // On combine les deux. Peu importe la valeur reçue,
+        // flatMapLatest relancera le flux ci-dessous.
+    }.flatMapLatest {
+        weatherCache.getLocalVigilance()
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        WeatherDataState.Loading
+    )
+
     // --- 2. GESTION DE LA RECHERCHE DE VILLES (GEOCODING) ---
 
     // Le terme de recherche entré par l'utilisateur.
@@ -203,6 +239,13 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
     }
 
     /**
+     * Méthode pour définir la position par défaut
+     */
+    fun setDefaultLocation(location: LocationIdentifier) {
+        weatherCache.setDefaultLocation(location)
+    }
+
+    /**
      * Retourne un Flow de WeatherDataState pour une période précise.
      * Combine la localisation, les paramètres et le compteur de rafraîchissement
      * pour garantir que les données sont à jour.
@@ -223,6 +266,15 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
             SharingStarted.WhileSubscribed(5000),
             WeatherDataState.Loading
         )
+    }
+
+    /**
+     * Rafraîchit uniquement la localisation et force la mise à jour des données
+     * sans invalider le cache météo (contrairement à refresh()).
+     */
+    fun refreshLocation() {
+        weatherCache.refreshCurrentLocation()
+        _refreshCounter.value++
     }
 
     /**

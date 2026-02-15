@@ -3,10 +3,19 @@ package fr.matthstudio.themeteo
 import android.os.Parcelable
 import android.util.Log
 import android.content.Context
-import android.location.Geocoder
+import android.content.pm.PackageManager
+import android.os.Build
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
-import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.utilClasses.AirQualityLocation
+import fr.matthstudio.themeteo.utilClasses.AirQualityRequest
+import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
+import fr.matthstudio.themeteo.utilClasses.AlertStep
+import fr.matthstudio.themeteo.utilClasses.GovernmentInvertedGeocodingAPIResponse
+import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
+import fr.matthstudio.themeteo.utilClasses.PollenResponse
+import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
+import fr.matthstudio.themeteo.utilClasses.VigilanceMapResponse
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.OkHttp
@@ -19,23 +28,26 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.logging.Logger
 
 import io.ktor.client.request.*
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.decodeFromJsonElement
 import java.lang.Math.clamp
+import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Collections.emptyList
+import java.util.Locale as JavaLocale
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.text.format
 
 // --- DATA CLASSES (inchangées) ---
 @Serializable
@@ -86,7 +98,7 @@ data class DailyReading(
     val maxTemperature: Double,
     val minTemperature: Double,
     val precipitation: Double,
-    val max_uvIndex: Int?,
+    val maxUvIndex: Int?,
     val wmo: Int,
     val sunset: String,
     val sunrise: String
@@ -99,11 +111,12 @@ data class MinutelyReading(
     val rain: Double
 ) : Parcelable
 
-@Parcelize
+
+@Serializable
 data class CurrentWeatherReading(
     val temperature: Double,
     val wmo: Int
-) : Parcelable
+)
 
 @Serializable
 data class GeocodingResponse(val results: List<GeocodingResult>? = null)
@@ -163,6 +176,252 @@ class WeatherService {
         }
     }
 
+    // Fonction pour récupérer l'empreinte SHA-1 de ton app dynamiquement
+    fun getSigningSha1(context: Context): String? {    try {
+        val packageName = context.packageName
+        val packageManager = context.packageManager
+
+        // PackageManager.GET_SIGNATURES est déprécié mais nécessaire pour les API < 28
+        @Suppress("DEPRECATION")
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+        }
+
+        val signature = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.signingInfo?.apkContentsSigners?.firstOrNull()
+                ?: packageInfo.signingInfo?.signingCertificateHistory?.firstOrNull()
+        } else {
+            // Pour les anciennes versions, on utilise la méthode dépréciée
+            @Suppress("DEPRECATION")
+            (packageInfo.signatures?.firstOrNull())
+        }
+
+        if (signature == null) {
+            Log.e("SigningInfo", "Impossible de trouver la signature du certificat.")
+            return null
+        }
+
+        val md = MessageDigest.getInstance("SHA-1")
+        val digest = md.digest(signature.toByteArray())
+        // On transforme le tableau de bytes en une chaîne hexadécimale SANS les ":"
+        return digest.joinToString("") { "%02X".format(it) }
+
+    } catch (e: Exception) {
+        Log.e("SigningInfo", "Erreur lors de la récupération du SHA-1", e)
+        return null
+    }
+    }
+
+    suspend fun getAirQuality(latitude: Double, longitude: Double, context: Context): AirQualityInfo? {
+        val url = "https://airquality.googleapis.com/v1/currentConditions:lookup"
+        val sha1 = getSigningSha1(context) ?: return null
+        val packageName = context.packageName
+
+        return try {
+            val response = client.post(url) {
+                parameter("key", BuildConfig.MAPS_API_KEY)
+                header("X-Android-Package", packageName)
+                header("X-Android-Cert", sha1) // Envoie l'empreinte automatiquement
+                // On envoie la position dans le corps de la requête (POST)
+                setBody(
+                    AirQualityRequest(
+                        location = AirQualityLocation(latitude, longitude),
+                        extraComputations = listOf(
+                            "HEALTH_RECOMMENDATIONS",
+                            "DOMINANT_POLLUTANT_CONCENTRATION",
+                            "POLLUTANT_CONCENTRATION"
+                        ),
+                        languageCode = java.util.Locale.getDefault().language
+                    )
+                )
+                // Ktor s'occupe de la sérialisation en JSON grâce au plugin ContentNegotiation
+                contentType(io.ktor.http.ContentType.Application.Json)
+            }
+
+            if (response.status.value == 200) {
+                response.body<AirQualityInfo>()
+            } else {
+                val errorBody = response.body<String>()
+                Log.e("AirQuality", "Erreur API Google : ${response.status} - $errorBody")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("AirQuality", "Exception lors de la récupération de la qualité de l'air : ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Récupère les prévisions de pollen auprès de l'API Google Maps Pollen.
+     */
+    suspend fun getPollenForecast(latitude: Double, longitude: Double, context: Context): PollenResponse? {
+        // L'endpoint pour les prévisions (forecast)
+        val url = "https://pollen.googleapis.com/v1/forecast:lookup"
+
+        // Réutilisation de la sécurité SHA-1 et package name comme pour l'Air Quality
+        val sha1 = getSigningSha1(context) ?: return null
+        val packageName = context.packageName
+
+        return try {
+            val response = client.get(url) {
+                // Paramètres de l'API Google
+                parameter("key", BuildConfig.MAPS_API_KEY)
+                parameter("location.latitude", latitude)
+                parameter("location.longitude", longitude)
+                parameter("days", 3) // Nombre de jours de prévisions (1 à 5)
+                parameter("languageCode", java.util.Locale.getDefault().language)
+                parameter("plantsDescription", "true")
+
+                // Headers de sécurité pour restreindre l'usage de la clé API à votre app
+                header("X-Android-Package", packageName)
+                header("X-Android-Cert", sha1)
+            }
+
+            if (response.status.value == 200) {
+                response.body<PollenResponse>()
+            } else {
+                val errorBody = response.body<String>()
+                Log.e("PollenAPI", "Erreur API Google : ${response.status} - $errorBody")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("PollenAPI", "Exception lors de la récupération des données pollen : ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Récupère les textes de vigilance spécifiques au département de l'utilisateur.
+     */
+    suspend fun getVigilanceForLocation(lat: Double, lon: Double): VigilanceInfos? {
+        val departmentCode = getDepartmentCodeFromLocation(lat, lon) ?: return null
+        val url = "https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours"
+        val apiKey = BuildConfig.METEO_FRANCE_API_KEY
+
+        return try {
+            val response = client.get(url) {
+                header("accept", "*/*")
+                header("apikey", apiKey)
+            }
+
+            if (response.status.value == 200) {
+                val fullResponse = response.body<VigilanceMapResponse>()
+
+                // 1. On récupère les données du département pour toutes les périodes (J et J1)
+                val deptInPeriods = fullResponse.product.periods.mapNotNull { period ->
+                    period.timelaps.domainIds.find { it.domainId == departmentCode }
+                }
+
+                if (deptInPeriods.isEmpty()) return null
+
+                val now = OffsetDateTime.now()
+
+                // 1. On récupère les périodes qui contiennent notre département
+                val periodsWithDept = fullResponse.product.periods.mapNotNull { period ->
+                    val dept = period.timelaps.domainIds.find { it.domainId == departmentCode }
+                    if (dept != null) period to dept else null
+                }
+
+                // 2. Fusionner les alertes par phénomène
+                val mergedAlerts = periodsWithDept
+                    .flatMap { (period, dept) ->
+                        dept.phenomenonItems.map { it to period }
+                    }
+                    .filter { (phenom, _) -> phenom.phenomenonMaxColorId > 1 }
+                    .groupBy { (phenom, _) -> phenom.phenomenonId }
+                    .mapNotNull { (id, pairs) ->
+                        // On traite chaque paire (PhenomenonItem, VigilancePeriod)
+                        val steps = pairs.flatMap { (phenom, period) ->
+                            if (phenom.timelapsItems.isEmpty()) {
+                                // Si pas de timelaps détaillés (ex : Crues), on crée un step couvrant toute la période
+                                listOf(AlertStep(period.beginValidityTime, period.endValidityTime, phenom.phenomenonMaxColorId))
+                            } else {
+                                phenom.timelapsItems.map { AlertStep(it.beginTime, it.endTime, it.colorId) }
+                            }
+                        }
+
+                        // Filtrer les steps qui sont terminés
+                        val filteredSteps = steps.filter {
+                            try {
+                                OffsetDateTime.parse(it.endTime).isAfter(now)
+                            } catch (e: Exception) {
+                                true
+                            }
+                        }.sortedBy { it.beginTime }
+
+                        if (filteredSteps.isEmpty()) return@mapNotNull null
+
+                        PhenomenonAlert(
+                            phenomenonId = id,
+                            maxColorId = filteredSteps.maxOf { it.colorId },
+                            steps = filteredSteps
+                        )
+                    }
+
+                if (mergedAlerts.isEmpty()) return null
+
+                // 3. Déterminer le maxColorId global sur les alertes restantes
+                val globalMaxColor = mergedAlerts.maxOf { it.maxColorId }
+
+                VigilanceInfos(
+                    departmentCode = departmentCode,
+                    maxColorId = globalMaxColor,
+                    alerts = mergedAlerts
+                )
+            } else {
+                val errorBody = response.body<String>()
+                Log.e("WeatherService", "Erreur API Carte Vigilance : ${response.status} - $errorBody")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("WeatherService", "Exception lors de la récupération de la carte vigilance", e)
+            null
+        }
+    }
+
+    // Placeholder pour la fonction de localisation du département
+    private suspend fun getDepartmentCodeFromLocation(lat: Double, lon: Double): String? {
+        // On commence avec une précision élevée (ex : 6 décimales)
+        // ou la précision actuelle si nécessaire.
+        var precision = 6
+
+        while (precision >= 0) {
+            // Formate les coordonnées avec le nombre de décimales actuel
+            val formattedLat = String.format(JavaLocale.US, "%.${precision}f", lat)
+            val formattedLon = String.format(JavaLocale.US, "%.${precision}f", lon)
+
+            val url = "https://api-adresse.data.gouv.fr/reverse/?lat=$formattedLat&lon=$formattedLon"
+
+            try {
+                val response = client.get(url)
+
+                if (response.status.value == 200) {
+                    val fullResponse = response.body<GovernmentInvertedGeocodingAPIResponse>()
+
+                    // Vérifie si on a au moins un résultat
+                    val feature = fullResponse.features.firstOrNull()
+                    if (feature != null) {
+                        // Succès : on renvoie les 2 premiers chiffres du code postal
+                        return feature.properties.postcode.substring(0, 2)
+                    }
+                    // Si la liste est vide, la boucle continue et réduit la précision
+                }
+            } catch (e: Exception) {
+                Log.e("WeatherService", "Erreur Geocoding à la précision $precision : ${e.message}")
+                // En cas d'erreur réseau, on peut choisir d'arrêter ou de continuer
+                return null
+            }
+
+            Log.d("WeatherService", "Aucun résultat à $precision décimales, réduction de la précision...")
+            precision--
+        }
+
+        // Si on arrive ici, aucune précision n'a donné de résultat
+        return null
+    }
+
     suspend fun getCurrentWeather(positions: List<Pair<Double, Double>>) : Map<Pair<Double, Double>, CurrentWeatherReading>? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
 
@@ -220,10 +479,10 @@ class WeatherService {
     suspend fun getForecast(
         latitude: Double,
         longitude: Double,
-        model: String,
+        models: List<String>,
         startDate: LocalDate,
         endDate: LocalDate
-    ): Pair<List<AllHourlyVarsReading>, List<DailyReading>>? {
+    ): Map<String, Pair<List<AllHourlyVarsReading>, List<DailyReading>>>? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
         val localZoneId = ZoneId.systemDefault()
 
@@ -231,7 +490,7 @@ class WeatherService {
             val response = client.get(apiUrl) {
                 parameter("latitude", latitude)
                 parameter("longitude", longitude)
-                parameter("models", model)
+                parameter("models", models.joinToString(","))
                 parameter("hourly", getHourlyVariables().joinToString(","))
                 parameter("daily", getDailyVariables().joinToString(","))
                 parameter("timezone", localZoneId.id)
@@ -239,14 +498,17 @@ class WeatherService {
                 parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
             }
 
-            // 1. Log le code de statut (200, 400, 500 ?)
             Log.d("WeatherService", "Status: ${response.status}")
 
             if (response.status.value == 200) {
-                return Pair(parseHourlyData(response.body()) as List<AllHourlyVarsReading>,
-                    parseDailyData(response.body()) as List<DailyReading>)
+                val responseBody = response.body<WeatherApiResponse>()
+                return models.associateWith { model ->
+                    Pair(
+                        parseHourlyData(responseBody, model, models.size > 1) as List<AllHourlyVarsReading>,
+                        parseDailyData(responseBody, model, models.size > 1) as List<DailyReading>
+                    )
+                }
             } else {
-                // 2. Si c'est avant 8h, tu verras probablement un code 400 ici
                 val errorText = response.body<String>()
                 Log.e("WeatherService", "Erreur API : $errorText")
                 return null
@@ -259,130 +521,134 @@ class WeatherService {
     }
 
     private fun getHourlyVariables(): List<String> {
-        val variables = mutableListOf(
+        return listOf(
             "temperature_2m", "apparent_temperature", "precipitation", "rain", "showers", "snowfall",
             "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "weather_code",
             "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m",
             "precipitation_probability", "snow_depth", "shortwave_radiation_instant", "direct_radiation_instant",
             "diffuse_radiation_instant", "uv_index", "visibility"
         )
-        return variables
     }
 
-    private fun parseHourlyData(response: WeatherApiResponse): List<AllHourlyVarsReading>? {
+    private fun getModelPrefixedName(variableName: String, model: String, isMultiModel: Boolean): String {
+        return if (isMultiModel) "${variableName}_$model" else variableName
+    }
+
+    private fun Double?.safeToInt(): Int? {
+        return if (this == null || this.isNaN()) null else this.toInt()
+    }
+
+    private fun parseHourlyData(response: WeatherApiResponse, model: String, isMultiModel: Boolean): List<AllHourlyVarsReading>? {
         try {
             val times = response.getDeterministicHourlyData("time") ?: return null
 
-            // Récupération sécurisée de toutes les listes de données
-            val temp = response.getDeterministicHourlyData("temperature_2m")
-            val appTemp = response.getDeterministicHourlyData("apparent_temperature")
-            val precip = response.getDeterministicHourlyData("precipitation")
-            val precipProb = response.getDeterministicHourlyData("precipitation_probability")
-            val rain = response.getDeterministicHourlyData("rain")
-            val showers = response.getDeterministicHourlyData("showers")
-            val snowfall = response.getDeterministicHourlyData("snowfall")
-            val snowDepth = response.getDeterministicHourlyData("snow_depth")
-            val cloud = response.getDeterministicHourlyData("cloudcover")
-            val cloudLow = response.getDeterministicHourlyData("cloudcover_low")
-            val cloudMid = response.getDeterministicHourlyData("cloudcover_mid")
-            val cloudHigh = response.getDeterministicHourlyData("cloudcover_high")
-            val ghi = response.getDeterministicHourlyData("shortwave_radiation_instant")
-            val dhi = response.getDeterministicHourlyData("diffuse_radiation_instant")
-            val dsi = response.getDeterministicHourlyData("direct_radiation_instant")
-            val wui = response.getDeterministicHourlyData("uv_index")
-            val visibility = response.getDeterministicHourlyData("visibility")
-            val windspeed = response.getDeterministicHourlyData("windspeed_10m")
-            val windDir = response.getDeterministicHourlyData("wind_direction_10m")
-            val pressure = response.getDeterministicHourlyData("pressure_msl")
-            val humidity = response.getDeterministicHourlyData("relative_humidity_2m")
-            val dewpoint = response.getDeterministicHourlyData("dewpoint_2m")
-            val wmo = response.getDeterministicHourlyData("weather_code")
+            val temp = response.getDeterministicHourlyData(getModelPrefixedName("temperature_2m", model, isMultiModel))
+            val appTemp = response.getDeterministicHourlyData(getModelPrefixedName("apparent_temperature", model, isMultiModel))
+            val precip = response.getDeterministicHourlyData(getModelPrefixedName("precipitation", model, isMultiModel))
+            val precipProb = response.getDeterministicHourlyData(getModelPrefixedName("precipitation_probability", model, isMultiModel))
+            val rain = response.getDeterministicHourlyData(getModelPrefixedName("rain", model, isMultiModel))
+            val showers = response.getDeterministicHourlyData(getModelPrefixedName("showers", model, isMultiModel))
+            val snowfall = response.getDeterministicHourlyData(getModelPrefixedName("snowfall", model, isMultiModel))
+            val snowDepth = response.getDeterministicHourlyData(getModelPrefixedName("snow_depth", model, isMultiModel))
+            val cloud = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover", model, isMultiModel))
+            val cloudLow = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover_low", model, isMultiModel))
+            val cloudMid = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover_mid", model, isMultiModel))
+            val cloudHigh = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover_high", model, isMultiModel))
+            val ghi = response.getDeterministicHourlyData(getModelPrefixedName("shortwave_radiation_instant", model, isMultiModel))
+            val dhi = response.getDeterministicHourlyData(getModelPrefixedName("diffuse_radiation_instant", model, isMultiModel))
+            val dsi = response.getDeterministicHourlyData(getModelPrefixedName("direct_radiation_instant", model, isMultiModel))
+            val wui = response.getDeterministicHourlyData(getModelPrefixedName("uv_index", model, isMultiModel))
+            val visibility = response.getDeterministicHourlyData(getModelPrefixedName("visibility", model, isMultiModel))
+            val windspeed = response.getDeterministicHourlyData(getModelPrefixedName("windspeed_10m", model, isMultiModel))
+            val windDir = response.getDeterministicHourlyData(getModelPrefixedName("wind_direction_10m", model, isMultiModel))
+            val pressure = response.getDeterministicHourlyData(getModelPrefixedName("pressure_msl", model, isMultiModel))
+            val humidity = response.getDeterministicHourlyData(getModelPrefixedName("relative_humidity_2m", model, isMultiModel))
+            val dewpoint = response.getDeterministicHourlyData(getModelPrefixedName("dewpoint_2m", model, isMultiModel))
+            val wmo = response.getDeterministicHourlyData(getModelPrefixedName("weather_code", model, isMultiModel))
 
             return times.indices.mapNotNull { i ->
                 try {
-                    val o = if (ghi != null && dhi != null)
-                            (clamp(dhi[i] as Double / max(ghi[i] as Double, 1.0), 0.0, 1.0) * 100.0).roundToInt()
+                    val ghiVal = ghi?.getOrNull(i) as? Double
+                    val dhiVal = dhi?.getOrNull(i) as? Double
+                    val o = if (ghiVal != null && dhiVal != null && !ghiVal.isNaN() && !dhiVal.isNaN())
+                        (clamp(dhiVal / max(ghiVal, 1.0), 0.0, 1.0) * 100.0).roundToInt()
                     else null
+
                     AllHourlyVarsReading(
                         time = LocalDateTime.parse(times[i] as String),
-                        temperature = temp?.get(i) as Double? ?: 0.0,
-                        apparentTemperature = appTemp?.get(i) as Double?,
+                        temperature = temp?.getOrNull(i) as? Double ?: Double.NaN,
+                        apparentTemperature = appTemp?.getOrNull(i) as? Double,
                         precipitationData = PrecipitationData(
-                            precipitation = precip?.get(i) as Double? ?: 0.0,
-                            precipitationProbability = (precipProb?.get(i) as Double?)?.toInt(),
-                            rain = (rain?.get(i) as Double? ?: 0.0) + (showers?.get(i) as Double? ?: 0.0),
-                            snowfall = snowfall?.get(i) as Double? ?: 0.0,
-                            snowDepth = ((snowDepth?.get(i) as Double?)?.times(100))?.toInt()
+                            precipitation = precip?.getOrNull(i) as? Double ?: Double.NaN,
+                            precipitationProbability = (precipProb?.getOrNull(i) as? Double).safeToInt(),
+                            rain = (rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0),
+                            snowfall = snowfall?.getOrNull(i) as? Double ?: 0.0,
+                            snowDepth = ((snowDepth?.getOrNull(i) as? Double)?.times(100)).safeToInt()
                         ),
                         skyInfo = SkyInfoData(
-                            cloudcoverTotal = (cloud?.get(i) as Double?)?.toInt() ?: 0,
-                            cloudcoverLow = (cloudLow?.get(i) as Double?)?.toInt() ?: 0,
-                            cloudcoverMid = (cloudMid?.get(i) as Double?)?.toInt() ?: 0,
-                            cloudcoverHigh = (cloudHigh?.get(i) as Double?)?.toInt() ?: 0,
-                            shortwaveRadiation = ghi?.get(i) as Double,
-                            directRadiation = dsi?.get(i) as Double,
-                            diffuseRadiation = dhi?.get(i) as Double,
+                            cloudcoverTotal = (cloud?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                            cloudcoverLow = (cloudLow?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                            cloudcoverMid = (cloudMid?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                            cloudcoverHigh = (cloudHigh?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                            shortwaveRadiation = ghi?.getOrNull(i) as? Double,
+                            directRadiation = dsi?.getOrNull(i) as? Double,
+                            diffuseRadiation = dhi?.getOrNull(i) as? Double,
                             opacity = o,
-                            uvIndex = (wui?.get(i) as Double?)?.toInt(),
-                            visibility = (visibility?.get(i) as Double?)?.toInt()
+                            uvIndex = (wui?.getOrNull(i) as? Double).safeToInt(),
+                            visibility = (visibility?.getOrNull(i) as? Double).safeToInt()
                         ),
-                        windspeed = windspeed?.get(i) as Double? ?: 0.0,
-                        windDirection = windDir?.get(i) as Double? ?: 0.0,
-                        pressure = (pressure?.get(i) as Double? ?: 0.0).roundToInt(),
-                        humidity = (humidity?.get(i) as Double?)?.toInt() ?: 0,
-                        dewpoint = dewpoint?.get(i) as Double? ?: 0.0,
-                        wmo = (wmo?.get(i) as Double?)?.toInt() ?: 0
+                        windspeed = windspeed?.getOrNull(i) as? Double ?: Double.NaN,
+                        windDirection = windDir?.getOrNull(i) as? Double ?: Double.NaN,
+                        pressure = (pressure?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                        humidity = (humidity?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                        dewpoint = dewpoint?.getOrNull(i) as? Double ?: Double.NaN,
+                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0
                     )
                 } catch (e: Exception) {
-                    Log.w("WeatherServiceParser", "Impossible de parser l'heure à l'index $i", e)
                     null
                 }
             }
         } catch (e: Exception) {
-            Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données horaires", e)
             return null
         }
     }
 
     private fun getDailyVariables(): List<String> {
-        val variables = mutableListOf(
+        return listOf(
             "temperature_2m_max", "temperature_2m_min", "precipitation_sum", "uv_index_max", "weather_code", "sunset", "sunrise"
         )
-        return variables
     }
 
-    private fun parseDailyData(response: WeatherApiResponse): List<DailyReading>? {
+    private fun parseDailyData(response: WeatherApiResponse, model: String, isMultiModel: Boolean): List<DailyReading>? {
         try {
             val times = response.getDeterministicDailyData("time") ?: return null
 
-            // Récupération sécurisée de toutes les listes de données
-            val tempMax = response.getDeterministicDailyData("temperature_2m_max")
-            val tempMin = response.getDeterministicDailyData("temperature_2m_min")
-            val precip = response.getDeterministicDailyData("precipitation_sum")
-            val uvIndex = response.getDeterministicDailyData("uv_index_max")
-            val sunset = response.getDeterministicDailyData("sunset")
-            val sunrise = response.getDeterministicDailyData("sunrise")
-            val wmo = response.getDeterministicDailyData("weather_code")
+            val tempMax = response.getDeterministicDailyData(getModelPrefixedName("temperature_2m_max", model, isMultiModel))
+            val tempMin = response.getDeterministicDailyData(getModelPrefixedName("temperature_2m_min", model, isMultiModel))
+            val precip = response.getDeterministicDailyData(getModelPrefixedName("precipitation_sum", model, isMultiModel))
+            val uvIndex = response.getDeterministicDailyData(getModelPrefixedName("uv_index_max", model, isMultiModel))
+            val sunset = response.getDeterministicDailyData(getModelPrefixedName("sunset", model, isMultiModel))
+            val sunrise = response.getDeterministicDailyData(getModelPrefixedName("sunrise", model, isMultiModel))
+            val wmo = response.getDeterministicDailyData(getModelPrefixedName("weather_code", model, isMultiModel))
 
             return times.indices.mapNotNull { i ->
                 try {
                     DailyReading(
                         date = LocalDate.parse(times[i] as String),
-                        maxTemperature = tempMax?.get(i) as Double,
-                        minTemperature = tempMin?.get(i) as Double,
-                        precipitation = precip?.get(i) as Double,
-                        max_uvIndex = (uvIndex?.get(i) as Double?)?.toInt(),
-                        wmo = (wmo?.get(i) as Double).toInt(),
-                        sunset = sunset?.get(i) as String,
-                        sunrise = sunrise?.get(i) as String
+                        maxTemperature = tempMax?.getOrNull(i) as? Double ?: Double.NaN,
+                        minTemperature = tempMin?.getOrNull(i) as? Double ?: Double.NaN,
+                        precipitation = precip?.getOrNull(i) as? Double ?: Double.NaN,
+                        maxUvIndex = (uvIndex?.getOrNull(i) as? Double).safeToInt(),
+                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                        sunset = sunset?.getOrNull(i) as? String ?: "",
+                        sunrise = sunrise?.getOrNull(i) as? String ?: ""
                     )
                 } catch (e: Exception) {
-                    Log.w("WeatherServiceParser", "Impossible de parser l'heure à l'index $i", e)
                     null
                 }
             }
         } catch (e: Exception) {
-            Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données horaires", e)
+            Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données journalières", e)
             return null
         }
     }
