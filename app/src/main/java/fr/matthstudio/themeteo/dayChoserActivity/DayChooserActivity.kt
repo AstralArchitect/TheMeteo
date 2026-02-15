@@ -49,6 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -59,6 +61,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 import fr.matthstudio.themeteo.DailyReading
@@ -104,55 +107,75 @@ fun getWeatherIconPath(word: SimpleWeatherWord): String {
 
 @Composable
 fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                settings.javaScriptEnabled = true
-                setBackgroundColor(0)
-                isVerticalScrollBarEnabled = false
-                isHorizontalScrollBarEnabled = false
-                settings.loadWithOverviewMode = false
-                settings.useWideViewPort = false
+    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    
+    // Filtre CSS pour adapter les couleurs au thème clair
+    val filterStyle = if (!isDark) {
+        "filter: brightness(0.9) saturate(1.1) drop-shadow(0px 0px 1px rgba(0,0,0,0.2));"
+    } else ""
+
+    Box(modifier = modifier) {
+        AndroidView(
+            factory = { context ->
+                object : WebView(context) {
+                    override fun onTouchEvent(event: MotionEvent): Boolean {
+                        return false
+                    }
+                }.apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    settings.javaScriptEnabled = true
+                    setBackgroundColor(0)
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
+                    settings.loadWithOverviewMode = false
+                    settings.useWideViewPort = false
+                    
+                    // Désactiver TOUTES les interactions pour laisser passer le clic au parent
+                    isEnabled = false
+                    isClickable = false
+                    isLongClickable = false
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+            update = { webView ->
+                val html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                        <style>
+                            * { 
+                                pointer-events: none !important; 
+                                -webkit-tap-highlight-color: transparent;
+                                user-select: none;
+                            }
+                            html, body { 
+                                margin: 0; padding: 0; width: 100%; height: 100%; 
+                                overflow: hidden; background: transparent; 
+                                display: flex; align-items: center; justify-content: center;
+                            }
+                            img { 
+                                width: 100%; height: 100%; 
+                                object-fit: contain; 
+                                $filterStyle
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <img src="$iconPath">
+                    </body>
+                    </html>
+                """.trimIndent()
+                webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
             }
-        },
-        modifier = modifier,
-        update = { webView ->
-            val html = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                    <style>
-                        html, body { 
-                            margin: 0; 
-                            padding: 0; 
-                            width: 100%; 
-                            height: 100%; 
-                            overflow: hidden; 
-                            background: transparent; 
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                        }
-                        img { 
-                            width: 100%; 
-                            height: 100%; 
-                            object-fit: contain; 
-                        }
-                    </style>
-                </head>
-                <body>
-                    <img src="$iconPath">
-                </body>
-                </html>
-            """.trimIndent()
-            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-        }
-    )
+        )
+        // Pas besoin d'overlay si la WebView est bien inerte
+    }
 }
 
 val weatherModelPredictionTime = mapOf(
@@ -514,6 +537,15 @@ fun SingleDailyForecastCard(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small
     ) {
+        val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+        val weatherIconFilter = remember(isDark) {
+            if (!isDark) {
+                ColorFilter.colorMatrix(ColorMatrix().apply {
+                    setToScale(0.9f, 0.9f, 0.9f, 1f)
+                })
+            } else null
+        }
+
         Column(
             modifier = Modifier
                 .clickable {
@@ -557,7 +589,8 @@ fun SingleDailyForecastCard(
                         modifier = Modifier
                             .size(85.dp)
                             .padding(bottom = 4.dp),
-                        contentScale = ContentScale.Fit
+                        contentScale = ContentScale.Fit,
+                        colorFilter = weatherIconFilter
                     )
                 }
 

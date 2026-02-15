@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -99,6 +100,8 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -180,48 +183,63 @@ fun getWeatherIconPath(word: SimpleWeatherWord, isNight: Boolean = false): Strin
 
 @Composable
 fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                settings.javaScriptEnabled = true
-                settings.allowFileAccess = true
-                settings.allowContentAccess = true
-                
-                setBackgroundColor(0)
-                isVerticalScrollBarEnabled = false
-                isHorizontalScrollBarEnabled = false
-                // Disable scaling/viewport features that might interfere with exact fit
-                settings.loadWithOverviewMode = false
-                settings.useWideViewPort = false
-            }
-        },
-        modifier = modifier,
-        update = { webView ->
-            val html = """
+    val isDark = isSystemInDarkTheme()
+    
+    // Filtre CSS pour adapter les couleurs au thème clair sans perdre les teintes d'origine
+    // En mode clair: on assombrit légèrement et on ajoute une ombre portée pour le contraste
+    val filterStyle = if (!isDark) {
+        "filter: brightness(0.8) saturate(1.2) drop-shadow(0px 0px 1px rgba(0,0,0,0.3));"
+    } else ""
+
+    Box(modifier = modifier) {
+        AndroidView(
+            factory = { ctx ->
+                object : WebView(ctx) {
+                    override fun onTouchEvent(event: MotionEvent): Boolean {
+                        return false
+                    }
+                }.apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    settings.javaScriptEnabled = true
+                    setBackgroundColor(0)
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
+                    settings.loadWithOverviewMode = false
+                    settings.useWideViewPort = false
+
+                    // Désactiver TOUTES les interactions pour laisser passer le clic au parent
+                    isEnabled = false
+                    isClickable = false
+                    isLongClickable = false
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+            update = { webView ->
+                val html = """
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                     <style>
+                        * { 
+                            pointer-events: none !important; 
+                            -webkit-tap-highlight-color: transparent;
+                            user-select: none;
+                        }
                         html, body { 
-                            margin: 0; 
-                            padding: 0; 
-                            width: 100%; 
-                            height: 100%; 
-                            overflow: hidden; 
-                            background: transparent; 
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
+                            margin: 0; padding: 0; width: 100%; height: 100%; 
+                            overflow: hidden; background: transparent; 
+                            display: flex; align-items: center; justify-content: center;
                         }
                         img { 
-                            width: 100%; 
-                            height: 100%; 
+                            width: 100%; height: 100%; 
                             object-fit: contain; 
+                            $filterStyle
                         }
                     </style>
                 </head>
@@ -230,9 +248,10 @@ fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
                 </body>
                 </html>
             """.trimIndent()
-            webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
-        }
-    )
+                webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
+            }
+        )
+    }
 }
 
 
@@ -270,43 +289,99 @@ class ForecastMainActivity : ComponentActivity() {
 }
 
 @Composable
-fun BlurredBackground(state: SimpleWeatherWord) {
+fun BlurredBackground(state: SimpleWeatherWord, isNight: Boolean = false) {
     val (baseColor, meshColors) = when (state) {
-        SimpleWeatherWord.STORMY -> Color(0xFF1B0033) to listOf(
-            Color(0xFF673AB7).copy(alpha = 0.8f),
-            Color(0xFF3F51B5).copy(alpha = 0.6f),
-            Color(0xFF9C27B0).copy(alpha = 0.5f)
-        )
-        SimpleWeatherWord.HAIL, SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2, SimpleWeatherWord.SNOWY3, SimpleWeatherWord.SNOWY_MIX -> Color(0xFF37474F) to listOf(
-            Color(0xFFCFD8DC).copy(alpha = 0.8f),
-            Color(0xFF90A4AE).copy(alpha = 0.6f),
-            Color(0xFF607D8B).copy(alpha = 0.5f)
-        )
-        SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2, SimpleWeatherWord.DRIZZLY -> Color(0xFF1A237E) to listOf(
-            Color(0xFF3949AB).copy(alpha = 0.8f),
-            Color(0xFF5C6BC0).copy(alpha = 0.6f),
-            Color(0xFF283593).copy(alpha = 0.5f)
-        )
-        SimpleWeatherWord.DUST -> Color(0xFF8D6E63) to listOf(
-            Color(0xFFBCAAA4).copy(alpha = 0.8f),
-            Color(0xFFD7CCC8).copy(alpha = 0.6f),
-            Color(0xFFA1887F).copy(alpha = 0.5f)
-        )
-        SimpleWeatherWord.HAZE -> Color(0xFF546E7A) to listOf(
-            Color(0xFFB0BEC5).copy(alpha = 0.8f),
-            Color(0xFFCFD8DC).copy(alpha = 0.6f),
-            Color(0xFF90A4AE).copy(alpha = 0.5f)
-        )
-        SimpleWeatherWord.FOGGY, SimpleWeatherWord.CLOUDY -> Color(0xFF455A64) to listOf(
-            Color(0xFF90A4AE).copy(alpha = 0.8f),
-            Color(0xFFB0BEC5).copy(alpha = 0.6f),
-            Color(0xFF78909C).copy(alpha = 0.5f)
-        )
-        SimpleWeatherWord.SUNNY_CLOUDY, SimpleWeatherWord.SUNNY -> Color(0xFF1565C0) to listOf(
-            Color(0xFFFFB74D).copy(alpha = 0.8f),
-            Color(0xFFFFD740).copy(alpha = 0.6f),
-            Color(0xFF42A5F5).copy(alpha = 0.5f)
-        )
+        SimpleWeatherWord.STORMY -> if (isNight) {
+            Color(0xFF0D001A) to listOf(
+                Color(0xFF311B92).copy(alpha = 0.7f),
+                Color(0xFF1A237E).copy(alpha = 0.5f),
+                Color(0xFF4A148C).copy(alpha = 0.4f)
+            )
+        } else {
+            Color(0xFF1B0033) to listOf(
+                Color(0xFF673AB7).copy(alpha = 0.8f),
+                Color(0xFF3F51B5).copy(alpha = 0.6f),
+                Color(0xFF9C27B0).copy(alpha = 0.5f)
+            )
+        }
+        SimpleWeatherWord.HAIL, SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2, SimpleWeatherWord.SNOWY3, SimpleWeatherWord.SNOWY_MIX -> if (isNight) {
+            Color(0xFF101416) to listOf(
+                Color(0xFF37474F).copy(alpha = 0.7f),
+                Color(0xFF263238).copy(alpha = 0.6f),
+                Color(0xFF455A64).copy(alpha = 0.4f)
+            )
+        } else {
+            Color(0xFF37474F) to listOf(
+                Color(0xFFCFD8DC).copy(alpha = 0.8f),
+                Color(0xFF90A4AE).copy(alpha = 0.6f),
+                Color(0xFF607D8B).copy(alpha = 0.5f)
+            )
+        }
+        SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2, SimpleWeatherWord.DRIZZLY -> if (isNight) {
+            Color(0xFF090C29) to listOf(
+                Color(0xFF1A237E).copy(alpha = 0.7f),
+                Color(0xFF0D47A1).copy(alpha = 0.6f),
+                Color(0xFF01579B).copy(alpha = 0.4f)
+            )
+        } else {
+            Color(0xFF1A237E) to listOf(
+                Color(0xFF3949AB).copy(alpha = 0.8f),
+                Color(0xFF5C6BC0).copy(alpha = 0.6f),
+                Color(0xFF283593).copy(alpha = 0.5f)
+            )
+        }
+        SimpleWeatherWord.DUST -> if (isNight) {
+            Color(0xFF2E1B15) to listOf(
+                Color(0xFF5D4037).copy(alpha = 0.7f),
+                Color(0xFF4E342E).copy(alpha = 0.6f),
+                Color(0xFF3E2723).copy(alpha = 0.4f)
+            )
+        } else {
+            Color(0xFF8D6E63) to listOf(
+                Color(0xFFBCAAA4).copy(alpha = 0.8f),
+                Color(0xFFD7CCC8).copy(alpha = 0.6f),
+                Color(0xFFA1887F).copy(alpha = 0.5f)
+            )
+        }
+        SimpleWeatherWord.HAZE -> if (isNight) {
+            Color(0xFF1A2124) to listOf(
+                Color(0xFF37474F).copy(alpha = 0.7f),
+                Color(0xFF263238).copy(alpha = 0.6f),
+                Color(0xFF455A64).copy(alpha = 0.4f)
+            )
+        } else {
+            Color(0xFF546E7A) to listOf(
+                Color(0xFFB0BEC5).copy(alpha = 0.8f),
+                Color(0xFFCFD8DC).copy(alpha = 0.6f),
+                Color(0xFF90A4AE).copy(alpha = 0.5f)
+            )
+        }
+        SimpleWeatherWord.FOGGY, SimpleWeatherWord.CLOUDY -> if (isNight) {
+            Color(0xFF161B1E) to listOf(
+                Color(0xFF263238).copy(alpha = 0.7f),
+                Color(0xFF37474F).copy(alpha = 0.6f),
+                Color(0xFF212121).copy(alpha = 0.4f)
+            )
+        } else {
+            Color(0xFF455A64) to listOf(
+                Color(0xFF90A4AE).copy(alpha = 0.8f),
+                Color(0xFFB0BEC5).copy(alpha = 0.6f),
+                Color(0xFF78909C).copy(alpha = 0.5f)
+            )
+        }
+        SimpleWeatherWord.SUNNY_CLOUDY, SimpleWeatherWord.SUNNY -> if (isNight) {
+            Color(0xFF000814) to listOf(
+                Color(0xFF001D3D).copy(alpha = 0.8f),
+                Color(0xFF003566).copy(alpha = 0.6f),
+                Color(0xFF1B263B).copy(alpha = 0.5f)
+            )
+        } else {
+            Color(0xFF1565C0) to listOf(
+                Color(0xFFFFB74D).copy(alpha = 0.8f),
+                Color(0xFFFFD740).copy(alpha = 0.6f),
+                Color(0xFF42A5F5).copy(alpha = 0.5f)
+            )
+        }
     }
 
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -356,7 +431,17 @@ fun BlurredBackground(state: SimpleWeatherWord) {
 @Composable
 fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: Boolean) {
     val context = LocalContext.current
+    val isDark = isSystemInDarkTheme()
     val hourlyForecast by viewModel.hourlyForecast.collectAsState()
+
+    val weatherIconFilter = remember(isDark) {
+        if (!isDark) {
+            ColorFilter.colorMatrix(ColorMatrix().apply {
+                // Assombrit légèrement les icônes statiques en mode clair
+                setToScale(0.8f, 0.8f, 0.8f, 1f)
+            })
+        } else null
+    }
 
     // Demander les permissions
     LocationPermissionHandler(viewModel)
@@ -366,6 +451,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         WeatherDataState.Loading -> SimpleWeather("Loading", SimpleWeatherWord.SUNNY)
         else -> SimpleWeather("Error", SimpleWeatherWord.SUNNY)
     }
+
+    val isNight = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.skyInfo?.shortwaveRadiation?.let { it <= 0.1f } ?: false
 
     val stateIcon = getStateIconFromWord(weatherState.word)
 
@@ -467,7 +554,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             }
         }
 
-        BlurredBackground(weatherState.word)
+        BlurredBackground(weatherState.word, isNight)
 
         Box(
             modifier = Modifier
@@ -577,7 +664,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         model = getWeatherIconPath(weatherState.word, it <= 0.1),
                                         contentDescription = null,
                                         modifier = Modifier.size(100.dp),
-                                        contentScale = ContentScale.Fit
+                                        contentScale = ContentScale.Fit,
+                                        colorFilter = weatherIconFilter
                                     )
                                 }
                             }
@@ -1002,29 +1090,26 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                             val userSettings by viewModel.userSettings.collectAsState()
                                             val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
                                             if (userSettings.enableAnimatedIcons && !isBatterySaverActive) {
-                                                (hourlyForecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation?.let {
-                                                    AnimatedSvgIcon(
-                                                        iconPath = getWeatherIconPath(
-                                                            weatherCodeToSimpleWord(
-                                                                selectedDayReading.wmo
-                                                            )
-                                                        ),
-                                                        modifier = Modifier.size(100.dp)
-                                                    )
-                                                }
+                                                AnimatedSvgIcon(
+                                                    iconPath = getWeatherIconPath(
+                                                        weatherCodeToSimpleWord(
+                                                            selectedDayReading.wmo
+                                                        )
+                                                    ),
+                                                    modifier = Modifier.size(100.dp)
+                                                )
                                             } else {
-                                                (hourlyForecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation?.let {
-                                                    AsyncImage(
-                                                        model = getWeatherIconPath(
-                                                            weatherCodeToSimpleWord(
-                                                                selectedDayReading.wmo
-                                                            )
-                                                        ),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(100.dp),
-                                                        contentScale = ContentScale.Fit
-                                                    )
-                                                }
+                                                AsyncImage(
+                                                    model = getWeatherIconPath(
+                                                        weatherCodeToSimpleWord(
+                                                            selectedDayReading.wmo
+                                                        )
+                                                    ),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(100.dp),
+                                                    contentScale = ContentScale.Fit,
+                                                    colorFilter = weatherIconFilter
+                                                )
                                             }
                                         }
                                         Spacer(modifier = Modifier.height(8.dp))

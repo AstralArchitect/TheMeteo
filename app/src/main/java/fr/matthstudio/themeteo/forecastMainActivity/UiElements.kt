@@ -53,7 +53,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
@@ -260,6 +263,14 @@ enum class ChosenVar {
 @Composable
 fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onClick: () -> Unit) {
     val context = LocalContext.current
+    val isDark = isSystemInDarkTheme()
+    val weatherIconFilter = remember(isDark) {
+        if (!isDark) {
+            ColorFilter.colorMatrix(ColorMatrix().apply {
+                setToScale(0.8f, 0.8f, 0.8f, 1f)
+            })
+        } else null
+    }
 
     // Charger les icônes
     val iconWeatherFolder = "file:///android_asset/icons/weather/"
@@ -296,10 +307,10 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Get the full day name (e.g., "Monday")
+                // Get the day name (e.g., "Mon.")
                 Text(
                     text = dayReading.date.dayOfWeek.getDisplayName(
-                        TextStyle.FULL,
+                        TextStyle.SHORT,
                         Locale.getDefault()
                     ),
                     style = MaterialTheme.typography.bodyMedium,
@@ -331,7 +342,8 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                     modifier = Modifier
                         .width(30.dp)
                         .height(30.dp),
-                    contentScale = ContentScale.Fit
+                    contentScale = ContentScale.Fit,
+                    colorFilter = weatherIconFilter
                 )
                 Text(
                     text = "${dayReading.maxTemperature.roundToInt()}°/${dayReading.minTemperature.roundToInt()}°",

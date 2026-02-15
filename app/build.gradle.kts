@@ -37,7 +37,7 @@ android {
         debug {
             // Le suffixe sera ajouté au nom de l'application (ex: Themeteo-Alpha)
             applicationIdSuffix = ".debug"
-            // Le suffixe sera ajouté au nom de la version
+            // Le suffixe sera ajouté au nom de la version.
             versionNameSuffix = "-${getBuildDate()}"
             isDebuggable = true // Cette ligne est implicite pour le debug, mais la laisser est clair
         }
