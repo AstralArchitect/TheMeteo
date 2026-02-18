@@ -16,6 +16,7 @@ import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.VigilanceMapResponse
+import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.OkHttp
@@ -131,7 +132,7 @@ data class GeocodingResult(
     @SerialName("admin1") val region: String
 )
 
-class WeatherService {
+class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     // On définit la config une seule fois ici
     private val jsonParser = Json {
         ignoreUnknownKeys = true
@@ -172,6 +173,7 @@ class WeatherService {
             }.body<GeocodingResponse>().results
         } catch (e: Exception) {
             Log.e("Geocoder", "Erreur de géocodage : ${e.message}")
+            telemetryManager?.logException(e)
             null
         }
     }
@@ -245,10 +247,12 @@ class WeatherService {
             } else {
                 val errorBody = response.body<String>()
                 Log.e("AirQuality", "Erreur API Google : ${response.status} - $errorBody")
+                telemetryManager?.logEvent("api_error", mapOf("api" to "google-air-quality", "status" to response.status.value, "error" to errorBody))
                 null
             }
         } catch (e: Exception) {
             Log.e("AirQuality", "Exception lors de la récupération de la qualité de l'air : ${e.message}")
+            telemetryManager?.logException(e)
             null
         }
     }
@@ -284,10 +288,12 @@ class WeatherService {
             } else {
                 val errorBody = response.body<String>()
                 Log.e("PollenAPI", "Erreur API Google : ${response.status} - $errorBody")
+                telemetryManager?.logEvent("api_error", mapOf("api" to "google-pollen", "status" to response.status.value, "error" to errorBody))
                 null
             }
         } catch (e: Exception) {
             Log.e("PollenAPI", "Exception lors de la récupération des données pollen : ${e.message}")
+            telemetryManager?.logException(e)
             null
         }
     }
@@ -373,10 +379,12 @@ class WeatherService {
             } else {
                 val errorBody = response.body<String>()
                 Log.e("WeatherService", "Erreur API Carte Vigilance : ${response.status} - $errorBody")
+                telemetryManager?.logEvent("api_error", mapOf("api" to "meteo-france-vigilance", "status" to response.status.value, "error" to errorBody))
                 null
             }
         } catch (e: Exception) {
             Log.e("WeatherService", "Exception lors de la récupération de la carte vigilance", e)
+            telemetryManager?.logException(e)
             null
         }
     }
@@ -463,11 +471,13 @@ class WeatherService {
                 // 2. Si c'est avant 8h, tu verras probablement un code 400 ici
                 val errorText = response.body<String>()
                 Log.e("WeatherService", "Erreur API : $errorText")
+                telemetryManager?.logEvent("api_error", mapOf("api" to "open-meteo-current", "status" to response.status.value, "error" to errorText))
                 return null
             }
 
         } catch (e: Exception) {
             Log.e("getCurrentWeather", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            telemetryManager?.logException(e)
             return null
         }
     }
@@ -511,11 +521,13 @@ class WeatherService {
             } else {
                 val errorText = response.body<String>()
                 Log.e("WeatherService", "Erreur API : $errorText")
+                telemetryManager?.logEvent("api_error", mapOf("api" to "open-meteo", "status" to response.status.value, "error" to errorText))
                 return null
             }
 
         } catch (e: Exception) {
             Log.e("getForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            telemetryManager?.logException(e)
             null
         }
     }

@@ -85,6 +85,12 @@ fun SettingsScreen(cache: WeatherCache) {
                     scope.launch {
                         // On met à jour via le repository contenu dans le cache
                         cache.userSettingsRepository.updateModel(newModel)
+                        
+                        // Log the event
+                        (activity?.application as? TheMeteo)?.container?.telemetryManager?.logEvent(
+                            "weather_model_selection",
+                            mapOf("model" to newModel)
+                        )
                     }
                 }
             )
@@ -178,14 +184,14 @@ fun ModelSelectionSetting(
     onModelSelected: (String) -> Unit
 ) {
     val models = listOf(
-        "best_match" to "Open Meteo",
-        "ecmwf_ifs" to "ECMWF IFS",
-        "ecmwf_aifs025_single" to "ECMWF AIFS",
-        "meteofrance_seamless" to "Météo France",
-        "gfs_seamless" to "NCEP GFS",
-        "icon_seamless" to "DWD ICON",
-        "gem_seamless" to "GEM",
-        "ukmo_seamless" to "UK Met Office",
+        "best_match" to stringResource(R.string.meilleur_mod_le_par_d_faut),
+        "ecmwf_ifs" to "ECMWF IFS HRES 9km",
+        "ecmwf_aifs025_single" to "ECMWF AIFS 0.25° Single",
+        "meteofrance_seamless" to "Météo France Seamless",
+        "gfs_seamless" to "NCEP GFS Seamless",
+        "icon_seamless" to "DWD ICON Seamless",
+        "gem_seamless" to "GEM Seamless",
+        "ukmo_seamless" to "UK Met Office Seamless",
     )
 
     var expanded by remember { mutableStateOf(false) }

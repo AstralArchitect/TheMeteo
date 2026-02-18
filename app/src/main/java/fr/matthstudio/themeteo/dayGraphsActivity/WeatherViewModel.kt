@@ -6,6 +6,7 @@ import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
+import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,9 +19,13 @@ import java.time.LocalDateTime
  * Il gère également la logique de recherche de villes.
  */
 @OptIn(FlowPreview::class) // Nécessaire pour l'opérateur debounce
-class WeatherViewModel(weatherCache: WeatherCache, startDateTime: LocalDateTime) : ViewModel() {
+class WeatherViewModel(
+    weatherCache: WeatherCache,
+    startDateTime: LocalDateTime,
+    telemetryManager: TelemetryManager
+) : ViewModel() {
 
-    private val weatherService = WeatherService()
+    private val weatherService = WeatherService(telemetryManager)
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
 

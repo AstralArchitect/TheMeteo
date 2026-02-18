@@ -23,9 +23,17 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val DEFAULT_SCREEN = intPreferencesKey("default_screen")
         val ENABLE_MODEL_FALLBACK = booleanPreferencesKey("enable_model_fallback")
         val ENABLE_ANIMATED_ICONS = booleanPreferencesKey("enable_animated_icons")
+        val FIREBASE_CONSENT = stringPreferencesKey("firebase_consent")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour le consentement Firebase (PENDING, GRANTED, DENIED).
+     */
+    val firebaseConsent: Flow<String> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.FIREBASE_CONSENT] ?: "PENDING"
+    }
 
     /**
      * Flow pour l'activation des icônes animées.
@@ -121,6 +129,15 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateEnableAnimatedIcons(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.ENABLE_ANIMATED_ICONS] = enabled
+        }
+    }
+
+    /**
+     * Met à jour le consentement Firebase.
+     */
+    suspend fun updateFirebaseConsent(consent: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FIREBASE_CONSENT] = consent
         }
     }
 

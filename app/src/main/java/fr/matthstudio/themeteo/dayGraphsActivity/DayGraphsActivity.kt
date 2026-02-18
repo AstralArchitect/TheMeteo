@@ -9,6 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,10 +25,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +40,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -90,7 +97,8 @@ class DayGraphsActivity : ComponentActivity() {
         }
 
         // Instancier le viewModel
-        weatherViewModel = WeatherViewModel((this.application as TheMeteo).weatherCache, startDateTime)
+        val app = (this.application as TheMeteo)
+        weatherViewModel = WeatherViewModel(app.weatherCache, startDateTime, app.container.telemetryManager)
 
         enableEdgeToEdge()
         setContent {
@@ -100,7 +108,14 @@ class DayGraphsActivity : ComponentActivity() {
                         .fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    GraphsScreen(weatherViewModel, startDateTime)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.safeDrawing),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        GraphsScreen(weatherViewModel, startDateTime)
+                    }
                 }
             }
         }
@@ -111,198 +126,248 @@ class DayGraphsActivity : ComponentActivity() {
 fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
 
     val forecast by viewModel.hourlyForecast.collectAsState()
+    val scrollState = rememberScrollState()
+    val backgroundColor = MaterialTheme.colorScheme.background
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(WindowInsets.safeDrawing.asPaddingValues())
-            .padding(start = 16.dp, end = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        Text(
-            text = if (startDateTime.hour == 0)
-                stringResource(R.string.forecast_for_the, startDateTime.format(DateTimeFormatter.ofPattern("dd MMMM yyyy")))
-            else
-                stringResource(R.string.next_24h_forecast),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        val scrollState = rememberScrollState()
-
-        if ((forecast as? WeatherDataState.SuccessHourly)?.data?.isNotEmpty() ?: false) {
-            WeatherIconGraph(viewModel, scrollState = scrollState)
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Background Grid (Layer 0)
+        // Only show if data is ready to ensure correct count
+        if (forecast is WeatherDataState.SuccessHourly && (forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
+            BackgroundGrid(
+                scrollState = scrollState,
+                itemCount = (forecast as WeatherDataState.SuccessHourly).data.size
+            )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState()), // Pour que ça puisse défiler si le contenu est grand
+                .padding(start = 16.dp, end = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
         ) {
-
-            // On affiche un indicateur de chargement pendant la récupération des données
-            if (forecast == WeatherDataState.Loading) {
-                CircularProgressIndicator(modifier = Modifier.padding(vertical = 50.dp))
-            } else if (forecast is WeatherDataState.SuccessHourly && (forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
-                // Le graphique ne s'affiche QUE si les données sont prêtes
-                Text(stringResource(R.string.temperature))
-                GenericGraph(
-                    viewModel,
-                    GraphType.TEMP,
-                    Color(0xFFFFF176),
-                    scrollState = scrollState
+            // Header with solid background to hide grid lines (Masking)
+            Box(modifier = Modifier.background(backgroundColor).fillMaxWidth()) {
+                Text(
+                    text = if (startDateTime.hour == 0)
+                        stringResource(R.string.forecast_for_the, startDateTime.format(DateTimeFormatter.ofPattern("dd MMMM yyyy")))
+                    else
+                        stringResource(R.string.next_24h_forecast),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp).align(Alignment.Center)
                 )
-                if ((forecast as WeatherDataState.SuccessHourly).data.first().apparentTemperature != null) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(stringResource(R.string.apparent_temperature))
+            }
+
+            if ((forecast as? WeatherDataState.SuccessHourly)?.data?.isNotEmpty() ?: false) {
+                // Icons graph with solid background to hide grid lines (Masking)
+                Box(modifier = Modifier.background(backgroundColor)) {
+                    WeatherIconGraph(viewModel, scrollState = scrollState)
+                }
+            }
+
+            val showPrecipitationDetailsGraphs = remember { mutableStateOf(false) }
+
+            // Function to generate the fading background brush for titles
+            val fadeBrush = Brush.verticalGradient(
+                0.0f to Color.Transparent,
+                0.2f to backgroundColor,
+                0.8f to backgroundColor,
+                1.0f to Color.Transparent
+            )
+            
+            // Helper modifier for titles to create the progressive fade out effect
+            val titleModifier = Modifier
+                .background(fadeBrush)
+                .padding(vertical = 4.dp, horizontal = 8.dp)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()), // Pour que ça puisse défiler si le contenu est grand
+            ) {
+                // On affiche un indicateur de chargement pendant la récupération des données
+                if (forecast == WeatherDataState.Loading) {
+                    CircularProgressIndicator(modifier = Modifier.padding(vertical = 50.dp))
+                } else if (forecast is WeatherDataState.SuccessHourly && (forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
+                    // Le graphique ne s'affiche QUE si les données sont prêtes
+                    Text(stringResource(R.string.temperature), modifier = titleModifier)
                     GenericGraph(
                         viewModel,
-                        GraphType.A_TEMP,
-                        Color(0xFFFFD54F),
+                        GraphType.TEMP,
+                        Color(0xFFFFF176),
                         scrollState = scrollState
                     )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.dew_point))
-                GenericGraph(
-                    viewModel,
-                    GraphType.DEW_POINT,
-                    Color(0xFFFF8A65),
-                    scrollState = scrollState
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.humidity))
-                GenericGraph(
-                    viewModel,
-                    GraphType.HUMIDITY,
-                    Color(0xFF4DD0E1),
-                    scrollState = scrollState,
-                    valueRange = 0f..100f
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.precipitation } != 0.0) {
-                    Text(stringResource(R.string.precipitation))
+                    if ((forecast as WeatherDataState.SuccessHourly).data.first().apparentTemperature != null) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(stringResource(R.string.apparent_temperature), modifier = titleModifier)
+                        GenericGraph(
+                            viewModel,
+                            GraphType.A_TEMP,
+                            Color(0xFFFFD54F),
+                            scrollState = scrollState
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.precipitation } != 0.0) {
+                        Row (
+                            modifier = Modifier
+                                .clickable { showPrecipitationDetailsGraphs.value = !showPrecipitationDetailsGraphs.value }
+                                .background(fadeBrush) // Apply fade to the row too
+                                .padding(vertical = 4.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(stringResource(R.string.precipitation))
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null
+                            )
+                        }
+                        Box (modifier = Modifier.clickable(
+                            onClick = { showPrecipitationDetailsGraphs.value = !showPrecipitationDetailsGraphs.value }
+                        )) {
+                            GenericGraph(
+                                viewModel,
+                                GraphType.PRECIPITATION,
+                                Color(0xFF64B5F6),
+                                scrollState = scrollState,
+                                valueRange = 0f..3f
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    if (showPrecipitationDetailsGraphs.value) {
+                        Column(modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceContainer)) {
+                            if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.precipitationProbability != null)
+                            {
+                                Text(stringResource(R.string.precipitation_prob), modifier = titleModifier)
+                                GenericGraph(
+                                    viewModel,
+                                    GraphType.PRECIPITATION_PROB,
+                                    Color(0xFF64B5F6),
+                                    scrollState = scrollState,
+                                    valueRange = 0f..100f
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.rain } != 0.0) {
+                                Text(stringResource(R.string.rain), modifier = titleModifier)
+                                GenericGraph(
+                                    viewModel,
+                                    GraphType.RAIN,
+                                    Color(0xFF64B5F6),
+                                    scrollState = scrollState,
+                                    valueRange = 0f..3f
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowfall } != 0.0)
+                            {
+                                Text(stringResource(R.string.snowfall_cm_h), modifier = titleModifier)
+                                GenericGraph(
+                                    viewModel,
+                                    GraphType.SNOWFALL,
+                                    Color(0xFFFFFFFF),
+                                    scrollState = scrollState
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.snowDepth != null) {
+                                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowDepth!! } != 0) {
+                                    Text(stringResource(R.string.snow_depth_cm), modifier = titleModifier)
+                                    GenericGraph(
+                                        viewModel,
+                                        GraphType.SNOW_DEPTH,
+                                        Color(0xFFFFFFFF),
+                                        scrollState = scrollState
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                }
+                            }
+                        }
+                    }
+                    Text(stringResource(R.string.wind_speed), modifier = titleModifier)
                     GenericGraph(
                         viewModel,
-                        GraphType.PRECIPITATION,
-                        Color(0xFF64B5F6),
-                        scrollState = scrollState,
-                        valueRange = 0f..3f
+                        GraphType.WIND_SPEED,
+                        Color(0xFFAED581),
+                        scrollState = scrollState
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                }
-                if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.precipitationProbability != null)
-                {
-                    Text(stringResource(R.string.precipitation_prob))
+                    Text(stringResource(R.string.humidity), modifier = titleModifier)
                     GenericGraph(
                         viewModel,
-                        GraphType.PRECIPITATION_PROB,
-                        Color(0xFF64B5F6),
+                        GraphType.HUMIDITY,
+                        Color(0xFF4DD0E1),
                         scrollState = scrollState,
                         valueRange = 0f..100f
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                }
-                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.rain } != 0.0) {
-                    Text(stringResource(R.string.rain))
+                    if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.visibility != null) {
+                        if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
+                            Text(stringResource(R.string.visibility), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.VISIBILITY,
+                                Color(0xFF98FFEB),
+                                scrollState = scrollState
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+                    Text(stringResource(R.string.cloud_cover), modifier = titleModifier)
                     GenericGraph(
                         viewModel,
-                        GraphType.RAIN,
-                        Color(0xFF64B5F6),
+                        GraphType.CLOUD_COVER,
+                        Color(0xFF9D9D9D),
                         scrollState = scrollState,
-                        valueRange = 0f..3f
+                        valueRange = 0f..100f
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                }
-                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowfall } != 0.0)
-                {
-                    Text(stringResource(R.string.snowfall_cm_h))
+                    Text(stringResource(R.string.pressure), modifier = titleModifier)
                     GenericGraph(
                         viewModel,
-                        GraphType.SNOWFALL,
-                        Color(0xFFFFFFFF),
+                        GraphType.PRESSURE,
+                        Color(0xFF9575CD),
                         scrollState = scrollState
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                }
-                if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.snowDepth != null) {
-                    if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowDepth!! } != 0) {
-                        Text(stringResource(R.string.snow_depth_cm))
-                        GenericGraph(
-                            viewModel,
-                            GraphType.SNOW_DEPTH,
-                            Color(0xFFFFFFFF),
-                            scrollState = scrollState
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+                    Text(stringResource(R.string.dew_point), modifier = titleModifier)
+                    GenericGraph(
+                        viewModel,
+                        GraphType.DEW_POINT,
+                        Color(0xFFFF8A65),
+                        scrollState = scrollState
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.opacity != null) {
+                        if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
+                            Text(stringResource(R.string.opacity_graph), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.OPACITY,
+                                Color(0xFF9D9D9D),
+                                scrollState = scrollState,
+                                valueRange = 0f..100f
+                            )
+                        }
                     }
-                }
-                Text(stringResource(R.string.wind_speed))
-                GenericGraph(
-                    viewModel,
-                    GraphType.WIND_SPEED,
-                    Color(0xFFAED581),
-                    scrollState = scrollState
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.pressure))
-                GenericGraph(
-                    viewModel,
-                    GraphType.PRESSURE,
-                    Color(0xFF9575CD),
-                    scrollState = scrollState
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.cloud_cover))
-                GenericGraph(
-                    viewModel,
-                    GraphType.CLOUD_COVER,
-                    Color(0xFF9D9D9D),
-                    scrollState = scrollState,
-                    valueRange = 0f..100f
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.opacity != null) {
-                    if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
-                        Text(stringResource(R.string.opacity_graph))
-                        GenericGraph(
-                            viewModel,
-                            GraphType.OPACITY,
-                            Color(0xFF9D9D9D),
-                            scrollState = scrollState,
-                            valueRange = 0f..100f
-                        )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.uvIndex != null) {
+                        if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
+                            Text(stringResource(R.string.uv_index), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.UV_INDEX,
+                                Color(0xFFFFEAB5),
+                                scrollState = scrollState,
+                                valueRange = 0f..11f
+                            )
+                        }
                     }
+                } else {
+                    // Message si aucune donnée n'est disponible après le chargement
+                    Text(stringResource(R.string.no_data_available_for_day))
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.visibility != null) {
-                    if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
-                        Text(stringResource(R.string.visibility))
-                        GenericGraph(
-                            viewModel,
-                            GraphType.VISIBILITY,
-                            Color(0xFF98FFEB),
-                            scrollState = scrollState
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.uvIndex != null) {
-                    if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
-                        Text(stringResource(R.string.uv_index))
-                        GenericGraph(
-                            viewModel,
-                            GraphType.UV_INDEX,
-                            Color(0xFFFFEAB5),
-                            scrollState = scrollState,
-                            valueRange = 0f..11f
-                        )
-                    }
-                }
-            } else {
-                // Message si aucune donnée n'est disponible après le chargement
-                Text(stringResource(R.string.no_data_available_for_day))
             }
         }
     }
@@ -315,6 +380,46 @@ enum class GraphType {
     WIND_SPEED, PRESSURE,
     CLOUD_COVER, OPACITY,
     UV_INDEX, VISIBILITY,
+}
+
+@Composable
+fun BackgroundGrid(
+    scrollState: ScrollState,
+    itemCount: Int,
+    contentWidth: Dp = 1000.dp
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val contentWidthPx = with(density) { contentWidth.toPx() }
+    val xPadding = 50f // Must match GenericGraphGlobal
+    
+    Canvas(
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxSize()
+    ) {
+        val xStep = (contentWidthPx - 2 * xPadding) / (itemCount - 1)
+        val gridColor = Color.Gray.copy(alpha = 0.3f)
+        val scrollOffset = scrollState.value
+
+        // Draw lines every hours
+        // Range 0 until itemCount - 1 to match the logic (drawing between points)
+        (0 until itemCount - 1).forEach { i ->
+            // Calculate X position relative to the content start
+            val rawX = xPadding + (i * xStep) + (xStep / 2)
+            // Apply scroll offset
+            val drawX = rawX - scrollOffset
+
+            // Only draw if within screen bounds (optimization)
+            if (drawX >= 0 && drawX <= size.width) {
+                drawLine(
+                    color = gridColor,
+                    start = Offset(drawX, 0f),
+                    end = Offset(drawX, size.height),
+                    strokeWidth = 2f
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -579,124 +684,6 @@ fun WindVectors(forecast: WeatherDataState, scrollState: ScrollState = rememberS
         }
     }
 }
-
-/*@Composable
-fun BarsGraph(
-    viewModel: WeatherViewModel,
-    valueRange: ClosedFloatingPointRange<Float>? = null,
-    scrollState: ScrollState = rememberScrollState()
-) {
-    val forecast by viewModel.minutelyForecast15.collectAsState()
-
-    if (forecast.isEmpty()) {
-        return // Ne rien dessiner si les données ne sont pas prêtes
-    }
-
-    Box(
-        modifier = Modifier
-            .width(1000.dp) // Largeur fixe pour correspondre aux autres graphiques
-            .horizontalScroll(scrollState),
-    ) {
-        val rainColor = Color(0xFF64B5F6) // Bleu pour la pluie
-        val snowColor = Color.White       // Blanc pour la neige
-        val textColor: Int = AndroidColor.rgb(
-            MaterialTheme.colorScheme.onBackground.red,
-            MaterialTheme.colorScheme.onBackground.green,
-            MaterialTheme.colorScheme.onBackground.blue
-        )
-
-        Canvas(
-            modifier = Modifier
-                .width(1000.dp)
-                .height(150.dp)
-        ) {
-            val xPadding = 50f
-            val yPadding = 100f
-
-            // Déterminer la valeur maximale pour l'échelle Y
-            val maxPrecipitation = forecast.maxOfOrNull { it.rain + it.snowfall }?.toFloat() ?: 1f
-            val maxValue = valueRange?.endInclusive?.coerceAtLeast(maxPrecipitation) ?: maxPrecipitation
-
-            if (maxValue <= 0f) return@Canvas // Éviter la division par zéro si aucune précipitation
-
-            val canvasWidth = size.width
-            val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
-            val barWidth = xStep * 0.7f // Laisser un peu d'espace entre les barres
-            val yScale = (size.height - 2 * yPadding) / maxValue
-
-            forecast.forEachIndexed { index, reading ->
-                val x = xPadding + (index * xStep)
-                val rainHeight = (reading.rain * yScale).toFloat()
-                val snowHeight = (reading.snowfall * yScale).toFloat()
-                val totalHeight = rainHeight + snowHeight
-
-                // 1. Dessiner la barre de pluie (en bas)
-                if (rainHeight > 0) {
-                    drawRect(
-                        color = rainColor,
-                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight),
-                        size = androidx.compose.ui.geometry.Size(barWidth, rainHeight)
-                    )
-                }
-
-                // 2. Dessiner la barre de neige (empilée sur la pluie)
-                if (snowHeight > 0) {
-                    drawRect(
-                        color = snowColor,
-                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight - snowHeight),
-                        size = androidx.compose.ui.geometry.Size(barWidth, snowHeight)
-                    )
-                }
-
-                // 3. Dessiner la valeur totale au-dessus de la barre (si > 0)
-                val totalPrecipitationValue = reading.rain + reading.snowfall
-                if (totalPrecipitationValue > 0) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        String.format(Locale.getDefault(), "%.1f", totalPrecipitationValue), // Formatter avec une décimale
-                        x,
-                        size.height - yPadding - totalHeight - 15f, // Position au-dessus de la barre
-                        Paint().apply {
-                            textAlign = Paint.Align.CENTER
-                            textSize = 25f
-                            color = textColor
-                        }
-                    )
-                }
-
-                // 4. Dessiner la minute en bas
-                drawContext.canvas.nativeCanvas.drawText(
-                    reading.time.format(DateTimeFormatter.ofPattern("mm")),
-                    x,
-                    size.height - yPadding + 90f,
-                    Paint().apply {
-                        textAlign = Paint.Align.CENTER
-                        textSize = 35f
-                        color = textColor
-                    }
-                )
-                // Dessiner l'heure au dessus de la minute si elle est égale à 0 et dessiner une barre vertical devant celle-ci
-                if (reading.time.minute == 0) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        reading.time.format(DateTimeFormatter.ofPattern("HH")) + "h",
-                        x,
-                        size.height - yPadding + 60f,
-                        Paint().apply {
-                            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                            textAlign = Paint.Align.CENTER
-                            textSize = 35f
-                            color = textColor
-                        }
-                    )
-                    drawRect(
-                        color = Color.Gray,
-                        topLeft = Offset(x - xStep / 2f, 0f),
-                        size = androidx.compose.ui.geometry.Size(2f, size.height)
-                    )
-                }
-            }
-        }
-    }
-}*/
 
 @Composable
 fun WeatherIconGraph(

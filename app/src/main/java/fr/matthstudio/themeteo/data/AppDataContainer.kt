@@ -5,6 +5,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 
+import fr.matthstudio.themeteo.telemetry.TelemetryManager
+import fr.matthstudio.themeteo.telemetry.TelemetryManagerImpl
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 /**
@@ -14,6 +17,7 @@ interface AppContainer {
     val userLocationsRepository: UserLocationsRepository
     val userSettingsRepository: UserSettingsRepository
     val locationProvider: LocationProvider // Ajout du LocationProvider
+    val telemetryManager: TelemetryManager
 }
 
 class AppDataContainer(private val context: Context) : AppContainer {
@@ -26,6 +30,9 @@ class AppDataContainer(private val context: Context) : AppContainer {
     // Ajout de l'instance du LocationProvider
     override val locationProvider: LocationProvider by lazy {
         LocationProvider(context)
+    }
+    override val telemetryManager: TelemetryManager by lazy {
+        TelemetryManagerImpl(context)
     }
 }
 

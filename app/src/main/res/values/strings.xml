@@ -113,7 +113,7 @@
     <string name="vigilance_dept_format">Vigilance Alerts (Dept. %s)</string>
     <string name="uv_index_format">UV Index: %d</string>
     <string name="major_pollutant_format">Major pollutant: %s</string>
-    <string name="precipitation_detail_format" translatable="false">%1$.1f mm (Prob: %2$d%% | Rain: %3$.1f mm)</string>
+    <string name="precipitation_detail_format" translatable="false">Prob: %2$d%% | Rain: %3$.1f mm</string>
     <string name="sun_event_format" translatable="false">%1$s: %2$s</string>
     <string name="sun_event_day_format" translatable="false">%1$s (%2$s): %3$s</string>
     
@@ -150,7 +150,7 @@
     <string name="pollen_for_the_next_days">Pollen for the Next Days</string>
     <string name="pollen_data_unavailable">Pollen Data Unavailable</string>
     <string name="out_of_season">Out of Season</string>
-    <string name="low_risk_or_none">low risk or none</string>
+    <string name="low_risk_or_none">Low risk or none</string>
     <string name="index_0">Index: 0</string>
     <string name="today_lower">today</string>
     <string name="tomorrow_lower">tomorrow</string>
@@ -176,4 +176,6 @@
     <string name="animated_icons_desc">Animate the weather icon, this setting will be disabled when battery saver is on</string>
     <string name="fill_missing_vars_title">Fill Missing Variables</string>
     <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the \'Best Match\' model</string>
+    <string name="meilleur_mod_le_par_d_faut">Best Match (default)</string>
+    <string name="major_polluant">Major Polluant: %1$s</string>
 </resources>

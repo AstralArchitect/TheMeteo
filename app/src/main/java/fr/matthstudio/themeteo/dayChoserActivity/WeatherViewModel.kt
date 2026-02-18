@@ -10,6 +10,7 @@ import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,9 +30,12 @@ import java.time.LocalDate
  * Il gère également la logique de recherche de villes.
  */
 @OptIn(FlowPreview::class) // Nécessaire pour l'opérateur debounce
-class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
+class WeatherViewModel(
+    private val weatherCache: WeatherCache,
+    private val telemetryManager: TelemetryManager
+) : ViewModel() {
 
-    private val weatherService = WeatherService()
+    private val weatherService = WeatherService(telemetryManager)
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
 
@@ -113,6 +117,7 @@ class WeatherViewModel(private val weatherCache: WeatherCache) : ViewModel() {
                 .debounce(300) // Attend 300ms de silence de l'utilisateur avant de lancer la recherche pour éviter les appels inutiles.
                 .collect { query ->
                     if (query.length > 2) {
+                        telemetryManager.logEvent("city_search", mapOf("query" to query))
                         val results = weatherService.searchCity(query)
                         _geocodingResults.value = results ?: emptyList()
                     } else {

@@ -9,6 +9,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "2.3.0" // Utilisez la même version que votre Kotlin
     id("kotlin-parcelize")
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 // Fonction pour obtenir la date formatée
@@ -26,8 +28,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "2.0.11"
+        versionCode = 12
+        versionName = "2.0.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -40,6 +42,7 @@ android {
             // Le suffixe sera ajouté au nom de la version.
             versionNameSuffix = "-${getBuildDate()}"
             isDebuggable = true // Cette ligne est implicite pour le debug, mais la laisser est clair
+            buildConfigField("Boolean", "FIREBASE_ENABLED", "false")
         }
 
         // Configuration pour le build de production
@@ -54,6 +57,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("Boolean", "FIREBASE_ENABLED", "true")
         }
     }
 
@@ -131,15 +135,15 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.photoview)
     // Icônes de base (Menu, ArrowBack, etc.)
-    implementation("androidx.compose.material:material-icons-core")
-    // TOUTES les autres icônes (nécessaire pour la plupart des projets)
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation(libs.androidx.compose.material.icons.core)
+    // TOUTES les autres icônes
+    implementation(libs.androidx.compose.material.icons.extended)
 
     // Glance pour les widgets d'écran d'accueil
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
 
-    // WorkManager pour exécuter des tâches en arrière-plan
+    // WorkManager pour exécuter des tâches en arrière-plans
     implementation(libs.androidx.work.runtime.ktx)
 
     // Data store
@@ -154,5 +158,25 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
+}
+
+// Disable Google Services and Crashlytics tasks for debug builds
+// as the .debug suffix is not registered in google-services.json
+afterEvaluate {
+    tasks.matching {
+        it.name.contains("googleServices", ignoreCase = true) && it.name.contains("Debug")
+    }.configureEach {
+        enabled = false
+    }
+    tasks.matching {
+        it.name.contains("Crashlytics", ignoreCase = true) && it.name.contains("Debug")
+    }.configureEach {
+        enabled = false
+    }
 }

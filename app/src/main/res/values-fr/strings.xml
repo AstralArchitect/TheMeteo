@@ -134,7 +134,7 @@
     <string name="pollen_for_the_next_days">Pollen pour les prochains jours</string>
     <string name="pollen_data_unavailable">Données de pollen indisponibles</string>
     <string name="out_of_season">Hors Saison</string>
-    <string name="low_risk_or_none">risque faible ou nul</string>
+    <string name="low_risk_or_none">Risque faible ou nul</string>
     <string name="index_0">Indice: 0</string>
     <string name="today_lower">aujourd\'hui</string>
     <string name="tomorrow_lower">demain</string>
@@ -159,4 +159,5 @@
     <string name="animated_icons_desc">Animer les icônes météo, désactivé lorsque l\'économiseur de batterie est activé</string>
     <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
     <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du \"Meilleur Modèle\"</string>
+    <string name="meilleur_mod_le_par_d_faut">Meilleur Modèle (par défaut)</string>
 </resources>

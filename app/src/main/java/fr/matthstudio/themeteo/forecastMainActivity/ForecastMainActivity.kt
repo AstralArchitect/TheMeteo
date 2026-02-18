@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Compress
@@ -62,6 +63,7 @@ import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SevereCold
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Thunderstorm
 import androidx.compose.material.icons.rounded.Umbrella
@@ -264,7 +266,8 @@ class ForecastMainActivity : ComponentActivity() {
         val isLauncherActivity = intent.getBooleanExtra("LAUNCHER", false)
 
         // Instancier le viewModel
-        weatherViewModel = WeatherViewModel((this.application as TheMeteo).weatherCache)
+        val app = (this.application as TheMeteo)
+        weatherViewModel = WeatherViewModel(app.weatherCache, app.container.telemetryManager)
 
         weatherViewModel.selectLocation(weatherViewModel.userSettings.value.defaultLocation)
 
@@ -712,6 +715,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable(true, onClick = { // Make the card clickable
+                                // Log telemetry
+                                (context.applicationContext as? TheMeteo)?.container?.telemetryManager?.logEvent(
+                                    "graph_interaction",
+                                    mapOf("type" to "hourly_main_card")
+                                )
                                 // Create an Intent to launch DayGraphsActivity
                                 val intent = Intent(context, DayGraphsActivity::class.java).apply {
                                     putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
@@ -1025,6 +1033,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable(true, onClick = {
+                                                // Log telemetry
+                                                (context.applicationContext as? TheMeteo)?.container?.telemetryManager?.logEvent(
+                                                    "graph_interaction",
+                                                    mapOf("type" to "daily_expanded_graph")
+                                                )
                                                 // Create an Intent to launch DayGraphsActivity
                                                 val intent = Intent(
                                                     context,
@@ -1398,23 +1411,39 @@ fun AirQualityPollenCard(
     ) {
         Column(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(vertical = 16.dp)
                 .fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Header
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row (
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.padding(start = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Rounded.Air,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.air_quality_polen_title),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Icon(
-                    Icons.Rounded.Air,
+                    Icons.AutoMirrored.Rounded.ArrowForward,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.air_quality_polen_title),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    modifier = Modifier
+                        .size(40.dp)
+                        .padding(end = 20.dp)
                 )
             }
 
@@ -1446,7 +1475,7 @@ fun AirQualityPollenCard(
                     )
                     if (dominantPollutant != null) {
                         Text(
-                            text = "Major Polluant: $dominantPollutant",
+                            text = stringResource(R.string.major_polluant, dominantPollutant),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
@@ -1454,10 +1483,12 @@ fun AirQualityPollenCard(
                 }
 
                 // Séparateur vertical discret
-                Box(modifier = Modifier
-                    .width(1.dp)
-                    .height(60.dp)
-                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)))
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
 
                 // --- COLONNE DROITE : POLLEN ---
                 Column(
@@ -1477,7 +1508,7 @@ fun AirQualityPollenCard(
                             )
                         }
                         Text(
-                            text = maxPollen.indexInfo?.category ?: "Low risk or null",
+                            text = maxPollen.indexInfo?.category ?: stringResource(R.string.low_risk_or_none),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
@@ -1531,7 +1562,7 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
             WeatherDetailItem(
                 Icons.Rounded.WbSunny,
                 stringResource(R.string.uv_index),
-                stringResource(R.string.uv_index_format, uv),
+                "$uv",
                 getUVDescription(uv)
             )
         },
@@ -1540,13 +1571,14 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         WeatherDetailItem(
             Icons.Rounded.Umbrella,
             stringResource(R.string.precipitation),
-            stringResource(
-                R.string.precipitation_detail_format,
-                actualReading.precipitationData.precipitation,
-                actualReading.precipitationData.precipitationProbability ?: 0,
-                actualReading.precipitationData.rain
-            )
+            "${actualReading.precipitationData.precipitation} mm",
+            "Prob: ${actualReading.precipitationData.precipitationProbability}% ${if (actualReading.precipitationData.rain != 0.0)
+                "| Rain: ${actualReading.precipitationData.rain} mm " else ""}${if (actualReading.precipitationData.snowfall != 0.0)
+                "| Snow: ${actualReading.precipitationData.snowfall}" else ""}"
         ),
+        actualReading.precipitationData.snowDepth?.takeIf { it != 0 }?.let {
+            WeatherDetailItem(Icons.Rounded.SevereCold, stringResource(R.string.snow_depth), "$it cm")
+        },
         WeatherDetailItem(Icons.Rounded.Air, stringResource(R.string.wind_speed), "${actualReading.windspeed} km/h", "Direction : ${actualReading.windDirection}°"),
         WeatherDetailItem(Icons.Rounded.Compress, stringResource(R.string.pressure), "${actualReading.pressure} hPa"),
         WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${actualReading.skyInfo.cloudcoverTotal}%", "Low : ${actualReading.skyInfo.cloudcoverLow} | Mid : ${actualReading.skyInfo.cloudcoverMid} | High : ${actualReading.skyInfo.cloudcoverHigh}"),

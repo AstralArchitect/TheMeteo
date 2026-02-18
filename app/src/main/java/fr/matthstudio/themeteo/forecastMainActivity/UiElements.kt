@@ -121,7 +121,7 @@ data class SimpleWeather (
 
 fun getModelSourceText(model: String?): String {
     return when (model) {
-        "best_match" -> "Open Meteo"
+        "best_match" -> "Open-Meteo"
         "ecmwf_ifs" -> "ECMWF IFS"
         "ecmwf_aifs025_single" -> "ECMWF AIFS"
         "meteofrance_seamless" -> "Météo France"

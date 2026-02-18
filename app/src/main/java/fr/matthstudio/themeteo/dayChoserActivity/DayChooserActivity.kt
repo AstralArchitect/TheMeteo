@@ -199,7 +199,8 @@ class DayChooserActivity : ComponentActivity() {
         val isLauncherActivity = intent.getBooleanExtra("LAUNCHER", false)
 
         // Instancier le viewModel
-        weatherViewModel = WeatherViewModel((this.application as TheMeteo).weatherCache)
+        val app = (this.application as TheMeteo)
+        weatherViewModel = WeatherViewModel(app.weatherCache, app.container.telemetryManager)
         enableEdgeToEdge()
         setContent {
             TheMeteoTheme {
