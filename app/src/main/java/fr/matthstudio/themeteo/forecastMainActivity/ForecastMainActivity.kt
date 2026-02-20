@@ -47,6 +47,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.AddCircleOutline
@@ -81,6 +82,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -98,7 +100,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -1157,6 +1163,19 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
+                                            Row {
+                                                Icon(
+                                                    imageVector = Icons.Default.ArrowForward,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.rotate(selectedDayReading.maxWind.windDirection.toFloat())
+                                                )
+                                                Text(
+                                                    text = "${selectedDayReading.maxWind.windspeed} km/h",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                             if (selectedDayReading.maxUvIndex != null) {
                                                 Row {
                                                     Icon(
@@ -1193,9 +1212,41 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                     )
                 }
 
+                if (hourlyForecast is WeatherDataState.SuccessHourly) {
+                    // Rain Map Preview
+                    item {
+                        var lat = 0.0
+                        var lon = 0.0
+                        when (val loc = selectedLocation) {
+                            is LocationIdentifier.CurrentUserLocation ->
+                                viewModel.userLocation.collectAsState().value?.let {
+                                    lat = it.latitude
+                                    lon = it.longitude
+                                }
+
+                            is LocationIdentifier.Saved -> {
+                                lat = loc.location.latitude
+                                lon = loc.location.longitude
+                            }
+                        }
+
+                        RainMapPreviewCard(
+                            lat = lat,
+                            lon = lon,
+                            onClick = {
+                                val intent = Intent(context, RainMapActivity::class.java).apply {
+                                    putExtra("LAT", lat)
+                                    putExtra("LON", lon)
+                                }
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                }
+
                 // Other infos
                 item {
-                    // Informations en bas de page            item {
+                    // Informations en bas de page
                     Spacer(modifier = Modifier.height(24.dp))
                     Column(
                         modifier = Modifier
@@ -1217,13 +1268,13 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             )
                         }
 
-                        Text(
+                        ResponsiveText(
                             text = locationText,
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.7f)
                         )
 
-                        Text(
+                        ResponsiveText(
                             text = stringResource(R.string.source_format, getModelSourceText(viewModel.userSettings.collectAsState().value.model)),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.7f)
@@ -1579,7 +1630,7 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         actualReading.precipitationData.snowDepth?.takeIf { it != 0 }?.let {
             WeatherDetailItem(Icons.Rounded.SevereCold, stringResource(R.string.snow_depth), "$it cm")
         },
-        WeatherDetailItem(Icons.Rounded.Air, stringResource(R.string.wind_speed), "${actualReading.windspeed} km/h", "Direction : ${actualReading.windDirection}°"),
+        WeatherDetailItem(Icons.Rounded.Air, stringResource(R.string.wind_speed), "${actualReading.wind.windspeed} km/h", "Direction : ${actualReading.wind.windDirection}°"),
         WeatherDetailItem(Icons.Rounded.Compress, stringResource(R.string.pressure), "${actualReading.pressure} hPa"),
         WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${actualReading.skyInfo.cloudcoverTotal}%", "Low : ${actualReading.skyInfo.cloudcoverLow} | Mid : ${actualReading.skyInfo.cloudcoverMid} | High : ${actualReading.skyInfo.cloudcoverHigh}"),
         actualReading.skyInfo.opacity?.let { op ->
@@ -2244,5 +2295,98 @@ fun BentoCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     ) {
         content()
+    }
+}
+
+@Composable
+fun ResponsiveText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontWeight: FontWeight? = null,
+    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
+    maxLines: Int = 1,
+    targetTextSizeHeight: androidx.compose.ui.unit.TextUnit = style.fontSize
+) {
+    var textSize by remember { mutableStateOf(targetTextSizeHeight) }
+    var readyToDraw by remember { mutableStateOf(false) }
+
+    Text(
+        text = text,
+        modifier = modifier,
+        color = color,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        fontSize = textSize,
+        style = style,
+        maxLines = maxLines,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        onTextLayout = { textLayoutResult ->
+            if (textLayoutResult.hasVisualOverflow) {
+                textSize = (textSize.value * 0.9f).sp
+            } else {
+                readyToDraw = true
+            }
+        }
+    )
+}
+
+@Composable
+fun RainMapPreviewCard(
+    lat: Double,
+    lon: Double,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BentoCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(160.dp)
+            .clickable { onClick() }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Background image (Static map tile or placeholder)
+            AsyncImage(
+                model = "https://basemaps.cartocdn.com/dark_all/6/31/21.png", // Generic dark tile
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Semi-transparent overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+            )
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Umbrella,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                ResponsiveText(
+                    text = "Rain Radar",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                ResponsiveText(
+                    text = "Click to view full screen",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+            }
+        }
     }
 }

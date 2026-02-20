@@ -75,6 +75,14 @@ data class SkyInfoData(
     val visibility: Int?, // en km
 )
 
+@Parcelize
+@Serializable
+data class WindData(
+    val windspeed: Double,
+    val windGusts: Double,
+    val windDirection: Double,
+) : Parcelable
+
 @Serializable
 data class AllHourlyVarsReading(
     @Serializable(with = LocalDateTimeSerializer::class)
@@ -83,8 +91,7 @@ data class AllHourlyVarsReading(
     val apparentTemperature: Double?,
     val precipitationData: PrecipitationData,
     val skyInfo: SkyInfoData,
-    val windspeed: Double,
-    val windDirection: Double,
+    val wind: WindData,
     val pressure: Int,
     val humidity: Int,
     val dewpoint: Double,
@@ -99,6 +106,7 @@ data class DailyReading(
     val maxTemperature: Double,
     val minTemperature: Double,
     val precipitation: Double,
+    val maxWind: WindData,
     val maxUvIndex: Int?,
     val wmo: Int,
     val sunset: String,
@@ -183,7 +191,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         val packageName = context.packageName
         val packageManager = context.packageManager
 
-        // PackageManager.GET_SIGNATURES est déprécié mais nécessaire pour les API < 28
+        // PackageManager.GET_SIGNATURES est déprécié, mais nécessaire pour les API < 28
         @Suppress("DEPRECATION")
         val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
@@ -304,7 +312,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     suspend fun getVigilanceForLocation(lat: Double, lon: Double): VigilanceInfos? {
         val departmentCode = getDepartmentCodeFromLocation(lat, lon) ?: return null
         val url = "https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours"
-        val apiKey = BuildConfig.METEO_FRANCE_API_KEY
+        val apiKey = BuildConfig.METEO_FRANCE_VIGILANCE_API_KEY
 
         return try {
             val response = client.get(url) {
@@ -538,7 +546,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "weather_code",
             "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m",
             "precipitation_probability", "snow_depth", "shortwave_radiation_instant", "direct_radiation_instant",
-            "diffuse_radiation_instant", "uv_index", "visibility"
+            "diffuse_radiation_instant", "uv_index", "visibility", "wind_gusts_10m"
         )
     }
 
@@ -573,6 +581,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             val visibility = response.getDeterministicHourlyData(getModelPrefixedName("visibility", model, isMultiModel))
             val windspeed = response.getDeterministicHourlyData(getModelPrefixedName("windspeed_10m", model, isMultiModel))
             val windDir = response.getDeterministicHourlyData(getModelPrefixedName("wind_direction_10m", model, isMultiModel))
+            val wgust = response.getDeterministicHourlyData(getModelPrefixedName("wind_gusts_10m", model, isMultiModel))
             val pressure = response.getDeterministicHourlyData(getModelPrefixedName("pressure_msl", model, isMultiModel))
             val humidity = response.getDeterministicHourlyData(getModelPrefixedName("relative_humidity_2m", model, isMultiModel))
             val dewpoint = response.getDeterministicHourlyData(getModelPrefixedName("dewpoint_2m", model, isMultiModel))
@@ -609,8 +618,11 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             uvIndex = (wui?.getOrNull(i) as? Double).safeToInt(),
                             visibility = (visibility?.getOrNull(i) as? Double).safeToInt()
                         ),
-                        windspeed = windspeed?.getOrNull(i) as? Double ?: Double.NaN,
-                        windDirection = windDir?.getOrNull(i) as? Double ?: Double.NaN,
+                        wind = WindData(
+                            windspeed = windspeed?.getOrNull(i) as? Double ?: Double.NaN,
+                            windGusts = wgust?.getOrNull(i) as? Double ?: Double.NaN,
+                            windDirection = windDir?.getOrNull(i) as? Double ?: Double.NaN
+                        ),
                         pressure = (pressure?.getOrNull(i) as? Double).safeToInt() ?: 0,
                         humidity = (humidity?.getOrNull(i) as? Double).safeToInt() ?: 0,
                         dewpoint = dewpoint?.getOrNull(i) as? Double ?: Double.NaN,
@@ -627,7 +639,8 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     private fun getDailyVariables(): List<String> {
         return listOf(
-            "temperature_2m_max", "temperature_2m_min", "precipitation_sum", "uv_index_max", "weather_code", "sunset", "sunrise"
+            "temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max", "wind_direction_10m_dominant",
+            "wind_gusts_10m_max", "uv_index_max", "weather_code", "sunset", "sunrise"
         )
     }
 
@@ -638,6 +651,9 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             val tempMax = response.getDeterministicDailyData(getModelPrefixedName("temperature_2m_max", model, isMultiModel))
             val tempMin = response.getDeterministicDailyData(getModelPrefixedName("temperature_2m_min", model, isMultiModel))
             val precip = response.getDeterministicDailyData(getModelPrefixedName("precipitation_sum", model, isMultiModel))
+            val windSpeed = response.getDeterministicDailyData(getModelPrefixedName("wind_speed_10m_max", model, isMultiModel))
+            val windDirection = response.getDeterministicDailyData(getModelPrefixedName("wind_direction_10m_dominant", model, isMultiModel))
+            val windGusts = response.getDeterministicDailyData(getModelPrefixedName("wind_gusts_10m_max", model, isMultiModel))
             val uvIndex = response.getDeterministicDailyData(getModelPrefixedName("uv_index_max", model, isMultiModel))
             val sunset = response.getDeterministicDailyData(getModelPrefixedName("sunset", model, isMultiModel))
             val sunrise = response.getDeterministicDailyData(getModelPrefixedName("sunrise", model, isMultiModel))
@@ -650,6 +666,11 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         maxTemperature = tempMax?.getOrNull(i) as? Double ?: Double.NaN,
                         minTemperature = tempMin?.getOrNull(i) as? Double ?: Double.NaN,
                         precipitation = precip?.getOrNull(i) as? Double ?: Double.NaN,
+                        maxWind = WindData(
+                            windspeed = windSpeed?.getOrNull(i) as? Double ?: Double.NaN,
+                            windGusts = windGusts?.getOrNull(i) as? Double ?: Double.NaN,
+                            windDirection = windDirection?.getOrNull(i) as? Double ?: Double.NaN
+                        ),
                         maxUvIndex = (uvIndex?.getOrNull(i) as? Double).safeToInt(),
                         wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0,
                         sunset = sunset?.getOrNull(i) as? String ?: "",

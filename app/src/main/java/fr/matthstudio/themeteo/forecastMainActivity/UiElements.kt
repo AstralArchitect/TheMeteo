@@ -8,7 +8,6 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -54,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -908,6 +908,14 @@ fun WeatherIconGraph(
     viewModel: WeatherViewModel,
     scrollState: ScrollState = rememberScrollState()
 ) {
+    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val weatherIconFilter = remember(isDark) {
+        if (!isDark) {
+            ColorFilter.colorMatrix(ColorMatrix().apply {
+                setToScale(0.9f, 0.9f, 0.9f, 1f)
+            })
+        } else null
+    }
     // Get the forecast
     val forecast by viewModel.hourlyForecast.collectAsState()
     // Charger les icônes
@@ -960,8 +968,9 @@ fun WeatherIconGraph(
             .horizontalScroll(scrollState), // ScrollState partagé
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(), // La Row prend toute la largeur du Box (1000.dp)
-            horizontalArrangement = Arrangement.SpaceAround, // L'arrangement gère l'espacement
+            modifier = Modifier
+                .fillMaxWidth(), // La Row prend toute la largeur du Box (1000.dp).
+            horizontalArrangement = Arrangement.SpaceBetween, // L'arrangement gère l'espacement
             verticalAlignment = Alignment.CenterVertically
         ) {
             simpleWeatherList.forEach { (weatherWord, isDay) ->
@@ -987,8 +996,9 @@ fun WeatherIconGraph(
                     model = fileName,
                     contentDescription = "Icône météo actuelle",
                     modifier = Modifier
-                        .width(41.5.dp),
-                    contentScale = ContentScale.Fit
+                        .width((1000f/24f).dp),
+                    contentScale = ContentScale.Fit,
+                    colorFilter = weatherIconFilter
                 )
             }
         }

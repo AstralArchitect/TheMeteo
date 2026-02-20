@@ -372,10 +372,12 @@ class WeatherCache(
                     val allDates = hourlyByDate.keys + dailyByDate.keys
 
                     allDates.forEach { date ->
-                        val hourly = hourlyByDate[date] ?: emptyList()
-                        val daily = dailyByDate[date] ?: DailyReading(
-                            date, 0.0, 0.0, 0.0, 0, 0, "", ""
-                        )
+                        val hourly = hourlyByDate[date]
+                        val daily = dailyByDate[date]
+                        if (hourly == null || daily == null){
+                            emit(WeatherDataState.Error(""))
+                            return@flow
+                        }
                         modelCache.dailyBlocks[date] = Pair(hourly, daily)
                     }
                     modelCache.lastFullFetch = LocalDateTime.now()
@@ -416,6 +418,12 @@ class WeatherCache(
                 snowDepth = p.precipitationData.snowDepth ?: f.precipitationData.snowDepth
             )
 
+            val mergedWindData = p.wind.copy(
+                windDirection = if (p.wind.windDirection.isNaN()) f.wind.windDirection else p.wind.windDirection,
+                windspeed = if (p.wind.windspeed.isNaN()) f.wind.windspeed else p.wind.windspeed,
+                windGusts = if (p.wind.windGusts.isNaN()) f.wind.windGusts else p.wind.windGusts
+            )
+
             val mergedGhi = p.skyInfo.shortwaveRadiation ?: f.skyInfo.shortwaveRadiation
             val mergedDhi = p.skyInfo.diffuseRadiation ?: f.skyInfo.diffuseRadiation
             
@@ -444,11 +452,10 @@ class WeatherCache(
                 apparentTemperature = p.apparentTemperature ?: f.apparentTemperature,
                 precipitationData = mergedPrecipitationData,
                 skyInfo = mergedSkyInfo,
-                windspeed = if (p.windspeed.isNaN()) f.windspeed else p.windspeed,
-                windDirection = if (p.windDirection.isNaN()) f.windDirection else p.windDirection,
+                wind = mergedWindData,
                 dewpoint = if (p.dewpoint.isNaN()) f.dewpoint else p.dewpoint,
-                pressure = if (p.pressure == 0 || p.pressure == null) f.pressure else p.pressure,
-                humidity = if (p.humidity == 0 || p.humidity == null) f.humidity else p.humidity,
+                pressure = if (p.pressure == 0) f.pressure else p.pressure,
+                humidity = if (p.humidity == 0) f.humidity else p.humidity,
                 wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo
             )
         }
@@ -601,11 +608,12 @@ class WeatherCache(
                     val allDates = hourlyByDate.keys + dailyByDate.keys
 
                     allDates.forEach { date ->
-                        val hourly = hourlyByDate[date] ?: emptyList()
-                        val daily = dailyByDate[date] ?: DailyReading(
-                            date, 0.0, 0.0, 0.0, 0, 0, "", ""
-                        )
-
+                        val hourly = hourlyByDate[date]
+                        val daily = dailyByDate[date]
+                        if (hourly == null || daily == null) {
+                            emit(WeatherDataState.Error(""))
+                            return@flow
+                        }
                         modelCache.dailyBlocks[date] = Pair(hourly, daily)
                     }
                     modelCache.lastFullFetch = LocalDateTime.now()

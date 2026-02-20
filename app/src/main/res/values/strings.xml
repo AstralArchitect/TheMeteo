@@ -11,15 +11,15 @@
     <string name="actual_situation">Actual Situation</string>
     <string name="open_satellite_view">Open Satellite View</string>
     <string name="loc_unavaiable">Location unavailable, using Paris\' location</string>
-    <string name="temperature">Temperature</string>
-    <string name="apparent_temperature">Feeling</string>
-    <string name="dew_point">Dew Point</string>
-    <string name="humidity">Humidity</string>
-    <string name="rain">Rain + Showers</string>
-    <string name="precipitation_prob">Rain Probability</string>
-    <string name="wind_speed">Wind Speed</string>
-    <string name="pressure">Pressure</string>
-    <string name="cloud_cover">Cloud Cover</string>
+    <string name="temperature">Temperature (°C)</string>
+    <string name="apparent_temperature">Feel like (°C)</string>
+    <string name="dew_point">Dew Point (°C)</string>
+    <string name="humidity">Humidity (%)</string>
+    <string name="rain">Rain (mm)</string>
+    <string name="precipitation_prob">Chance of Rain (%)</string>
+    <string name="wind_speed">Wind Speed (km/h)</string>
+    <string name="pressure">Pressure (hPa)</string>
+    <string name="cloud_cover">Cloud Cover (%)</string>
     <string name="forecast_for_the">Forecast for the %s</string>
     <string name="next_24h_forecast">Next 24h forecast</string>
     <string name="mid_clouds">Medium clouds :</string>
@@ -40,7 +40,7 @@
     <string name="next_days_temperature_forecast">Next %1$d Days Temperature Forecast</string>
     <string name="unknown_error">Unknown error</string>
     <string name="chose_model">Chose the weather forecasting model.</string>
-    <string name="precipitation">Precipitation (rain + snowfall + showers)</string>
+    <string name="precipitation">Precipitation (mm)</string>
     <string name="hourly_forecast">Hourly forecast</string>
     <string name="a_temperature_unit">Feeling °C</string>
     <string name="precipitation_unit">Precip. mm/h</string>
@@ -55,8 +55,8 @@
     <string name="sunset">Sunset</string>
     <string name="sun_infos">Sun Infos</string>
     <string name="today_s_sunrise">Today\'s Sunrise</string>
-    <string name="today">Today</string>
-    <string name="tomorrow">Tomorrow</string>
+    <string name="today">Tdy.</string>
+    <string name="tomorrow">Tmrw.</string>
     <string name="sunrise_no_value">Sunrise</string>
     <string name="sunset_no_value">Sunset</string>
     <string name="day_duration_no_value">Day duration</string>
@@ -72,8 +72,8 @@
     <string name="uv_very_high">Very High</string>
     <string name="uv_extreme">Extreme</string>
     <string name="uv_index">UV Index</string>
-    <string name="visibility">Visibility</string>
-    <string name="opacity_graph">Opacity</string>
+    <string name="visibility">Visibility (km)</string>
+    <string name="opacity_graph">Opacity (%)</string>
     <string name="details">Details</string>
     <string name="show_more">Show more</string>
     <string name="current_location">Current Location</string>
@@ -178,4 +178,5 @@
     <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the \'Best Match\' model</string>
     <string name="meilleur_mod_le_par_d_faut">Best Match (default)</string>
     <string name="major_polluant">Major Polluant: %1$s</string>
+    <string name="gusts">Gusts</string>
 </resources>

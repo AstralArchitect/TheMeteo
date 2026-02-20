@@ -533,6 +533,16 @@ fun SingleDailyForecastCard(
             append("$totalPrecipitation mm")
         }
     }
+    val windText = buildAnnotatedString {
+        withStyle(
+            style = SpanStyle(
+                fontWeight = FontWeight.Bold
+            )
+        ) {
+            append("${dayReading.maxWind.windGusts} kph")
+        }
+    }
+
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -605,6 +615,10 @@ fun SingleDailyForecastCard(
                     )
                     Text(
                         text = precipitationText,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text(
+                        text = windText,
                         style = MaterialTheme.typography.labelSmall
                     )
                 }

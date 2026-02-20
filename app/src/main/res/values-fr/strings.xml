@@ -6,15 +6,15 @@
     <string name="actual_situation">Situation Actuelle</string>
     <string name="open_satellite_view">Ouvrir les vues Satellites</string>
     <string name="loc_unavaiable">Localisation non disponible. Utilisation de Paris par défaut.</string>
-    <string name="temperature">Température</string>
-    <string name="apparent_temperature">Température Ressentie</string>
-    <string name="dew_point">Point de rosée</string>
-    <string name="humidity">Humidité</string>
-    <string name="rain">Pluie</string>
-    <string name="precipitation_prob">Probabilité de pluie</string>
-    <string name="wind_speed">Vitesse du vent</string>
-    <string name="pressure">Pression</string>
-    <string name="cloud_cover">Couverture nuageuse</string>
+    <string name="temperature">Température (°C)</string>
+    <string name="apparent_temperature">Température Ressentie (°C)</string>
+    <string name="dew_point">Point de rosée (°C)</string>
+    <string name="humidity">Humidité (%)</string>
+    <string name="rain">Pluie (mm)</string>
+    <string name="precipitation_prob">Probabilité de pluie (%)</string>
+    <string name="wind_speed">Vitesse du vent (km/h)</string>
+    <string name="pressure">Pression (hPa)</string>
+    <string name="cloud_cover">Couverture nuageuse (%)</string>
     <string name="forecast_for_the">Prévision pour le %s</string>
     <string name="next_24h_forecast">Prévisions pour les prochaines 24 heures</string>
     <string name="mid_clouds">Nuages moyens :</string>
@@ -35,7 +35,7 @@
     <string name="wind_speed_unit">Vitesse du vent km/h</string>
     <string name="settings">Paramètres</string>
     <string name="chose_model">Choisissez le modèle pour les prévisions.</string>
-    <string name="precipitation">Précipitations</string>
+    <string name="precipitation">Précipitations (mm)</string>
     <string name="hourly_forecast">Prévisions heure par heure</string>
     <string name="a_temperature_unit">Temp. ress. °C</string>
     <string name="precipitation_unit">Précip. mm/h</string>
@@ -46,8 +46,8 @@
     <string name="sun">Soleil</string>
     <string name="sun_infos">Infos Solaires</string>
     <string name="today_s_sunrise">Coucher du Soleil</string>
-    <string name="today">Aujourd\'hui</string>
-    <string name="tomorrow">Demain</string>
+    <string name="today">Ajd.</string>
+    <string name="tomorrow">Dm.</string>
     <string name="sunrise_no_value">Lever de Soleil</string>
     <string name="sunset_no_value">Coucher de Soleil</string>
     <string name="day_duration_no_value">Durée du jour</string>
@@ -62,8 +62,8 @@
     <string name="uv_very_high">Très Fort</string>
     <string name="uv_extreme">Extrême</string>
     <string name="uv_index">Indice UV</string>
-    <string name="visibility">Visibilité</string>
-    <string name="opacity_graph">Opacité</string>
+    <string name="visibility">Visibilité (km)</string>
+    <string name="opacity_graph">Opacité (%)</string>
     <string name="details">Détails</string>
     <string name="show_more">Voir plus</string>
     <string name="current_location">Position Actuelle</string>
@@ -160,4 +160,6 @@
     <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
     <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du \"Meilleur Modèle\"</string>
     <string name="meilleur_mod_le_par_d_faut">Meilleur Modèle (par défaut)</string>
+    <string name="major_polluant">Polluant Majeur: %1$s</string>
+    <string name="gusts">Rafales</string>
 </resources>

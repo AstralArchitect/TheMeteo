@@ -48,6 +48,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -457,12 +459,16 @@ fun GenericGraphGlobal(
     valueRange: ClosedFloatingPointRange<Float>? = null,
     scrollState: ScrollState = rememberScrollState(),
     contentWidth: Dp = 1000.dp,
-    contentHeight: Dp = 150.dp,
+    contentHeight: Dp = 125.dp,
     compactHourFormat: Boolean = false
 ) {
-    fun Double.toSmartString(): String {
-        val df = DecimalFormat("0.0#", DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
-        return df.format(this)
+    fun Number.toSmartString(): String {
+        return if (this is Double || this is Float) {
+            val df = DecimalFormat("0.0#", DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
+            df.format(this.toDouble())
+        } else {
+            this.toString()
+        }
     }
 
     Box(
@@ -515,7 +521,7 @@ fun GenericGraphGlobal(
 
             GraphType.WIND_SPEED -> {
                 forecast = fullForecast.data
-                    .map { f -> f.windspeed }
+                    .map { f -> f.wind.windspeed }
             }
 
             GraphType.PRESSURE -> {
@@ -558,10 +564,11 @@ fun GenericGraphGlobal(
             modifier = Modifier
                 .width(contentWidth) // La largeur du contenu défilable
                 .height(contentHeight)
+                .padding(start = 10.dp, end = 16.dp)
         ) {
             // 2. Ajuster le padding pour qu'il soit raisonnable
-            val xPadding = 50f // Padding sur les côtés à l'intérieur du Canvas
-            val yPadding = 100f
+            val xPadding = 30f // Padding sur les côtés à l'intérieur du Canvas
+            val yPadding = 80f
             var maxValue = forecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
             var minValue = forecast.minOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
 
@@ -623,7 +630,7 @@ fun GenericGraphGlobal(
 
                 // Value
                 drawContext.canvas.nativeCanvas.drawText(
-                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toDouble().toSmartString(),
+                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toSmartString(),
                     x,
                     y.toFloat() - 20f,
                     Paint().apply {
@@ -637,7 +644,7 @@ fun GenericGraphGlobal(
                 drawContext.canvas.nativeCanvas.drawText(
                     times[i],
                     x,
-                    size.height - yPadding + 70f, // Positionnement relatif au bas du graphique
+                    size.height - 20f, // Positionnement relatif au bas du graphique
                     Paint().apply {
                         textAlign = Paint.Align.CENTER
                         textSize = 40f // Légèrement augmenté pour la lisibilité
@@ -669,16 +676,26 @@ fun WindVectors(forecast: WeatherDataState, scrollState: ScrollState = rememberS
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
                 forecast.data.forEach { allVarsReading ->
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier
-                            // Use a fixed width that matches the spacing of your graph points.
-                            // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
-                            .width(41.5.dp)
-                            .rotate(allVarsReading.windDirection.toFloat() - 180)
-                    )
+                    Column (
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text (
+                            text = "${allVarsReading.wind.windGusts}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.padding(bottom = 1.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier
+                                // Use a fixed width that matches the spacing of your graph points.
+                                // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
+                                .width(41.5.dp)
+                                .rotate(allVarsReading.wind.windDirection.toFloat() - 180)
+                        )
+                    }
                 }
             }
         }
@@ -736,6 +753,15 @@ fun WeatherIconGraph(
         }
     }
 
+    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val weatherIconFilter = remember(isDark) {
+        if (!isDark) {
+            ColorFilter.colorMatrix(ColorMatrix().apply {
+                setToScale(0.9f, 0.9f, 0.9f, 1f)
+            })
+        } else null
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -770,7 +796,8 @@ fun WeatherIconGraph(
                     contentDescription = "Icône météo actuelle",
                     modifier = Modifier
                         .width(41.5.dp),
-                    contentScale = ContentScale.Fit
+                    contentScale = ContentScale.Fit,
+                    colorFilter = weatherIconFilter
                 )
             }
         }
