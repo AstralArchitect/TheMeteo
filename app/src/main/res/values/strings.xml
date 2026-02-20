@@ -110,7 +110,7 @@
     <string name="vigilance_full_format" translatable="false">VIGILANCE %1$s</string>
     <string name="vigilance_level_time_format">Level %1$d (%2$s) from %3$s to %4$s. Click for details.</string>
     <string name="vigilance_level_ongoing_format">Level %1$d ongoing or expected. Click for details.</string>
-    <string name="vigilance_dept_format">Vigilance Alerts (Dept. %s)</string>
+    <string name="vigilance_dept_format">Weather Alerts/Warnings(Dept. %s)</string>
     <string name="uv_index_format">UV Index: %d</string>
     <string name="major_pollutant_format">Major pollutant: %s</string>
     <string name="precipitation_detail_format" translatable="false">Prob: %2$d%% | Rain: %3$.1f mm</string>

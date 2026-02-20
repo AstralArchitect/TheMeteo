@@ -119,6 +119,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
@@ -860,6 +861,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         LocalDateTime.parse(this)
                                     } catch (e3: Exception) {
                                         // Handle parsing error
+                                        (context.applicationContext as TheMeteo).container.telemetryManager.logException(e3)
                                         null
                                     }
                                 }
@@ -1146,9 +1148,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                 )
                                                 Text(
                                                     text = "${selectedDayReading.maxTemperature}° / ${selectedDayReading.minTemperature}°",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    fontWeight = FontWeight.Bold
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurface
                                                 )
                                             }
                                             Row {
@@ -1158,9 +1159,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                 )
                                                 Text(
                                                     text = "${selectedDayReading.precipitation} mm",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    fontWeight = FontWeight.Bold
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurface
                                                 )
                                             }
                                             Row {
@@ -1171,9 +1171,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                 )
                                                 Text(
                                                     text = "${selectedDayReading.maxWind.windspeed} km/h",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    fontWeight = FontWeight.Bold
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurface
                                                 )
                                             }
                                             if (selectedDayReading.maxUvIndex != null) {
@@ -1185,9 +1184,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                     Spacer(modifier = Modifier.width(1.dp))
                                                     Text(
                                                         text = "${selectedDayReading.maxUvIndex}",
-                                                        style = MaterialTheme.typography.titleMedium,
-                                                        color = MaterialTheme.colorScheme.onSurface,
-                                                        fontWeight = FontWeight.Bold
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        color = MaterialTheme.colorScheme.onSurface
                                                     )
                                                     Spacer(modifier = Modifier.width(1.dp))
                                                     Icon(
@@ -1342,7 +1340,7 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
                 Text(stringResource(R.string.sun), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            Text(
+            ResponsiveText(
                 text = text,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -1359,7 +1357,7 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
                     stringResource(R.string.sun_event_day_format, event1.type, event1.dayLabel, time1)
                 }
 
-                Text(
+                ResponsiveText(
                     label1,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -1375,7 +1373,7 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
                         stringResource(R.string.sun_event_day_format, event.type, event.dayLabel, time2)
                     }
 
-                    Text(
+                    ResponsiveText(
                         label2,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
@@ -1630,9 +1628,9 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         actualReading.precipitationData.snowDepth?.takeIf { it != 0 }?.let {
             WeatherDetailItem(Icons.Rounded.SevereCold, stringResource(R.string.snow_depth), "$it cm")
         },
-        WeatherDetailItem(Icons.Rounded.Air, stringResource(R.string.wind_speed), "${actualReading.wind.windspeed} km/h", "Direction : ${actualReading.wind.windDirection}°"),
+        WeatherDetailItem(Icons.Rounded.Air, stringResource(R.string.wind_speed), "${actualReading.wind.windspeed} km/h", "Direction: ${actualReading.wind.windDirection}°\n${stringResource(R.string.gusts)}: ${actualReading.wind.windGusts} kph"),
         WeatherDetailItem(Icons.Rounded.Compress, stringResource(R.string.pressure), "${actualReading.pressure} hPa"),
-        WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${actualReading.skyInfo.cloudcoverTotal}%", "Low : ${actualReading.skyInfo.cloudcoverLow} | Mid : ${actualReading.skyInfo.cloudcoverMid} | High : ${actualReading.skyInfo.cloudcoverHigh}"),
+        WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${actualReading.skyInfo.cloudcoverTotal}%", "Low: ${actualReading.skyInfo.cloudcoverLow}% | Mid: ${actualReading.skyInfo.cloudcoverMid}% | High: ${actualReading.skyInfo.cloudcoverHigh}%"),
         actualReading.skyInfo.opacity?.let { op ->
             WeatherDetailItem(Icons.Rounded.Opacity, stringResource(R.string.opacity), "$op%", "Radiation: ${actualReading.skyInfo.shortwaveRadiation?.roundToInt()} W/m²")
         },

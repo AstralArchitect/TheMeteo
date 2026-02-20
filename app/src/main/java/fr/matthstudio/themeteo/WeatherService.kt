@@ -5,6 +5,7 @@ import android.util.Log
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.compose.runtime.traceEventEnd
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import fr.matthstudio.themeteo.utilClasses.AirQualityLocation
@@ -219,6 +220,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         return digest.joinToString("") { "%02X".format(it) }
 
     } catch (e: Exception) {
+        telemetryManager?.logException(e)
         Log.e("SigningInfo", "Erreur lors de la récupération du SHA-1", e)
         return null
     }
@@ -426,6 +428,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 }
             } catch (e: Exception) {
                 Log.e("WeatherService", "Erreur Geocoding à la précision $precision : ${e.message}")
+                telemetryManager?.logException(e)
                 // En cas d'erreur réseau, on peut choisir d'arrêter ou de continuer
                 return null
             }
@@ -629,10 +632,12 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0
                     )
                 } catch (e: Exception) {
+                    telemetryManager?.logException(e)
                     null
                 }
             }
         } catch (e: Exception) {
+            telemetryManager?.logException(e)
             return null
         }
     }
@@ -677,11 +682,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         sunrise = sunrise?.getOrNull(i) as? String ?: ""
                     )
                 } catch (e: Exception) {
+                    telemetryManager?.logException(e)
                     null
                 }
             }
         } catch (e: Exception) {
             Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données journalières", e)
+            telemetryManager?.logException(e)
             return null
         }
     }
@@ -700,6 +707,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             return result
         } catch (e: Exception) {
             Log.e("WeatherServiceParser", "Erreur lors du parsing des données actuelles", e)
+            telemetryManager?.logException(e)
             return null
         }
     }

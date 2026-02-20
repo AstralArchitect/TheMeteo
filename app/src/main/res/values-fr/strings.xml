@@ -97,7 +97,7 @@
     <!-- Formatted Strings -->
     <string name="vigilance_level_time_format">Niveau %1$d (%2$s) de %3$s à %4$s. Cliquez pour voir le détail.</string>
     <string name="vigilance_level_ongoing_format">Niveau %1$d en cours ou prévu. Cliquez pour voir le détail.</string>
-    <string name="vigilance_dept_format">Alertes Vigilance (Dépt. %s)</string>
+    <string name="vigilance_dept_format">Vigilances (Dépt. %s)</string>
     <string name="uv_index_format">Indice UV : %d</string>
     <string name="pollen_index_format">Indice : %d</string>
     <string name="major_pollutant_format">Polluant majeur : %s</string>

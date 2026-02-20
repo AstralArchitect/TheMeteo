@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.MapTileProviderBasic
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
@@ -69,20 +73,20 @@ import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 class RainMapActivity : ComponentActivity() {
-    private val viewModel: RainMapViewModel by viewModels()
+    private lateinit var viewModel: RainMapViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = packageName
+        val app = this.application
+        viewModel = RainMapViewModel(app)
 
         val initialLat = intent.getDoubleExtra("LAT", 48.8566)
         val initialLon = intent.getDoubleExtra("LON", 2.3522)
 
+        enableEdgeToEdge()
         setContent {
             TheMeteoTheme {
                 RainMapScreen(viewModel, initialLat, initialLon)
@@ -114,6 +118,7 @@ fun RainMapScreen(viewModel: RainMapViewModel, initialLat: Double, initialLon: D
                 RainMapContent(
                     state.host,
                     state.frames,
+                    state.lastPastIndex,
                     initialLat,
                     initialLon
                 )
@@ -126,10 +131,11 @@ fun RainMapScreen(viewModel: RainMapViewModel, initialLat: Double, initialLon: D
 fun RainMapContent(
     host: String,
     frames: List<TimeFrame>,
+    lastPastIndex: Int,
     initialLat: Double,
     initialLon: Double
 ) {
-    var currentIndex by remember { mutableIntStateOf(frames.lastIndex) }
+    var currentIndex by remember(lastPastIndex) { mutableIntStateOf(if (lastPastIndex != -1) lastPastIndex else frames.lastIndex) }
     var isPlaying by remember { mutableStateOf(false) }
     var mapView: MapView? by remember { mutableStateOf(null) }
     
@@ -139,6 +145,41 @@ fun RainMapContent(
     // Store overlays and providers
     val overlays = remember { mutableMapOf<Int, TilesOverlay>() }
     val providers = remember { mutableMapOf<Int, MapTileProviderBasic>() }
+
+    // Use current value reference for MapListener
+    val latestIndex = rememberUpdatedState(currentIndex)
+
+    // Trigger downloads for zoom 4 tiles when map is overzoomed
+    fun triggerDownloads(map: MapView) {
+        if (map.zoomLevelDouble <= 4.0) return
+        val currentIdx = latestIndex.value
+        val provider = providers[currentIdx] ?: return
+        val zoom = 4
+        val bbox = map.boundingBox
+
+        // Formulas for Slippy Map Tilenames
+        val xMin = Math.floor((bbox.lonWest + 180.0) / 360.0 * Math.pow(2.0, zoom.toDouble())).toInt()
+        val xMax = Math.floor((bbox.lonEast + 180.0) / 360.0 * Math.pow(2.0, zoom.toDouble())).toInt()
+        val yMin = Math.floor((1.0 - Math.log(Math.tan(Math.toRadians(bbox.latNorth)) + 1.0 / Math.cos(Math.toRadians(bbox.latNorth))) / Math.PI) / 2.0 * Math.pow(2.0, zoom.toDouble())).toInt()
+        val yMax = Math.floor((1.0 - Math.log(Math.tan(Math.toRadians(bbox.latSouth)) + 1.0 / Math.cos(Math.toRadians(bbox.latSouth))) / Math.PI) / 2.0 * Math.pow(2.0, zoom.toDouble())).toInt()
+
+        val yStart = Math.min(yMin, yMax)
+        val yEnd = Math.max(yMin, yMax)
+        val xStart = Math.min(xMin, xMax)
+        val xEnd = Math.max(xMin, xMax)
+
+        // Sanity check to avoid huge downloads if bbox is weird
+        val count = (xEnd - xStart + 1) * (yEnd - yStart + 1)
+        if (count > 100 || count <= 0) return
+
+        for (x in xStart..xEnd) {
+            for (y in yStart..yEnd) {
+                val tileIndex = MapTileIndex.getTileIndex(zoom, x, y)
+                // Calling getMapTile triggers the download pipeline if missing from cache
+                provider.getMapTile(tileIndex)
+            }
+        }
+    }
 
     // Animation Loop
     LaunchedEffect(isPlaying) {
@@ -172,15 +213,15 @@ fun RainMapContent(
                         val lon = tile2lon(x, zoom) + (tile2lon(x + 1, zoom) - tile2lon(x, zoom)) / 2
                         val lat = tile2lat(y, zoom) + (tile2lat(y + 1, zoom) - tile2lat(y, zoom)) / 2
 
-                        // RADIUS CHECK: 1000km from user
+                        // RADIUS CHECK: 2000km from user
                         val results = FloatArray(1)
                         Location.distanceBetween(userPos.latitude, userPos.longitude, lat, lon, results)
                         val distanceInKm = results[0] / 1000
 
-                        return if (distanceInKm <= 1000) {
-                            baseUrl + zoom + "/" + x + "/" + y + "/2/1_1.png"
+                        return if (distanceInKm <= 2000) {
+                            "$baseUrl$zoom/$x/$y/2/1_1.png"
                         } else {
-                            "" // Forbid download outside 1000km
+                            "" // Forbid download outside 2000km
                         }
                     }
                 }
@@ -207,17 +248,23 @@ fun RainMapContent(
                     providers[index]?.clearTileCache()
                     overlay.isEnabled = true
                 }
-            } /*else {
+            } else {
                 if (overlay.isEnabled) {
                     overlay.isEnabled = false
                 }
-            }*/
+            }
+        }
+        
+        // Trigger downloads for zoom 4 if map is already overzoomed
+        if (map.zoomLevelDouble > 4.0) {
+            triggerDownloads(map)
         }
         
         map.invalidate()
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        val isDark = androidx.compose.foundation.isSystemInDarkTheme()
         // Map View
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -226,11 +273,22 @@ fun RainMapContent(
                     setMultiTouchControls(true)
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     
+                    addMapListener(object : MapListener {
+                        override fun onScroll(event: ScrollEvent?): Boolean {
+                            triggerDownloads(this@apply)
+                            return true
+                        }
+                        override fun onZoom(event: ZoomEvent?): Boolean {
+                            triggerDownloads(this@apply)
+                            return true
+                        }
+                    })
+
                     // Base Map
                     val baseSource = object : OnlineTileSourceBase(
-                        "CartoDB Dark",
+                        "CartoDB ${if(isDark) "Dark" else "Light"}",
                         1, 20, 256, ".png",
-                        arrayOf("https://api.rainviewer.com/public/weather-maps.json")
+                        arrayOf("https://a.basemaps.cartocdn.com/${if (isDark) "dark_all" else "light_all"}/")
                     ) {
                         override fun getTileURLString(pMapTileIndex: Long): String {
                             return baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" +
@@ -325,15 +383,20 @@ fun RainMapContent(
             Slider(
                 value = currentIndex.toFloat(),
                 onValueChange = { 
-                    currentIndex = it.toInt()
+                    currentIndex = it.roundToInt()
                     isPlaying = false
                 },
                 valueRange = 0f..frames.lastIndex.toFloat(),
-                steps = frames.size - 2,
+                steps = if (frames.size > 2) frames.size - 2 else 0,
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary
                 )
+            )
+
+            Text(
+                text = "© OpenStreetMap contributors, © CARTO",
+                style = MaterialTheme.typography.bodySmall
             )
         }
     }

@@ -1,20 +1,26 @@
 package fr.matthstudio.themeteo.rainMapActivity
 
+import android.app.Application
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.crashlytics.FirebaseCrashlytics
+import fr.matthstudio.themeteo.TheMeteo
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
-class RainMapViewModel : ViewModel() {
+class RainMapViewModel(private val applicationContext: Application) : ViewModel() {
 
     private val _uiState = MutableStateFlow<RainMapUiState>(RainMapUiState.Loading)
     val uiState: StateFlow<RainMapUiState> = _uiState.asStateFlow()
@@ -42,12 +48,14 @@ class RainMapViewModel : ViewModel() {
                 if (allFrames.isNotEmpty()) {
                     _uiState.value = RainMapUiState.Success(
                         host = response.host,
-                        frames = allFrames
+                        frames = allFrames,
+                        lastPastIndex = response.radar.past.size - 1
                     )
                 } else {
                     _uiState.value = RainMapUiState.Error("No data available")
                 }
             } catch (e: Exception) {
+                (applicationContext as TheMeteo).container.telemetryManager.logException(e)
                 _uiState.value = RainMapUiState.Error(e.message ?: "Unknown error")
             }
         }
@@ -61,6 +69,6 @@ class RainMapViewModel : ViewModel() {
 
 sealed class RainMapUiState {
     object Loading : RainMapUiState()
-    data class Success(val host: String, val frames: List<TimeFrame>) : RainMapUiState()
+    data class Success(val host: String, val frames: List<TimeFrame>, val lastPastIndex: Int) : RainMapUiState()
     data class Error(val message: String) : RainMapUiState()
 }

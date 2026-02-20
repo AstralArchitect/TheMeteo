@@ -131,7 +131,7 @@ class WeatherCache(
     private val cache: MutableMap<LocationIdentifier, MutableMap<String, ModelDataCache>> = mutableMapOf(),
     private val applicationContext: Application
 ) {
-    private val weatherService = WeatherService()
+    private val weatherService = WeatherService((applicationContext as TheMeteo).container.telemetryManager)
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
     private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true))
@@ -491,12 +491,11 @@ class WeatherCache(
 
         val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentSettings.model) { ModelDataCache() }
         // CALCUL SÉCURISÉ
-        val maxAllowedDate = LocalDate.now().plusDays(15)
+        val maxAllowedDate = LocalDate.now().plusDays((weatherModelPredictionTime[userSettings.value.model]?.toLong() ?: 3) - 1)
         var endDate = date.plusDays(days)
 
         if (endDate.isAfter(maxAllowedDate)) {
-            endDate = maxAllowedDate.plusDays(1) // subMap est souvent exclusif sur la fin ou inclut selon votre logique,
-            // ici on s'assure de ne pas demander au service au delà de maxAllowedDate
+            endDate = maxAllowedDate
         }
 
         // 1. Tentative de récupération depuis le cache (Modèle primaire)
