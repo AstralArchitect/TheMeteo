@@ -43,7 +43,17 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
                     .body<RainViewerResponse>()
 
                 // Combine past and nowcast
-                val allFrames = response.radar.past + response.radar.nowcast
+                val allPastFrames = response.radar.past.map { TimeFrame (
+                    time = it.time,
+                    path = it.path,
+                    isForecast = false
+                ) }
+                val allForecastFrames = response.radar.nowcast.map { TimeFrame (
+                    time = it.time,
+                    path = it.path,
+                    isForecast = true
+                ) }
+                val allFrames = allPastFrames + allForecastFrames
                 
                 if (allFrames.isNotEmpty()) {
                     _uiState.value = RainMapUiState.Success(

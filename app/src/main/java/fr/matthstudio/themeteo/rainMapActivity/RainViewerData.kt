@@ -25,5 +25,6 @@ data class SatelliteData(
 @Serializable
 data class TimeFrame(
     val time: Long,
-    val path: String
+    val path: String,
+    val isForecast: Boolean = false
 )

@@ -367,7 +367,7 @@ fun RainMapContent(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (currentIndex < frames.size / 2) "Passé : $dateStr" else "Prévision : $dateStr",
+                    text = if (frames[currentIndex].isForecast) "Prévision : $dateStr" else "Passé : $dateStr",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
