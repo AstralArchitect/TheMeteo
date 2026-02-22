@@ -896,8 +896,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         }
 
                         // Tomorrow's events (Data index 1, if available)
-                        val tomorrowReading = data[1]
-                        tomorrowReading.sunrise.toEventLocalDateTime()?.let { dt ->
+                        val tomorrowReading = data.getOrNull(1)
+                        tomorrowReading?.sunrise?.toEventLocalDateTime()?.let { dt ->
                             allEvents.add(
                                 NextSunEvent(
                                     stringResource(R.string.sunrise),
@@ -906,7 +906,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 )
                             )
                         }
-                        tomorrowReading.sunset.toEventLocalDateTime()?.let { dt ->
+                        tomorrowReading?.sunset?.toEventLocalDateTime()?.let { dt ->
                             allEvents.add(
                                 NextSunEvent(
                                     stringResource(R.string.sunset),
@@ -928,20 +928,22 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         if (futureEvents.size < 2)
                             return@item
 
-                        if (futureEvents[0].type == stringResource(R.string.sunrise)) {
+                        if (futureEvents[0].type == stringResource(R.string.sunrise) && tomorrowReading != null) {
                             val duration = Duration.between(
                                 todayReading.sunset.toEventLocalDateTime(),
                                 tomorrowReading.sunrise.toEventLocalDateTime()
                             )
                             text =
                                 "${stringResource(R.string.night)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
-                        } else {
+                        } else if (futureEvents[0].type == stringResource(R.string.sunset)) {
                             val duration = Duration.between(
                                 todayReading.sunrise.toEventLocalDateTime(),
                                 todayReading.sunset.toEventLocalDateTime()
                             )
                             text =
                                 "${stringResource(R.string.day)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
+                        } else {
+                            text = ""
                         }
 
                         // Determine which events to display
@@ -949,13 +951,14 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             futureEvents.getOrNull(0) ?: allEvents.getOrNull(0) ?: return@item
                         val displayEvent2 = futureEvents.getOrNull(1)
 
-                        // Nouveau composant pour l'heure du soleil, using the new structure
-                        SunriseSunsetCard(
-                            modifier = Modifier.weight(1f),
-                            event1 = displayEvent1,
-                            event2 = displayEvent2,
-                            text
-                        )
+                        if (text != "") {
+                            SunriseSunsetCard(
+                                modifier = Modifier.weight(1f),
+                                event1 = displayEvent1,
+                                event2 = displayEvent2,
+                                text
+                            )
+                        }
 
                         // La card regroupée (Détails)
                         SummaryDetailsCard(
