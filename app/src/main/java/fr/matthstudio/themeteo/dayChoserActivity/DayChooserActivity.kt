@@ -78,6 +78,7 @@ import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
+import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -177,17 +178,6 @@ fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
         // Pas besoin d'overlay si la WebView est bien inerte
     }
 }
-
-val weatherModelPredictionTime = mapOf(
-    "best_match" to 15,
-    "ecmwf_ifs" to 14,
-    "ecmwf_aifs025_single" to 14,
-    "meteofrance_seamless" to 3,
-    "gfs_seamless" to 15,
-    "icon_seamless" to 6,
-    "gem_seamless" to 9,
-    "ukmo_seamless" to 5,
-)
 
 class DayChooserActivity : ComponentActivity() {
 
@@ -369,8 +359,8 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                 val data = (dailyForecast as WeatherDataState.SuccessDaily).data
 
                 // Calculate absolute min and max temperatures for the entire forecast period
-                val minOfAll = data.minOfOrNull { it.minTemperature } ?: 0.0
-                val maxOfAll = data.maxOfOrNull { it.maxTemperature } ?: 0.0
+                val minOfAll = data.mapNotNull { it.minTemperature }.minOrNull() ?: 0.0
+                val maxOfAll = data.mapNotNull { it.maxTemperature }.maxOrNull() ?: 0.0
 
                 val chunkedData = data.chunked(2)
 
@@ -500,8 +490,8 @@ fun SingleDailyForecastCard(
         SimpleWeatherWord.STORMY -> stormyIconPath
     }
 
-    val maxTemp = dayReading.maxTemperature.roundToInt()
-    val minTemp = dayReading.minTemperature.roundToInt()
+    val maxTemp = dayReading.maxTemperature?.roundToInt()
+    val minTemp = dayReading.minTemperature?.roundToInt()
     val totalPrecipitation = dayReading.precipitation
 
     // Build annotated string for bold and colored temperatures and precipitation
@@ -512,7 +502,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
             )
         ) {
-            append("$maxTemp°")
+            append("${maxTemp ?: "--"}°")
         }
         append(" / ")
         withStyle(
@@ -521,7 +511,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
             )
         ) {
-            append("$minTemp°")
+            append("${minTemp ?: "--"}°")
         }
     }
     val precipitationText = buildAnnotatedString {
@@ -530,7 +520,7 @@ fun SingleDailyForecastCard(
                 fontWeight = FontWeight.Bold
             )
         ) {
-            append("$totalPrecipitation mm")
+            append("${totalPrecipitation ?: "--"} mm")
         }
     }
     val windText = buildAnnotatedString {
@@ -539,7 +529,7 @@ fun SingleDailyForecastCard(
                 fontWeight = FontWeight.Bold
             )
         ) {
-            append("${dayReading.maxWind.windGusts} kph")
+            append("${dayReading.maxWind.windGusts ?: "--"} kph")
         }
     }
 

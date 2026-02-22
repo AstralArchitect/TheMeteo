@@ -29,6 +29,8 @@ import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherCache
+import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.launch
 
@@ -55,6 +57,15 @@ fun SettingsScreen(cache: WeatherCache) {
     val activity = LocalActivity.current
     // On collecte l'état des paramètres depuis le cache
     val userSettings by cache.userSettings.collectAsState()
+    val selectedLocation by cache.selectedLocation.collectAsState()
+    val gpsPosition by cache.currentGpsPosition.collectAsState()
+
+    // On calcule les coordonnées pour filtrer les modèles
+    val currentCoords = when (val loc = selectedLocation) {
+        is fr.matthstudio.themeteo.LocationIdentifier.CurrentUserLocation -> gpsPosition
+        is fr.matthstudio.themeteo.LocationIdentifier.Saved -> GpsCoordinates(loc.location.latitude, loc.location.longitude)
+    }
+
     // On a besoin d'une coroutine scope pour appeler les fonctions suspend du repository
     val scope = rememberCoroutineScope()
 
@@ -81,6 +92,10 @@ fun SettingsScreen(cache: WeatherCache) {
         ) {
             ModelSelectionSetting(
                 currentModel = userSettings.model,
+                availableModels = if (currentCoords != null) 
+                    WeatherModelRegistry.getAvailableModels(currentCoords.latitude, currentCoords.longitude)
+                else 
+                    WeatherModelRegistry.models.filter { it.isGlobal },
                 onModelSelected = { newModel ->
                     scope.launch {
                         // On met à jour via le repository contenu dans le cache
@@ -181,19 +196,9 @@ fun SettingsScreen(cache: WeatherCache) {
 @Composable
 fun ModelSelectionSetting(
     currentModel: String,
+    availableModels: List<fr.matthstudio.themeteo.data.WeatherModel>,
     onModelSelected: (String) -> Unit
 ) {
-    val models = listOf(
-        "best_match" to stringResource(R.string.meilleur_mod_le_par_d_faut),
-        "ecmwf_ifs" to "ECMWF IFS HRES 9km",
-        "ecmwf_aifs025_single" to "ECMWF AIFS 0.25° Single",
-        "meteofrance_seamless" to "Météo France Seamless",
-        "gfs_seamless" to "NCEP GFS Seamless",
-        "icon_seamless" to "DWD ICON Seamless",
-        "gem_seamless" to "GEM Seamless",
-        "ukmo_seamless" to "UK Met Office Seamless",
-    )
-
     var expanded by remember { mutableStateOf(false) }
 
     Column {
@@ -209,7 +214,7 @@ fun ModelSelectionSetting(
             onExpandedChange = { expanded = !expanded }
         ) {
             OutlinedTextField(
-                value = models.firstOrNull { it.first == currentModel }?.second ?: currentModel,
+                value = availableModels.firstOrNull { it.apiName == currentModel }?.settingName ?: currentModel,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Selected Model") },
@@ -222,11 +227,11 @@ fun ModelSelectionSetting(
                 expanded = expanded,
                 onDismissRequest = { expanded = false }
             ) {
-                models.forEach { model ->
+                availableModels.forEach { model ->
                     DropdownMenuItem(
-                        text = { Text(model.second) },
+                        text = { Text(model.settingName) },
                         onClick = {
-                            onModelSelected(model.first)
+                            onModelSelected(model.apiName)
                             expanded = false
                         }
                     )

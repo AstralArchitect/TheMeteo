@@ -15,7 +15,7 @@ import fr.matthstudio.themeteo.data.LocationProvider
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.UserLocationsRepository
 import fr.matthstudio.themeteo.data.UserSettingsRepository
-import fr.matthstudio.themeteo.dayChoserActivity.weatherModelPredictionTime
+import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
@@ -255,8 +255,29 @@ class WeatherCache(
         val currentSettings = userSettings.value
         val currentLocationIdentifier = selectedLocation.value
 
+        // RÉCUPÉRATION DES COORDONNÉES POUR VÉRIFICATION DU MODÈLE
+        val coords = when (currentLocationIdentifier) {
+            is LocationIdentifier.CurrentUserLocation -> _currentGpsPosition.value ?: run {
+                withTimeoutOrNull(15000) { currentGpsPosition.filterNotNull().first() }
+            }
+            is LocationIdentifier.Saved -> GpsCoordinates(currentLocationIdentifier.location.latitude, currentLocationIdentifier.location.longitude)
+        }
+
+        // LOGIQUE DE FALLBACK/RESET SI MODÈLE INDISPONIBLE
+        var effectiveModel = currentSettings.model
+        if (coords != null) {
+            val modelInfo = WeatherModelRegistry.getModel(effectiveModel)
+            if (!modelInfo.isAvailableAt(coords.latitude, coords.longitude)) {
+                effectiveModel = "best_match"
+                // On réinitialise dans le repository pour que le changement soit définitif
+                applicationScope.launch(Dispatchers.IO) {
+                    userSettingsRepository.updateModel("best_match")
+                }
+            }
+        }
+
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
-            .plusDays(weatherModelPredictionTime[currentSettings.model]?.toLong() ?: 3)
+            .plusDays(WeatherModelRegistry.getModel(effectiveModel).predictionDays.toLong())
             .toLocalDate()
         var endTime = startTime.plusHours(hours.toLong())
 
@@ -265,14 +286,14 @@ class WeatherCache(
             endTime = maxAllowedDate.atTime(23, 59)
         }
 
-        val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentSettings.model) { ModelDataCache() }
+        val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(effectiveModel) { ModelDataCache() }
 
         // 1. Tentative de récupération depuis le cache (Modèle primaire)
         var primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
 
         // 2. Gestion du fallback (Meilleur Modèle)
         var fallbackData: List<AllHourlyVarsReading>? = null
-        if (currentSettings.enableModelFallback && currentSettings.model != "best_match") {
+        if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
             val fallbackCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
             fallbackData = getHourlyFromCache(fallbackCache, startTime, endTime)
         }
@@ -351,8 +372,8 @@ class WeatherCache(
                 )
             }
 
-            val modelsToFetch = mutableListOf(currentSettings.model)
-            if (currentSettings.enableModelFallback && currentSettings.model != "best_match") {
+            val modelsToFetch = mutableListOf(effectiveModel)
+            if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
                 modelsToFetch.add("best_match")
             }
 
@@ -388,7 +409,7 @@ class WeatherCache(
 
                 // Ré-extraction et fusion finale
                 primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
-                if (currentSettings.enableModelFallback && currentSettings.model != "best_match") {
+                if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
                     val fbCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
                     fallbackData = getHourlyFromCache(fbCache, startTime, endTime)
                 }
@@ -414,24 +435,24 @@ class WeatherCache(
             val f = fallbackMap[p.time] ?: return@map p
             
             val mergedPrecipitationData = p.precipitationData.copy(
-                precipitation = if (p.precipitationData.precipitation.isNaN()) f.precipitationData.precipitation else p.precipitationData.precipitation,
+                precipitation = p.precipitationData.precipitation.nanToNull() ?: f.precipitationData.precipitation.nanToNull(),
                 precipitationProbability = p.precipitationData.precipitationProbability ?: f.precipitationData.precipitationProbability,
-                rain = if (p.precipitationData.rain == 0.0 && f.precipitationData.rain != 0.0) f.precipitationData.rain else p.precipitationData.rain,
-                snowfall = if (p.precipitationData.snowfall == 0.0 && f.precipitationData.snowfall != 0.0) f.precipitationData.snowfall else p.precipitationData.snowfall,
+                rain = (if (p.precipitationData.rain.nanToNull() == null || (p.precipitationData.rain == 0.0 && f.precipitationData.rain != 0.0 && f.precipitationData.rain.nanToNull() != null)) f.precipitationData.rain else p.precipitationData.rain).nanToNull(),
+                snowfall = (if (p.precipitationData.snowfall.nanToNull() == null || (p.precipitationData.snowfall == 0.0 && f.precipitationData.snowfall != 0.0 && f.precipitationData.snowfall.nanToNull() != null)) f.precipitationData.snowfall else p.precipitationData.snowfall).nanToNull(),
                 snowDepth = p.precipitationData.snowDepth ?: f.precipitationData.snowDepth
             )
 
             val mergedWindData = p.wind.copy(
-                windDirection = if (p.wind.windDirection.isNaN()) f.wind.windDirection else p.wind.windDirection,
-                windspeed = if (p.wind.windspeed.isNaN()) f.wind.windspeed else p.wind.windspeed,
-                windGusts = if (p.wind.windGusts.isNaN()) f.wind.windGusts else p.wind.windGusts
+                windDirection = p.wind.windDirection.nanToNull() ?: f.wind.windDirection.nanToNull(),
+                windspeed = p.wind.windspeed.nanToNull() ?: f.wind.windspeed.nanToNull(),
+                windGusts = p.wind.windGusts.nanToNull() ?: f.wind.windGusts.nanToNull()
             )
 
-            val mergedGhi = p.skyInfo.shortwaveRadiation ?: f.skyInfo.shortwaveRadiation
-            val mergedDhi = p.skyInfo.diffuseRadiation ?: f.skyInfo.diffuseRadiation
+            val mergedGhi = p.skyInfo.shortwaveRadiation.nanToNull() ?: f.skyInfo.shortwaveRadiation.nanToNull()
+            val mergedDhi = p.skyInfo.diffuseRadiation.nanToNull() ?: f.skyInfo.diffuseRadiation.nanToNull()
             
             // Recalculer l'opacité si on a fusionné les radiations
-            val mergedOpacity = if (mergedGhi != null && mergedDhi != null) {
+            val mergedOpacity = if (mergedGhi != null && mergedDhi != null && mergedGhi != 0.0) {
                 (kotlin.math.max(0.0, kotlin.math.min(1.0, mergedDhi / mergedGhi)) * 100.0).toInt()
             } else {
                 p.skyInfo.opacity ?: f.skyInfo.opacity
@@ -443,7 +464,7 @@ class WeatherCache(
                 cloudcoverMid = if ((p.skyInfo.cloudcoverMid == 0) && f.skyInfo.cloudcoverMid != 0) f.skyInfo.cloudcoverMid else p.skyInfo.cloudcoverMid,
                 cloudcoverHigh = if ((p.skyInfo.cloudcoverHigh == 0) && f.skyInfo.cloudcoverHigh != 0) f.skyInfo.cloudcoverHigh else p.skyInfo.cloudcoverHigh,
                 shortwaveRadiation = mergedGhi,
-                directRadiation = p.skyInfo.directRadiation ?: f.skyInfo.directRadiation,
+                directRadiation = p.skyInfo.directRadiation.nanToNull() ?: f.skyInfo.directRadiation.nanToNull(),
                 diffuseRadiation = mergedDhi,
                 opacity = mergedOpacity,
                 uvIndex = p.skyInfo.uvIndex ?: f.skyInfo.uvIndex,
@@ -451,12 +472,12 @@ class WeatherCache(
             )
 
             p.copy(
-                temperature = if (p.temperature.isNaN()) f.temperature else p.temperature,
-                apparentTemperature = p.apparentTemperature ?: f.apparentTemperature,
+                temperature = p.temperature.nanToNull() ?: f.temperature.nanToNull(),
+                apparentTemperature = p.apparentTemperature.nanToNull() ?: f.apparentTemperature.nanToNull(),
                 precipitationData = mergedPrecipitationData,
                 skyInfo = mergedSkyInfo,
                 wind = mergedWindData,
-                dewpoint = if (p.dewpoint.isNaN()) f.dewpoint else p.dewpoint,
+                dewpoint = p.dewpoint.nanToNull() ?: f.dewpoint.nanToNull(),
                 pressure = if (p.pressure == 0) f.pressure else p.pressure,
                 humidity = if (p.humidity == 0) f.humidity else p.humidity,
                 wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo
@@ -469,9 +490,9 @@ class WeatherCache(
         return primary.map { p ->
             val f = fallbackMap[p.date] ?: return@map p
             p.copy(
-                maxTemperature = if (p.maxTemperature.isNaN()) f.maxTemperature else p.maxTemperature,
-                minTemperature = if (p.minTemperature.isNaN()) f.minTemperature else p.minTemperature,
-                precipitation = if (p.precipitation.isNaN()) f.precipitation else p.precipitation,
+                maxTemperature = p.maxTemperature.nanToNull() ?: f.maxTemperature.nanToNull(),
+                minTemperature = p.minTemperature.nanToNull() ?: f.minTemperature.nanToNull(),
+                precipitation = p.precipitation.nanToNull() ?: f.precipitation.nanToNull(),
                 maxUvIndex = p.maxUvIndex ?: f.maxUvIndex,
                 wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo,
                 sunset = p.sunset.ifEmpty { f.sunset },
@@ -492,10 +513,30 @@ class WeatherCache(
         val currentSettings = userSettings.value
         val currentLocationIdentifier = selectedLocation.value
 
-        val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentSettings.model) { ModelDataCache() }
+        // RÉCUPÉRATION DES COORDONNÉES POUR VÉRIFICATION DU MODÈLE
+        val coords = when (currentLocationIdentifier) {
+            is LocationIdentifier.CurrentUserLocation -> _currentGpsPosition.value ?: run {
+                withTimeoutOrNull(15000) { currentGpsPosition.filterNotNull().first() }
+            }
+            is LocationIdentifier.Saved -> GpsCoordinates(currentLocationIdentifier.location.latitude, currentLocationIdentifier.location.longitude)
+        }
+
+        // LOGIQUE DE FALLBACK/RESET SI MODÈLE INDISPONIBLE
+        var effectiveModel = currentSettings.model
+        if (coords != null) {
+            val modelInfo = WeatherModelRegistry.getModel(effectiveModel)
+            if (!modelInfo.isAvailableAt(coords.latitude, coords.longitude)) {
+                effectiveModel = "best_match"
+                applicationScope.launch(Dispatchers.IO) {
+                    userSettingsRepository.updateModel("best_match")
+                }
+            }
+        }
+
+        val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(effectiveModel) { ModelDataCache() }
         // CALCUL SÉCURISÉ
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
-            .plusDays(weatherModelPredictionTime[currentSettings.model]?.toLong() ?: 3)
+            .plusDays(WeatherModelRegistry.getModel(effectiveModel).predictionDays.toLong())
             .toLocalDate()
         var endDate = date.plusDays(days)
 
@@ -508,7 +549,7 @@ class WeatherCache(
 
         // 2. Gestion du fallback (Meilleur Modèle)
         var fallbackData: List<DailyReading>? = null
-        if (currentSettings.enableModelFallback && currentSettings.model != "best_match") {
+        if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
             val fallbackCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
             fallbackData = getDailyFromCache(fallbackCache, date, endDate)
         }
@@ -585,8 +626,8 @@ class WeatherCache(
                 )
             }
 
-            val modelsToFetch = mutableListOf(currentSettings.model)
-            if (currentSettings.enableModelFallback && currentSettings.model != "best_match") {
+            val modelsToFetch = mutableListOf(effectiveModel)
+            if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
                 modelsToFetch.add("best_match")
             }
 
@@ -625,7 +666,7 @@ class WeatherCache(
 
                 // Ré-extraction et fusion finale
                 primaryData = getDailyFromCache(primaryCache, date, endDate)
-                if (currentSettings.enableModelFallback && currentSettings.model != "best_match") {
+                if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
                     val fbCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
                     fallbackData = getDailyFromCache(fbCache, date, endDate)
                 }
@@ -777,7 +818,7 @@ class WeatherCache(
 
         // 2. Émettre le cache immédiatement s'il est valide
         if (isCacheValid) {
-            emit(WeatherDataState.SuccessAirQuality(Pair(cachedAirQuality!!, cachedPollen)))
+            emit(WeatherDataState.SuccessAirQuality(Pair(cachedAirQuality, cachedPollen)))
             return@flow
         }
 

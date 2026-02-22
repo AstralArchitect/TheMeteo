@@ -67,7 +67,7 @@ fun WeatherApiResponse.getEnsembleData(variableName: String): List<List<Double?>
         }
 }
 
-data class EnsembleStat(val avg: Double, val min: Double, val max: Double)
+data class EnsembleStat(val avg: Double?, val min: Double?, val max: Double?)
 
 /**
  * Calcule la moyenne, le minimum et le maximum pour chaque pas de temps.
@@ -102,7 +102,7 @@ fun calculateEnsembleStats(ensembleMatrix: List<List<Double?>>): List<EnsembleSt
 
             EnsembleStat(average, min, max)
         } else {
-            EnsembleStat(Double.NaN, Double.NaN, Double.NaN)
+            EnsembleStat(null, null, null)
         }
     }
 }
@@ -110,7 +110,7 @@ fun calculateEnsembleStats(ensembleMatrix: List<List<Double?>>): List<EnsembleSt
 /**
  * Récupère les données d'une variable spécifique pour le modèle déterministe.
  * @param variableName Le nom de la variable (ex: "temperature_2m", "rain")
- * @return Une liste de Double? (nullable pour gérer les données manquantes)
+ * @return Une liste de Double
  */
 fun WeatherApiResponse.getDeterministicHourlyData(variableName: String): List<Any>? {
     // On cherche directement la clé dans la map hourly
@@ -119,9 +119,9 @@ fun WeatherApiResponse.getDeterministicHourlyData(variableName: String): List<An
     return try {
         dataElement.jsonArray.map { element ->
             if (element.jsonPrimitive.isString) element.jsonPrimitive.content
-            else if (element is JsonNull) Double.NaN
-            else element.jsonPrimitive.double
-        }
+            else if (element is JsonNull) null
+            else element.jsonPrimitive.doubleOrNull
+        }.mapNotNull { it }
     } catch (_: Exception) {
         // Au cas où l'élément n'est pas un tableau (sécurité)
         null
@@ -151,9 +151,9 @@ fun WeatherApiResponse.getDeterministicDailyData(variableName: String): List<Any
     return try {
         dataElement.jsonArray.map { element ->
             if (element.jsonPrimitive.isString) element.jsonPrimitive.content
-            else if (element is JsonNull) Double.NaN
-            else element.jsonPrimitive.double
-        }
+            else if (element is JsonNull) null
+            else element.jsonPrimitive.doubleOrNull
+        }.mapNotNull { it }
     } catch (_: Exception) {
         // Au cas où l'élément n'est pas un tableau (sécurité)
         null

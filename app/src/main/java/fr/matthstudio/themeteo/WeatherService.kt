@@ -55,10 +55,10 @@ import kotlin.text.format
 @Serializable
 
 data class PrecipitationData(
-    val precipitation: Double, // en mm
+    val precipitation: Double?, // en mm
     val precipitationProbability: Int?, // en %
-    val rain: Double, // en mm
-    val snowfall: Double, // en cm
+    val rain: Double?, // en mm
+    val snowfall: Double?, // en cm
     val snowDepth: Int?, // en m
 )
 
@@ -79,23 +79,23 @@ data class SkyInfoData(
 @Parcelize
 @Serializable
 data class WindData(
-    val windspeed: Double,
-    val windGusts: Double,
-    val windDirection: Double,
+    val windspeed: Double?,
+    val windGusts: Double?,
+    val windDirection: Double?,
 ) : Parcelable
 
 @Serializable
 data class AllHourlyVarsReading(
     @Serializable(with = LocalDateTimeSerializer::class)
     val time: LocalDateTime,
-    val temperature: Double,
+    val temperature: Double?,
     val apparentTemperature: Double?,
     val precipitationData: PrecipitationData,
     val skyInfo: SkyInfoData,
     val wind: WindData,
     val pressure: Int,
     val humidity: Int,
-    val dewpoint: Double,
+    val dewpoint: Double?,
     val wmo: Int
 )
 
@@ -104,9 +104,9 @@ data class AllHourlyVarsReading(
 data class DailyReading(
     @Serializable(with = LocalDateSerializer::class)
     val date: LocalDate,
-    val maxTemperature: Double,
-    val minTemperature: Double,
-    val precipitation: Double,
+    val maxTemperature: Double?,
+    val minTemperature: Double?,
+    val precipitation: Double?,
     val maxWind: WindData,
     val maxUvIndex: Int?,
     val wmo: Int,
@@ -117,14 +117,14 @@ data class DailyReading(
 @Parcelize
 data class MinutelyReading(
     val time: LocalDateTime,
-    val snowfall: Double,
-    val rain: Double
+    val snowfall: Double?,
+    val rain: Double?
 ) : Parcelable
 
 
 @Serializable
 data class CurrentWeatherReading(
-    val temperature: Double,
+    val temperature: Double?,
     val wmo: Int
 )
 
@@ -140,6 +140,10 @@ data class GeocodingResult(
     @SerialName("country_code") val countryCode: String,
     @SerialName("admin1") val region: String
 )
+
+fun Double?.nanToNull(): Double? {
+    return if (this == null || this.isNaN()) null else this
+}
 
 class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     // On définit la config une seule fois ici
@@ -592,21 +596,21 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
             return times.indices.mapNotNull { i ->
                 try {
-                    val ghiVal = ghi?.getOrNull(i) as? Double
-                    val dhiVal = dhi?.getOrNull(i) as? Double
-                    val o = if (ghiVal != null && dhiVal != null && !ghiVal.isNaN() && !dhiVal.isNaN())
+                    val ghiVal = (ghi?.getOrNull(i) as? Double).nanToNull()
+                    val dhiVal = (dhi?.getOrNull(i) as? Double).nanToNull()
+                    val o = if (ghiVal != null && dhiVal != null)
                         (clamp(dhiVal / max(ghiVal, 1.0), 0.0, 1.0) * 100.0).roundToInt()
                     else null
 
                     AllHourlyVarsReading(
                         time = LocalDateTime.parse(times[i] as String),
-                        temperature = temp?.getOrNull(i) as? Double ?: Double.NaN,
-                        apparentTemperature = appTemp?.getOrNull(i) as? Double,
+                        temperature = (temp?.getOrNull(i) as? Double).nanToNull(),
+                        apparentTemperature = (appTemp?.getOrNull(i) as? Double).nanToNull(),
                         precipitationData = PrecipitationData(
-                            precipitation = precip?.getOrNull(i) as? Double ?: Double.NaN,
+                            precipitation = (precip?.getOrNull(i) as? Double).nanToNull(),
                             precipitationProbability = (precipProb?.getOrNull(i) as? Double).safeToInt(),
-                            rain = (rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0),
-                            snowfall = snowfall?.getOrNull(i) as? Double ?: 0.0,
+                            rain = ((rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0)).nanToNull(),
+                            snowfall = (snowfall?.getOrNull(i) as? Double).nanToNull(),
                             snowDepth = ((snowDepth?.getOrNull(i) as? Double)?.times(100)).safeToInt()
                         ),
                         skyInfo = SkyInfoData(
@@ -614,21 +618,21 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             cloudcoverLow = (cloudLow?.getOrNull(i) as? Double).safeToInt() ?: 0,
                             cloudcoverMid = (cloudMid?.getOrNull(i) as? Double).safeToInt() ?: 0,
                             cloudcoverHigh = (cloudHigh?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                            shortwaveRadiation = ghi?.getOrNull(i) as? Double,
-                            directRadiation = dsi?.getOrNull(i) as? Double,
-                            diffuseRadiation = dhi?.getOrNull(i) as? Double,
+                            shortwaveRadiation = (ghi?.getOrNull(i) as? Double).nanToNull(),
+                            directRadiation = (dsi?.getOrNull(i) as? Double).nanToNull(),
+                            diffuseRadiation = (dhi?.getOrNull(i) as? Double).nanToNull(),
                             opacity = o,
                             uvIndex = (wui?.getOrNull(i) as? Double).safeToInt(),
                             visibility = (visibility?.getOrNull(i) as? Double).safeToInt()
                         ),
                         wind = WindData(
-                            windspeed = windspeed?.getOrNull(i) as? Double ?: Double.NaN,
-                            windGusts = wgust?.getOrNull(i) as? Double ?: Double.NaN,
-                            windDirection = windDir?.getOrNull(i) as? Double ?: Double.NaN
+                            windspeed = (windspeed?.getOrNull(i) as? Double).nanToNull(),
+                            windGusts = (wgust?.getOrNull(i) as? Double).nanToNull(),
+                            windDirection = (windDir?.getOrNull(i) as? Double).nanToNull()
                         ),
                         pressure = (pressure?.getOrNull(i) as? Double).safeToInt() ?: 0,
                         humidity = (humidity?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                        dewpoint = dewpoint?.getOrNull(i) as? Double ?: Double.NaN,
+                        dewpoint = (dewpoint?.getOrNull(i) as? Double).nanToNull(),
                         wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0
                     )
                 } catch (e: Exception) {
@@ -668,13 +672,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 try {
                     DailyReading(
                         date = LocalDate.parse(times[i] as String),
-                        maxTemperature = tempMax?.getOrNull(i) as? Double ?: Double.NaN,
-                        minTemperature = tempMin?.getOrNull(i) as? Double ?: Double.NaN,
-                        precipitation = precip?.getOrNull(i) as? Double ?: Double.NaN,
+                        maxTemperature = (tempMax?.getOrNull(i) as? Double).nanToNull(),
+                        minTemperature = (tempMin?.getOrNull(i) as? Double).nanToNull(),
+                        precipitation = (precip?.getOrNull(i) as? Double).nanToNull(),
                         maxWind = WindData(
-                            windspeed = windSpeed?.getOrNull(i) as? Double ?: Double.NaN,
-                            windGusts = windGusts?.getOrNull(i) as? Double ?: Double.NaN,
-                            windDirection = windDirection?.getOrNull(i) as? Double ?: Double.NaN
+                            windspeed = (windSpeed?.getOrNull(i) as? Double).nanToNull(),
+                            windGusts = (windGusts?.getOrNull(i) as? Double).nanToNull(),
+                            windDirection = (windDirection?.getOrNull(i) as? Double).nanToNull()
                         ),
                         maxUvIndex = (uvIndex?.getOrNull(i) as? Double).safeToInt(),
                         wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0,
@@ -700,7 +704,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 val temp = currentLocationData.getCurrentWeatherData("temperature_2m")
                 val wmo = currentLocationData.getCurrentWeatherData("weather_code")
                 result.add(CurrentWeatherReading(
-                    temperature = temp as Double,
+                    temperature = (temp as? Double).nanToNull(),
                     wmo = (wmo as Double).toInt()
                 ))
             }

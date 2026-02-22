@@ -210,7 +210,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                         )
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.precipitation } != 0.0) {
+                    if (((forecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.precipitation }
+                            .maxOrNull() ?: 0.0) != 0.0) {
                         Row (
                             modifier = Modifier
                                 .clickable { showPrecipitationDetailsGraphs.value = !showPrecipitationDetailsGraphs.value }
@@ -251,7 +252,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
-                            if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.rain } != 0.0) {
+                            if ((forecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.rain }.maxOrNull() ?: 0.0 != 0.0) {
                                 Text(stringResource(R.string.rain), modifier = titleModifier)
                                 GenericGraph(
                                     viewModel,
@@ -262,7 +263,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
-                            if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowfall } != 0.0)
+                            if ((forecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.snowfall }.maxOrNull() ?: 0.0 != 0.0)
                             {
                                 Text(stringResource(R.string.snowfall_cm_h), modifier = titleModifier)
                                 GenericGraph(
@@ -274,7 +275,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
                             if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.snowDepth != null) {
-                                if ((forecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.snowDepth!! } != 0) {
+                                if ((forecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.snowDepth }.maxOrNull() ?: 0 != 0) {
                                     Text(stringResource(R.string.snow_depth_cm), modifier = titleModifier)
                                     GenericGraph(
                                         viewModel,
@@ -482,46 +483,46 @@ fun GenericGraphGlobal(
                 .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + if (!compactHourFormat) "h" else "" }
         when (graphType) {
             GraphType.TEMP -> {
-                forecast = fullForecast.data.map { f -> f.temperature }
+                forecast = fullForecast.data.map { f -> f.temperature ?: 0.0 }
             }
 
             GraphType.A_TEMP -> {
                 forecast = fullForecast.data
-                    .map { f -> f.apparentTemperature ?: return }
+                    .map { f -> f.apparentTemperature ?: 0.0 }
             }
 
             GraphType.DEW_POINT -> {
-                forecast = fullForecast.data.map { it.dewpoint }
+                forecast = fullForecast.data.map { it.dewpoint ?: 0.0 }
             }
 
             GraphType.PRECIPITATION_PROB -> {
                 forecast = fullForecast.data
-                    .map { f -> f.precipitationData.precipitationProbability ?: return }
+                    .map { f -> f.precipitationData.precipitationProbability ?: 0 }
             }
 
             GraphType.PRECIPITATION -> {
                 forecast = fullForecast.data
-                    .map { f -> f.precipitationData.precipitation }
+                    .map { f -> f.precipitationData.precipitation ?: 0.0 }
             }
 
             GraphType.RAIN -> {
                 forecast = fullForecast.data
-                    .map { f -> f.precipitationData.rain }
+                    .map { f -> f.precipitationData.rain ?: 0.0 }
             }
 
             GraphType.SNOWFALL -> {
                 forecast = fullForecast.data
-                    .map { f -> f.precipitationData.snowfall }
+                    .map { f -> f.precipitationData.snowfall ?: 0.0 }
             }
 
             GraphType.SNOW_DEPTH -> {
                 forecast = fullForecast.data
-                    .map { f -> f.precipitationData.snowDepth ?: return }
+                    .map { f -> f.precipitationData.snowDepth ?: 0 }
             }
 
             GraphType.WIND_SPEED -> {
                 forecast = fullForecast.data
-                    .map { f -> f.wind.windspeed }
+                    .map { f -> f.wind.windspeed ?: 0.0 }
             }
 
             GraphType.PRESSURE -> {
@@ -541,17 +542,17 @@ fun GenericGraphGlobal(
 
             GraphType.OPACITY -> {
                 forecast = fullForecast.data
-                    .map { f -> f.skyInfo.opacity ?: return }
+                    .map { f -> f.skyInfo.opacity ?: 0 }
             }
 
             GraphType.UV_INDEX -> {
                 forecast = fullForecast.data
-                    .map { f -> f.skyInfo.uvIndex ?: return }
+                    .map { f -> f.skyInfo.uvIndex ?: 0 }
             }
 
             GraphType.VISIBILITY -> {
                 forecast = fullForecast.data
-                    .map { f -> f.skyInfo.visibility?.div(1000f) ?: return }
+                    .map { f -> (f.skyInfo.visibility?.toDouble() ?: 0.0) / 1000.0 }
             }
         }
 
@@ -693,7 +694,7 @@ fun WindVectors(forecast: WeatherDataState, scrollState: ScrollState = rememberS
                                 // Use a fixed width that matches the spacing of your graph points.
                                 // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
                                 .width(41.5.dp)
-                                .rotate(allVarsReading.wind.windDirection.toFloat() - 180)
+                                .rotate(allVarsReading.wind.windDirection?.toFloat()?.minus(180) ?: 0f)
                         )
                     }
                 }
@@ -740,10 +741,11 @@ fun WeatherIconGraph(
 
     if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation != null) {
         for (index in 0..23) {
+            val radiation = (forecast as WeatherDataState.SuccessHourly).data[index].skyInfo.shortwaveRadiation
             simpleWeatherList.add(
                 Pair(
                     getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word,
-                    (forecast as WeatherDataState.SuccessHourly).data[index].skyInfo.shortwaveRadiation!! >= 1.0
+                    if (radiation != null) radiation >= 1.0 else null
                 )
             )
         }

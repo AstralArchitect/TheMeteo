@@ -12,7 +12,7 @@ import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
-import fr.matthstudio.themeteo.dayChoserActivity.weatherModelPredictionTime
+import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,7 +99,7 @@ class WeatherViewModel(
         refreshCounter
     ) { _, settings, _ ->
         // On récupère les settings ici pour calculer la durée
-        weatherModelPredictionTime[settings.model]?.toLong() ?: 3
+        WeatherModelRegistry.getModel(settings.model).predictionDays.toLong()
     }.flatMapLatest { duration ->
         weatherCache.get(LocalDate.now(), duration)
     }.stateIn(

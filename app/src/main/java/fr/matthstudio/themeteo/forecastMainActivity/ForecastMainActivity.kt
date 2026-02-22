@@ -44,8 +44,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.LocationOn
@@ -124,6 +126,7 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
@@ -680,8 +683,9 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 }
                             }
                             Spacer(modifier = Modifier.width(8.dp))
+                            val temperature = (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
                             Text(
-                                text = "${(hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature.roundToInt()}°",
+                                text = if (temperature != null) "${temperature.roundToInt()}°" else "--°",
                                 style = MaterialTheme.typography.displayLarge.copy(
                                     fontSize = 104.sp,
                                     fontWeight = FontWeight.Medium
@@ -807,7 +811,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         return@forEach
                                     val isSelected = variable == buttonVariable
 
-                                    if (buttonVariable == ChosenVar.PRECIPITATION && (hourlyForecast as WeatherDataState.SuccessHourly).data.maxOf { it.precipitationData.precipitation } == 0.0)
+                                    if (buttonVariable == ChosenVar.PRECIPITATION && (hourlyForecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.precipitation }.maxOrNull() == 0.0)
                                         return@forEach
 
                                     OutlinedButton(
@@ -1165,9 +1169,10 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                             }
                                             Row {
                                                 Icon(
-                                                    imageVector = Icons.Default.ArrowForward,
+                                                    imageVector = if (selectedDayReading.maxWind.windDirection != null) Icons.AutoMirrored.Filled.ArrowForward
+                                                    else Icons.Default.Air,
                                                     contentDescription = null,
-                                                    modifier = Modifier.rotate(selectedDayReading.maxWind.windDirection.toFloat())
+                                                    modifier = Modifier.rotate(selectedDayReading.maxWind.windDirection?.toFloat()?.minus(180) ?: 0f)
                                                 )
                                                 Text(
                                                     text = "${selectedDayReading.maxWind.windspeed} km/h",
@@ -1273,7 +1278,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         )
 
                         ResponsiveText(
-                            text = stringResource(R.string.source_format, getModelSourceText(viewModel.userSettings.collectAsState().value.model)),
+                            text = stringResource(R.string.source_format, WeatherModelRegistry.models.firstOrNull { it.apiName == viewModel.userSettings.collectAsState().value.model }?.sourceName ?: viewModel.userSettings.collectAsState().value.model),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.7f)
                         )
@@ -1810,9 +1815,9 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                     DetailRow(
                                         WeatherDetailItem(
                                             Icons.Rounded.Air,
-                                            pollutant.displayName ?: "Inconnu",
+                                            pollutant.displayName,
                                             if (pollutant.concentration != null) "${pollutant.concentration.value} ${formatPollutantUnit(pollutant.concentration.units)}" else "N/A",
-                                            pollutant.code ?: ""
+                                            pollutant.code
                                         )
                                     )
                                     HorizontalDivider(
@@ -1881,7 +1886,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                     dailyPollen.pollenTypeInfo?.let { types ->
                                         items(types) { type ->
                                             val category = when {
-                                                type.indexInfo?.category != null -> type.indexInfo.category!!
+                                                type.indexInfo?.category != null -> type.indexInfo.category
                                                 type.inSeason == false -> stringResource(R.string.out_of_season)
                                                 else -> stringResource(R.string.low_risk_or_none)
                                             }

@@ -1,7 +1,6 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
-import android.content.Intent
 import android.location.Geocoder
 import android.os.Build
 import androidx.compose.foundation.ScrollState
@@ -59,7 +58,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -69,7 +67,6 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
-import com.google.android.gms.location.LocationResult
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
@@ -83,14 +80,12 @@ import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
-import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
-import kotlin.text.lowercase
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -118,21 +113,6 @@ data class SimpleWeather (
     var word: SimpleWeatherWord,
     var image: ImageBitmap? = null
 )
-
-fun getModelSourceText(model: String?): String {
-    return when (model) {
-        "best_match" -> "Open-Meteo"
-        "ecmwf_ifs" -> "ECMWF IFS"
-        "ecmwf_aifs025_single" -> "ECMWF AIFS"
-        "meteofrance_seamless" -> "Météo France"
-        "gfs_seamless" -> "NCEP GFS"
-        "icon_seamless" -> "DWD ICON"
-        "gem_seamless" -> "GEM"
-        "gfs_graphcast025" -> "GFS GraphCast"
-        "ukmo_seamless" -> "UK Met Office"
-        else -> "Open-Meteo"
-    }
-}
 
 fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
     return when (code) {
@@ -229,12 +209,18 @@ fun getSimpleWeather(value: AllHourlyVarsReading): SimpleWeather {
 
         // 2. Précipitations (Priorité à la neige)
         var precipModifier: String? = null
-        if (precipitation >= 0.1f) {
-            precipModifier = if (snow >= 0.1f) {
-                if (snow < 0.5) modWithLightSnow else if (snow < 1.0) modWithModerateSnow else modWithHeavySnow
-            } else if (rain >= 0.1f) {
-                if (rain < 0.5) modWithLightRain else if (rain < 3.0) modWithModerateRain else if (rain < 10.0) modWithHeavyRain else modWithTorrentialRain
-            } else modWithPrecipitation
+        if (precipitation != null) {
+            if (precipitation >= 0.1f) {
+                if (snow != null) {
+                    if (rain != null) {
+                        precipModifier = if (snow >= 0.1f) {
+                            if (snow < 0.5) modWithLightSnow else if (snow < 1.0) modWithModerateSnow else modWithHeavySnow
+                        } else if (rain >= 0.1f) {
+                            if (rain < 0.5) modWithLightRain else if (rain < 3.0) modWithModerateRain else if (rain < 10.0) modWithHeavyRain else modWithTorrentialRain
+                        } else modWithPrecipitation
+                    }
+                }
+            }
         }
 
         // Assemblage final
@@ -346,7 +332,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                     colorFilter = weatherIconFilter
                 )
                 Text(
-                    text = "${dayReading.maxTemperature.roundToInt()}°/${dayReading.minTemperature.roundToInt()}°",
+                    text = "${dayReading.maxTemperature?.roundToInt()}°/${dayReading.minTemperature?.roundToInt()}°",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 8.dp)
                 )
@@ -533,7 +519,7 @@ fun LocationRow(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${currentWeatherReading.temperature.roundToInt()}°",
+                        text = "${currentWeatherReading.temperature?.roundToInt()}°",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = if (isSelected) FontWeight.Bold else null
                     )
@@ -736,7 +722,7 @@ fun GenericGraph(
     scrollState: ScrollState = rememberScrollState()
 ) {
     val fullForecast by viewModel.hourlyForecast.collectAsState()
-    var roundToInt = viewModel.userSettings.collectAsState().value.roundToInt ?: true
+    var roundToInt = viewModel.userSettings.collectAsState().value.roundToInt
 
     if (graphType == GraphType.PRECIPITATION || graphType == GraphType.RAIN ||
         graphType == GraphType.SNOWFALL

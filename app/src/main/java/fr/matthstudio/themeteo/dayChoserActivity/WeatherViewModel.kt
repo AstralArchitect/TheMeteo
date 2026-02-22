@@ -10,6 +10,7 @@ import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -92,7 +93,7 @@ class WeatherViewModel(
         // flatMapLatest relancera le flux ci-dessous.
     }.flatMapLatest {
         weatherCache.get(LocalDate.now(),
-            weatherModelPredictionTime[userSettings.value.model]?.toLong() ?: 3
+            WeatherModelRegistry.getModel(userSettings.value.model).predictionDays.toLong()
         )
     }.stateIn(
         viewModelScope,
