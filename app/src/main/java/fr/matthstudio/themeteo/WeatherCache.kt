@@ -255,7 +255,9 @@ class WeatherCache(
         val currentSettings = userSettings.value
         val currentLocationIdentifier = selectedLocation.value
 
-        val maxAllowedDate = LocalDate.now().plusDays((weatherModelPredictionTime[userSettings.value.model]?.toLong() ?: 3) - 1)
+        val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
+            .plusDays(weatherModelPredictionTime[currentSettings.model]?.toLong() ?: 3)
+            .toLocalDate()
         var endTime = startTime.plusHours(hours.toLong())
 
         // Si l'heure de fin dépasse la date max autorisée par l'API
@@ -472,8 +474,8 @@ class WeatherCache(
                 precipitation = if (p.precipitation.isNaN()) f.precipitation else p.precipitation,
                 maxUvIndex = p.maxUvIndex ?: f.maxUvIndex,
                 wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo,
-                sunset = if (p.sunset.isEmpty()) f.sunset else p.sunset,
-                sunrise = if (p.sunrise.isEmpty()) f.sunrise else p.sunrise
+                sunset = p.sunset.ifEmpty { f.sunset },
+                sunrise = p.sunrise.ifEmpty { f.sunrise }
             )
         }
     }
@@ -492,7 +494,9 @@ class WeatherCache(
 
         val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentSettings.model) { ModelDataCache() }
         // CALCUL SÉCURISÉ
-        val maxAllowedDate = LocalDate.now().plusDays((weatherModelPredictionTime[userSettings.value.model]?.toLong() ?: 3) - 1)
+        val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
+            .plusDays(weatherModelPredictionTime[currentSettings.model]?.toLong() ?: 3)
+            .toLocalDate()
         var endDate = date.plusDays(days)
 
         if (endDate.isAfter(maxAllowedDate)) {
