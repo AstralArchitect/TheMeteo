@@ -148,17 +148,17 @@ fun ConsentDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 ServiceSection(
-                    title = "Firebase Crashlytics",
+                    title = "Firebase Crashlytics (Facultatif)",
                     description = "Utilisé pour collecter des rapports d'erreur détaillés lorsqu'un problème survient. Cela nous aide à identifier et corriger les bugs rapidement."
                 )
 
                 ServiceSection(
-                    title = "Open-Meteo & Météo-France",
+                    title = "Open-Meteo & Météo-France (Obligatoire)",
                     description = "Services tiers utilisés pour récupérer les données météo et les vigilances. Votre position est envoyée de manière anonyme pour obtenir les prévisions locales."
                 )
 
                 ServiceSection(
-                    title = "Google Maps & OSM",
+                    title = "Google Maps & OSMDroid (Obligatoire)",
                     description = "Utilisés pour l'affichage des cartes et la sélection de lieux. Ces services peuvent collecter des données d'utilisation conformément à leurs propres politiques de confidentialité."
                 )
 

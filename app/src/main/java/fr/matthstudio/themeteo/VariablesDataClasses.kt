@@ -1,5 +1,7 @@
 package fr.matthstudio.themeteo
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -67,7 +69,12 @@ fun WeatherApiResponse.getEnsembleData(variableName: String): List<List<Double?>
         }
 }
 
+@Serializable
 data class EnsembleStat(val avg: Double?, val min: Double?, val max: Double?)
+
+@Serializable
+@Parcelize
+data class WmoEnsembleStat(val best: Int, val worst: Int) : Parcelable
 
 /**
  * Calcule la moyenne, le minimum et le maximum pour chaque pas de temps.
@@ -103,6 +110,31 @@ fun calculateEnsembleStats(ensembleMatrix: List<List<Double?>>): List<EnsembleSt
             EnsembleStat(average, min, max)
         } else {
             EnsembleStat(null, null, null)
+        }
+    }
+}
+
+/**
+ * Calcule le "meilleur" et le "pire" code WMO pour chaque pas de temps parmi les membres d'ensemble.
+ */
+fun calculateWmoEnsembleStats(ensembleMatrix: List<List<Double?>>): List<WmoEnsembleStat> {
+    if (ensembleMatrix.isEmpty()) return emptyList()
+    val timeSeriesLength = ensembleMatrix.first().size
+
+    return List(timeSeriesLength) { timeIndex ->
+        val valuesAtHour = ensembleMatrix.mapNotNull { memberList ->
+            memberList.getOrNull(timeIndex)?.toInt()
+        }
+
+        if (valuesAtHour.isNotEmpty()) {
+            // Dans le code WMO, les valeurs plus élevées représentent généralement un temps plus sévère.
+            // Exception : 0 (Clear sky) est le "meilleur", 99 (Heavy thunderstorm) le "pire".
+            WmoEnsembleStat(
+                best = valuesAtHour.minOrNull() ?: 0,
+                worst = valuesAtHour.maxOrNull() ?: 0
+            )
+        } else {
+            WmoEnsembleStat(0, 0)
         }
     }
 }

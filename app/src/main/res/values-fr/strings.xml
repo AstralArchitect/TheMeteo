@@ -162,4 +162,13 @@
     <string name="meilleur_mod_le_par_d_faut">Meilleur Modèle (par défaut)</string>
     <string name="major_polluant">Polluant Majeur: %1$s</string>
     <string name="gusts">Rafales</string>
+    <string name="forecast_type_title">Type de prévision</string>
+    <string name="forecast_type_desc">Choisissez entre le modèle déterministe standard ou l\'ensemble (ruban d\'incertitude).</string>
+    <string name="deterministic">Déterministe</string>
+    <string name="ensemble">Ensemble</string>
+    <string name="best_worst_case">Cas Pire / Meilleur</string>
+    <string name="ensemble_warning_title">Mode Ensemble</string>
+    <string name="ensemble_warning_message">Le mode ensemble fournit des informations plus détaillées mais consomme plus de données et de batterie. Il peut également être plus complexe à interpréter car il montre l\'éventail des possibles (ruban d\'incertitude).</string>
+    <string name="ensemble_warning_confirm">J\'ai compris</string>
+    <string name="ensemble_warning_cancel">Annuler</string>
 </resources>

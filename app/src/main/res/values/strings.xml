@@ -179,4 +179,13 @@
     <string name="meilleur_mod_le_par_d_faut">Best Match (default)</string>
     <string name="major_polluant">Major Polluant: %1$s</string>
     <string name="gusts">Gusts</string>
+    <string name="forecast_type_title">Forecast Type</string>
+    <string name="forecast_type_desc">Choose between standard deterministic model or ensemble (uncertainty ribbon).</string>
+    <string name="deterministic">Deterministic</string>
+    <string name="ensemble">Ensemble</string>
+    <string name="best_worst_case">Best / Worst case</string>
+    <string name="ensemble_warning_title">Ensemble Mode</string>
+    <string name="ensemble_warning_message">Ensemble mode provides more detailed information but consumes more data and battery. It can also be more complex to interpret as it shows the range of possibilities (uncertainty ribbon).</string>
+    <string name="ensemble_warning_confirm">I understand</string>
+    <string name="ensemble_warning_cancel">Cancel</string>
 </resources>

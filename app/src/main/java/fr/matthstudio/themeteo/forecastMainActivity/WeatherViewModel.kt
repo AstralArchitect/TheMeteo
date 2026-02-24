@@ -10,6 +10,7 @@ import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
+import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
@@ -99,7 +100,7 @@ class WeatherViewModel(
         refreshCounter
     ) { _, settings, _ ->
         // On récupère les settings ici pour calculer la durée
-        WeatherModelRegistry.getModel(settings.model).predictionDays.toLong()
+        WeatherModelRegistry.getModel(settings.model, userSettings.value.forecastType == ForecastType.ENSEMBLE).predictionDays.toLong()
     }.flatMapLatest { duration ->
         weatherCache.get(LocalDate.now(), duration)
     }.stateIn(
@@ -179,7 +180,6 @@ class WeatherViewModel(
                 .debounce(300) // Attend 300ms de silence de l'utilisateur avant de lancer la recherche pour éviter les appels inutiles.
                 .collect { query ->
                     if (query.length > 2) {
-                        telemetryManager.logEvent("city_search", mapOf("query" to query))
                         val results = weatherService.searchCity(query)
                         _geocodingResults.value = results ?: emptyList()
                     } else {

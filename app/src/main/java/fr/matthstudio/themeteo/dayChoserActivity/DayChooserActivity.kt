@@ -79,6 +79,7 @@ import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -441,6 +442,24 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
     }
 }
 
+@Composable
+fun EnsembleIcon(wmo: Int, animated: Boolean, filter: ColorFilter?) {
+    if (animated) {
+        AnimatedSvgIcon(
+            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            modifier = Modifier.size(55.dp)
+        )
+    } else {
+        AsyncImage(
+            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            contentDescription = null,
+            modifier = Modifier.size(55.dp),
+            contentScale = ContentScale.Fit,
+            colorFilter = filter
+        )
+    }
+}
+
 /**
  * A Composable function to display a single daily forecast in a Card.
  */
@@ -520,7 +539,7 @@ fun SingleDailyForecastCard(
                 fontWeight = FontWeight.Bold
             )
         ) {
-            append("${totalPrecipitation ?: "--"} mm")
+            append("${totalPrecipitation?.toSmartString() ?: "--"} mm")
         }
     }
     val windText = buildAnnotatedString {
@@ -529,7 +548,7 @@ fun SingleDailyForecastCard(
                 fontWeight = FontWeight.Bold
             )
         ) {
-            append("${dayReading.maxWind.windGusts ?: "--"} kph")
+            append("${dayReading.maxWind.windspeed?.toSmartString() ?: "--"} kph")
         }
     }
 
@@ -575,24 +594,36 @@ fun SingleDailyForecastCard(
             ) {
                 val userSettings by viewModel.userSettings.collectAsState()
                 val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
-                
-                if (userSettings.enableAnimatedIcons && !isBatterySaverActive) {
-                    AnimatedSvgIcon(
-                        iconPath = fileName,
-                        modifier = Modifier
-                            .size(85.dp)
-                            .padding(bottom = 4.dp)
-                    )
+                val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
+
+                if (dayReading.wmoEnsemble != null) {
+                    Box(modifier = Modifier.size(85.dp)) {
+                        Box(modifier = Modifier.align(Alignment.TopStart)) {
+                            EnsembleIcon(dayReading.wmoEnsemble.best, animated, weatherIconFilter)
+                        }
+                        Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                            EnsembleIcon(dayReading.wmoEnsemble.worst, animated, weatherIconFilter)
+                        }
+                    }
                 } else {
-                    AsyncImage(
-                        model = fileName,
-                        contentDescription = "Icône météo",
-                        modifier = Modifier
-                            .size(85.dp)
-                            .padding(bottom = 4.dp),
-                        contentScale = ContentScale.Fit,
-                        colorFilter = weatherIconFilter
-                    )
+                    if (animated) {
+                        AnimatedSvgIcon(
+                            iconPath = fileName,
+                            modifier = Modifier
+                                .size(85.dp)
+                                .padding(bottom = 4.dp)
+                        )
+                    } else {
+                        AsyncImage(
+                            model = fileName,
+                            contentDescription = "Icône météo",
+                            modifier = Modifier
+                                .size(85.dp)
+                                .padding(bottom = 4.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                    }
                 }
 
                 Column (

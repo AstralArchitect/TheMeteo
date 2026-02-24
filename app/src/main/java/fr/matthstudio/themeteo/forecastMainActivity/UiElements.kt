@@ -322,15 +322,26 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                     SimpleWeatherWord.STORMY -> stormyIconPath
                 }
 
-                AsyncImage(
-                    model = fileName,
-                    contentDescription = "Icône météo actuelle",
-                    modifier = Modifier
-                        .width(30.dp)
-                        .height(30.dp),
-                    contentScale = ContentScale.Fit,
-                    colorFilter = weatherIconFilter
-                )
+                if (dayReading.wmoEnsemble != null) {
+                    val userSettings by viewModel.userSettings.collectAsState()
+                    val isBatterySaverActive by (LocalContext.current.applicationContext as fr.matthstudio.themeteo.TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+                    val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        EnsembleIconSmall(dayReading.wmoEnsemble.best, animated, weatherIconFilter)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, animated, weatherIconFilter)
+                    }
+                } else {
+                    AsyncImage(
+                        model = fileName,
+                        contentDescription = "Icône météo actuelle",
+                        modifier = Modifier
+                            .width(30.dp)
+                            .height(30.dp),
+                        contentScale = ContentScale.Fit,
+                        colorFilter = weatherIconFilter
+                    )
+                }
                 Text(
                     text = "${dayReading.maxTemperature?.roundToInt()}°/${dayReading.minTemperature?.roundToInt()}°",
                     style = MaterialTheme.typography.bodyLarge,
@@ -338,6 +349,24 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                 )
             }
         }
+    }
+}
+
+@Composable
+fun EnsembleIconSmall(wmo: Int, animated: Boolean, filter: ColorFilter?) {
+    if (animated) {
+        fr.matthstudio.themeteo.forecastMainActivity.AnimatedSvgIcon(
+            iconPath = fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            modifier = Modifier.size(30.dp)
+        )
+    } else {
+        AsyncImage(
+            model = fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            contentDescription = null,
+            modifier = Modifier.size(30.dp),
+            contentScale = ContentScale.Fit,
+            colorFilter = filter
+        )
     }
 }
 

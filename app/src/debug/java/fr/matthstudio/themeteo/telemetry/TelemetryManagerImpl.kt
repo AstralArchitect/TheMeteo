@@ -9,23 +9,19 @@ class TelemetryManagerImpl(context: Context) : TelemetryManager {
     private val crashlytics = if (BuildConfig.FIREBASE_ENABLED) FirebaseCrashlytics.getInstance() else null
 
     init {
-        // Analytics dependency removed. Only exceptions via Crashlytics are supported.
+        // Only exceptions via Crashlytics are supported.
         crashlytics?.setCrashlyticsCollectionEnabled(false)
     }
 
     override fun setConsentGranted(granted: Boolean) {
-        crashlytics?.setCrashlyticsCollectionEnabled(granted)
+        // Analytics/Crashlytics disabled on debug
     }
 
     override fun logException(throwable: Throwable) {
-        crashlytics?.recordException(throwable)
-        if (crashlytics == null) {
-            android.util.Log.e("Telemetry", "Exception would be sent to Crashlytics if enabled:", throwable)
-        }
+        // Analytics/Crashlytics disabled on debug
     }
 
-    override fun logEvent(name: String, params: Map<String, Any?>) {
-        // Analytics is disabled, but we can log to logcat for debug
-        android.util.Log.d("Telemetry", "Event: $name, Params: $params")
+    override fun logEvent(name: String, params: Map<String, Any>?) {
+        // Analytics/Crashlytics disabled on debug
     }
 }

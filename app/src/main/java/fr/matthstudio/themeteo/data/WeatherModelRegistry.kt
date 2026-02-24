@@ -9,7 +9,8 @@ data class WeatherModel(
     val maxLat: Double = 90.0,
     val minLon: Double = -180.0,
     val maxLon: Double = 180.0,
-    val predictionDays: Int
+    val predictionDays: Int,
+    val isEnsemble: Boolean = false
 ) {
     fun isAvailableAt(lat: Double, lon: Double): Boolean {
         if (isGlobal) return true
@@ -19,6 +20,7 @@ data class WeatherModel(
 
 object WeatherModelRegistry {
     val models = listOf(
+        // --- Modèles Déterministes ---
         WeatherModel("best_match", "Meilleur modèle par défaut", "Open-Meteo", true, predictionDays = 15),
         WeatherModel("meteofrance_seamless", "Météo France Seamless", "Météo France", true, predictionDays = 3),
         WeatherModel("meteofrance_arpege_world", "Météo France ARPEGE World", "ARPEGE", true, predictionDays = 4),
@@ -55,10 +57,20 @@ object WeatherModelRegistry {
         WeatherModel("gem_regional", "GEM Regional", "GEM", false, 40.0, 60.0, -140.0, -50.0, 4),
         WeatherModel("jma_gms", "JMA GSM", "JMA", true, predictionDays = 10),
         WeatherModel("jma_msm", "JMA MSM", "JMA", false, 20.0, 50.0, 120.0, 150.0, 3),
-        WeatherModel("jma_seamless", "JMA Seamless", "JMA", true, predictionDays = 10)
+        WeatherModel("jma_seamless", "JMA Seamless", "JMA", true, predictionDays = 10),
+
+        // --- Modèles d'Ensemble ---
+        WeatherModel("ecmwf_ifs025", "ECMWF IFS Ensemble 0.25°", "ECMWF IFS Ensemble", true, predictionDays = 14, isEnsemble = true),
+        WeatherModel("ecmwf_aifs025_ensemble", "ECMWF AIFS 0.25° Ensemble", "ECMWF AIFS Ensemble", true, predictionDays = 14, isEnsemble = true),
+        WeatherModel("ncep_gefs_seamless", "GFS Ensemble Seamless", "NCEP GFS Ensemble", true, predictionDays = 34, isEnsemble = true),
+        WeatherModel("icon_seamless_eps", "ICON Ensemble Seamless", "DWD ICON Ensemble", true, predictionDays = 6, isEnsemble = true),
+        WeatherModel("gem_global_ensemble", "GEM Ensemble Seamless", "GEM Ensemble", true, predictionDays = 34, isEnsemble = true),
+        WeatherModel("ukmo_global_ensemble_20km", "UKMO Ensemble Seamless", "UKMO Ensemble", true, predictionDays = 7, isEnsemble = true),
     )
 
-    fun getModel(apiName: String) = models.find { it.apiName == apiName } ?: models[0]
+    fun getModel(apiName: String, isEnsemble: Boolean = false) = 
+        models.find { it.apiName == apiName && it.isEnsemble == isEnsemble } ?: models[0]
     
-    fun getAvailableModels(lat: Double, lon: Double) = models.filter { it.isAvailableAt(lat, lon) }
+    fun getAvailableModels(lat: Double, lon: Double, isEnsemble: Boolean) = 
+        models.filter { it.isAvailableAt(lat, lon) && it.isEnsemble == isEnsemble }
 }

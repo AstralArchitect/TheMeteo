@@ -96,7 +96,9 @@ data class AllHourlyVarsReading(
     val pressure: Int,
     val humidity: Int,
     val dewpoint: Double?,
-    val wmo: Int
+    val wmo: Int,
+    val ensembleStats: Map<String, EnsembleStat>? = null,
+    val wmoEnsemble: WmoEnsembleStat? = null
 )
 
 @Parcelize
@@ -111,7 +113,8 @@ data class DailyReading(
     val maxUvIndex: Int?,
     val wmo: Int,
     val sunset: String,
-    val sunrise: String
+    val sunrise: String,
+    val wmoEnsemble: WmoEnsembleStat? = null
 ) : Parcelable
 
 @Parcelize
@@ -483,7 +486,6 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
                 return results
             } else {
-                // 2. Si c'est avant 8h, tu verras probablement un code 400 ici
                 val errorText = response.body<String>()
                 Log.e("WeatherService", "Erreur API : $errorText")
                 telemetryManager?.logEvent("api_error", mapOf("api" to "open-meteo-current", "status" to response.status.value, "error" to errorText))
@@ -542,6 +544,146 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
         } catch (e: Exception) {
             Log.e("getForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
+    }
+
+    suspend fun getEnsembleForecast(
+        latitude: Double,
+        longitude: Double,
+        model: String,
+        startDate: LocalDate,
+        endDate: LocalDate
+    ): Pair<List<AllHourlyVarsReading>, List<DailyReading>>? {
+        val ensembleApiUrl = "https://ensemble-api.open-meteo.com/v1/ensemble"
+        val localZoneId = ZoneId.systemDefault()
+
+        val ensembleVariables = mutableListOf(
+            "temperature_2m", "relative_humidity_2m", "dewpoint_2m", "apparent_temperature",
+            "precipitation", "rain", "snowfall", "windspeed_10m", "wind_direction_10m", "cloudcover",
+            "pressure_msl", "weather_code", "shortwave_radiation_instant", "direct_radiation_instant",
+            "diffuse_radiation_instant", "wind_gusts_10m"
+        )
+
+        // Visibility is only supported by GFS and UKMO ensembles
+        if (model.contains("gfs") || model.contains("ukmo")) {
+            ensembleVariables.add("visibility")
+        }
+
+        // Snow Depth is only supported by GFS, IFS and GEM
+        if (model.contains("gfs") || model.contains("ifs") || model.contains("gem")) {
+            ensembleVariables.add("snow_depth")
+        }
+
+        return try {
+            // 1. Fetch ensemble members
+            val response = client.get(ensembleApiUrl) {
+                parameter("latitude", latitude)
+                parameter("longitude", longitude)
+                parameter("models", model)
+                parameter("hourly", ensembleVariables.joinToString(","))
+                parameter("timezone", localZoneId.id)
+                parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+                parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+            }
+
+            if (response.status.value != 200) return null
+            val ensembleResponseBody = response.body<WeatherApiResponse>()
+            val times = ensembleResponseBody.getDeterministicHourlyData("time") ?: return null
+            
+            // 2. Calculate stats for each variable
+            val statsMap = ensembleVariables.filter { it != "weather_code" }.associateWith { variable ->
+                val matrix = ensembleResponseBody.getEnsembleData(variable)
+                if (matrix != null) calculateEnsembleStats(matrix) else null
+            }
+
+            val wmoMatrix = ensembleResponseBody.getEnsembleData("weather_code")
+            val wmoStats = if (wmoMatrix != null) calculateWmoEnsembleStats(wmoMatrix) else null
+
+            // 3. Build AllHourlyVarsReading from stats
+            val mergedHourly = times.indices.map { index ->
+                val hourStats = mutableMapOf<String, EnsembleStat>()
+                statsMap.keys.forEach { v ->
+                    statsMap[v]?.getOrNull(index)?.let { hourStats[v] = it }
+                }
+
+                val temp = hourStats["temperature_2m"]?.avg
+                val windSpeed = hourStats["windspeed_10m"]?.avg
+                val windGusts = hourStats["wind_gusts_10m"]?.avg
+                val windDir = hourStats["wind_direction_10m"]?.avg
+                val shortwaveRadiation = hourStats["shortwave_radiation_instant"]?.avg
+                val directRadiation = hourStats["direct_radiation_instant"]?.avg
+                val diffuseRadiation = hourStats["diffuse_radiation_instant"]?.avg
+
+                AllHourlyVarsReading(
+                    time = LocalDateTime.parse(times[index] as String),
+                    temperature = temp,
+                    apparentTemperature = hourStats["apparent_temperature"]?.avg,
+                    precipitationData = PrecipitationData(
+                        precipitation = hourStats["precipitation"]?.avg,
+                        rain = hourStats["rain"]?.avg,
+                        snowfall = hourStats["snowfall"]?.avg,
+                        precipitationProbability = null, 
+                        snowDepth = (hourStats["snow_depth"]?.avg?.times(100.0))?.toInt()
+                    ),
+                    wind = WindData(
+                        windspeed = windSpeed,
+                        windGusts = windGusts,
+                        windDirection = windDir
+                    ),
+                    skyInfo = SkyInfoData(
+                        cloudcoverTotal = hourStats["cloudcover"]?.avg?.toInt() ?: 0,
+                        cloudcoverLow = 0,
+                        cloudcoverMid = 0,
+                        cloudcoverHigh = 0,
+                        shortwaveRadiation = shortwaveRadiation,
+                        directRadiation = directRadiation,
+                        diffuseRadiation = diffuseRadiation,
+                        opacity = null,
+                        uvIndex = null,
+                        visibility = hourStats["visibility"]?.avg?.toInt()
+                    ),
+                    pressure = hourStats["pressure_msl"]?.avg?.toInt() ?: 0,
+                    humidity = hourStats["relative_humidity_2m"]?.avg?.toInt() ?: 0,
+                    dewpoint = hourStats["dewpoint_2m"]?.avg,
+                    wmo = wmoStats?.getOrNull(index)?.worst ?: 0, 
+                    ensembleStats = hourStats,
+                    wmoEnsemble = wmoStats?.getOrNull(index)
+                )
+            }
+
+            // 4. Derive DailyReading from hourly averages
+            val dailyReadings = mergedHourly.groupBy { it.time.toLocalDate() }.map { (date, hourlyList) ->
+                val dailyWmoEnsemble = if (hourlyList.any { it.wmoEnsemble != null }) {
+                    WmoEnsembleStat(
+                        best = hourlyList.mapNotNull { it.wmoEnsemble?.best }.minOrNull() ?: 0,
+                        worst = hourlyList.mapNotNull { it.wmoEnsemble?.worst }.maxOrNull() ?: 0
+                    )
+                } else null
+
+                DailyReading(
+                    date = date,
+                    maxTemperature = hourlyList.mapNotNull { it.temperature }.maxOrNull(),
+                    minTemperature = hourlyList.mapNotNull { it.temperature }.minOrNull(),
+                    precipitation = hourlyList.mapNotNull { it.precipitationData.precipitation }.sum(),
+                    maxWind = WindData(
+                        windspeed = hourlyList.mapNotNull { it.wind.windspeed }.maxOrNull(),
+                        windGusts = null,
+                        windDirection = hourlyList.firstOrNull { it.wind.windspeed == hourlyList.mapNotNull { h -> h.wind.windspeed }.maxOrNull() }?.wind?.windDirection ?: 0.0
+                    ),
+                    maxUvIndex = null,
+                    wmo = dailyWmoEnsemble?.worst ?: 0,
+                    sunset = "",
+                    sunrise = "",
+                    wmoEnsemble = dailyWmoEnsemble
+                )
+            }
+
+            Pair(mergedHourly, dailyReadings)
+
+        } catch (e: Exception) {
+            Log.e("getEnsembleForecast", "Error fetching ensemble forecast: ${e.message}")
             telemetryManager?.logException(e)
             null
         }

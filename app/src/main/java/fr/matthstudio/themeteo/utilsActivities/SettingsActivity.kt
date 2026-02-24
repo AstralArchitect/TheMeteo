@@ -11,7 +11,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -29,6 +31,7 @@ import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherCache
+import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
@@ -68,6 +71,31 @@ fun SettingsScreen(cache: WeatherCache) {
 
     // On a besoin d'une coroutine scope pour appeler les fonctions suspend du repository
     val scope = rememberCoroutineScope()
+    var showEnsembleDialog by remember { mutableStateOf(false) }
+
+    if (showEnsembleDialog) {
+        AlertDialog(
+            onDismissRequest = { showEnsembleDialog = false },
+            title = { Text(stringResource(R.string.ensemble_warning_title)) },
+            text = { Text(stringResource(R.string.ensemble_warning_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        cache.userSettingsRepository.updateForecastType(ForecastType.ENSEMBLE)
+                        cache.userSettingsRepository.updateModel("ecmwf_ifs025")
+                    }
+                    showEnsembleDialog = false
+                }) {
+                    Text(stringResource(R.string.ensemble_warning_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEnsembleDialog = false }) {
+                    Text(stringResource(R.string.ensemble_warning_cancel))
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -89,23 +117,34 @@ fun SettingsScreen(cache: WeatherCache) {
                 .padding(paddingValues)
                 .padding(16.dp)
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
         ) {
+            ForecastTypeSetting(
+                currentType = userSettings.forecastType,
+                onTypeSelected = { newType ->
+                    if (newType == ForecastType.ENSEMBLE && userSettings.forecastType == ForecastType.DETERMINISTIC) {
+                        showEnsembleDialog = true
+                    } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
+                        scope.launch {
+                            cache.userSettingsRepository.updateForecastType(newType)
+                            cache.userSettingsRepository.updateModel("best_match")
+                        }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             ModelSelectionSetting(
                 currentModel = userSettings.model,
                 availableModels = if (currentCoords != null) 
-                    WeatherModelRegistry.getAvailableModels(currentCoords.latitude, currentCoords.longitude)
+                    WeatherModelRegistry.getAvailableModels(currentCoords.latitude, currentCoords.longitude, userSettings.forecastType == ForecastType.ENSEMBLE)
                 else 
-                    WeatherModelRegistry.models.filter { it.isGlobal },
+                    WeatherModelRegistry.models.filter { it.isGlobal && it.isEnsemble == (userSettings.forecastType == ForecastType.ENSEMBLE) },
                 onModelSelected = { newModel ->
                     scope.launch {
                         // On met à jour via le repository contenu dans le cache
                         cache.userSettingsRepository.updateModel(newModel)
-                        
-                        // Log the event
-                        (activity?.application as? TheMeteo)?.container?.telemetryManager?.logEvent(
-                            "weather_model_selection",
-                            mapOf("model" to newModel)
-                        )
                     }
                 }
             )
@@ -187,6 +226,49 @@ fun SettingsScreen(cache: WeatherCache) {
                 text = "Build Type: ${BuildConfig.BUILD_TYPE}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun ForecastTypeSetting(
+    currentType: ForecastType,
+    onTypeSelected: (ForecastType) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val selectedIndex = if (currentType == ForecastType.DETERMINISTIC) 0 else 1
+
+    Column {
+        Text(stringResource(R.string.forecast_type_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.forecast_type_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.deterministic),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { onTypeSelected(ForecastType.DETERMINISTIC) }
+            )
+            Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.ensemble),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { onTypeSelected(ForecastType.ENSEMBLE) }
             )
         }
     }

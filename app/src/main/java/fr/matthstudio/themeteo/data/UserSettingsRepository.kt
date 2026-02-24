@@ -13,6 +13,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 
+enum class ForecastType {
+    DETERMINISTIC,
+    ENSEMBLE
+}
+
 class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     // 1. Définir les clés pour chaque paramètre
@@ -24,9 +29,19 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val ENABLE_MODEL_FALLBACK = booleanPreferencesKey("enable_model_fallback")
         val ENABLE_ANIMATED_ICONS = booleanPreferencesKey("enable_animated_icons")
         val FIREBASE_CONSENT = stringPreferencesKey("firebase_consent")
+        val FORECAST_TYPE = intPreferencesKey("forecast_type")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour le type de prévision (DETERMINISTIC ou ENSEMBLE).
+     */
+    val forecastType: Flow<ForecastType> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.FORECAST_TYPE]?.let { index ->
+            ForecastType.entries.getOrNull(index)
+        } ?: ForecastType.DETERMINISTIC
+    }
 
     /**
      * Flow pour le consentement Firebase (PENDING, GRANTED, DENIED).
@@ -147,6 +162,15 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateDefaultActivity(newScreen: DefaultScreen) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.DEFAULT_SCREEN] = newScreen.ordinal
+        }
+    }
+
+    /**
+     * Met à jour le type de prévision.
+     */
+    suspend fun updateForecastType(type: ForecastType) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FORECAST_TYPE] = type.ordinal
         }
     }
 }

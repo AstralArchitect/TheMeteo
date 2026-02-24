@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,7 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -55,7 +53,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -64,6 +61,8 @@ import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.getSimpleWeather
+import fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath
+import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -274,18 +273,19 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
-                            if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.snowDepth != null) {
-                                if ((forecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.snowDepth }.maxOrNull() ?: 0 != 0) {
-                                    Text(stringResource(R.string.snow_depth_cm), modifier = titleModifier)
-                                    GenericGraph(
-                                        viewModel,
-                                        GraphType.SNOW_DEPTH,
-                                        Color(0xFFFFFFFF),
-                                        scrollState = scrollState
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-                            }
+                        }
+                    }
+                    if ((forecast as WeatherDataState.SuccessHourly).data.first().precipitationData.snowDepth != null) {
+                        if (((forecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.snowDepth }
+                                .maxOrNull() ?: 0) != 0) {
+                            Text(stringResource(R.string.snow_depth_cm), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.SNOW_DEPTH,
+                                Color(0xFFFFFFFF),
+                                scrollState = scrollState
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                     Text(stringResource(R.string.wind_speed), modifier = titleModifier)
@@ -451,6 +451,15 @@ fun GenericGraph(
     )
 }
 
+fun Number.toSmartString(): String {
+    return if (this is Double || this is Float) {
+        val df = DecimalFormat("0.0#", DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
+        df.format(this.toDouble())
+    } else {
+        this.toString()
+    }
+}
+
 @Composable
 fun GenericGraphGlobal(
     fullForecast: WeatherDataState,
@@ -463,15 +472,6 @@ fun GenericGraphGlobal(
     contentHeight: Dp = 125.dp,
     compactHourFormat: Boolean = false
 ) {
-    fun Number.toSmartString(): String {
-        return if (this is Double || this is Float) {
-            val df = DecimalFormat("0.0#", DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
-            df.format(this.toDouble())
-        } else {
-            this.toString()
-        }
-    }
-
     Box(
         modifier = Modifier
             .width(1000.dp)
@@ -559,7 +559,24 @@ fun GenericGraphGlobal(
         val textColor: Int = AndroidColor.rgb(
             MaterialTheme.colorScheme.onBackground.red,
             MaterialTheme.colorScheme.onBackground.green,
-            MaterialTheme.colorScheme.onBackground.blue)
+            MaterialTheme.colorScheme.onBackground.blue
+        )
+
+        val ensembleKey = when (graphType) {
+            GraphType.TEMP -> "temperature_2m"
+            GraphType.A_TEMP -> "apparent_temperature"
+            GraphType.HUMIDITY -> "relative_humidity_2m"
+            GraphType.DEW_POINT -> "dewpoint_2m"
+            GraphType.PRECIPITATION -> "precipitation"
+            GraphType.RAIN -> "rain"
+            GraphType.SNOWFALL -> "snowfall"
+            GraphType.WIND_SPEED -> "windspeed_10m"
+            GraphType.CLOUD_COVER -> "cloudcover"
+            GraphType.VISIBILITY -> "visibility"
+            GraphType.PRESSURE -> "pressure_msl"
+            else -> null
+        }
+        val ensembleStats = if (ensembleKey != null) fullForecast.data.map { it.ensembleStats?.get(ensembleKey) } else null
 
         Canvas(
             modifier = Modifier
@@ -573,6 +590,13 @@ fun GenericGraphGlobal(
             var maxValue = forecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
             var minValue = forecast.minOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
 
+            if (ensembleStats != null) {
+                val ensembleMax = ensembleStats.mapNotNull { it?.max }.maxOrNull()
+                val ensembleMin = ensembleStats.mapNotNull { it?.min }.minOrNull()
+                if (ensembleMax != null) maxValue = kotlin.math.max(maxValue, ensembleMax)
+                if (ensembleMin != null) minValue = kotlin.math.min(minValue, ensembleMin)
+            }
+
             if (valueRange != null) {
                 maxValue = maxValue.coerceAtLeast(valueRange.endInclusive.toDouble())
                 minValue = minValue.coerceAtMost(valueRange.start.toDouble())
@@ -583,6 +607,78 @@ fun GenericGraphGlobal(
             val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
             val yScale = (size.height - 2 * yPadding) / (maxValue - minValue).coerceAtLeast(1.0)
 
+            // --- 4. Dessiner le ruban d'incertitude (Ensemble) ---
+            if (ensembleStats != null && ensembleStats.any { it != null }) {
+                val uncertaintyPath = Path()
+                var firstEnsemble = true
+                
+                // Partie supérieure du ruban (Max)
+                ensembleStats.forEachIndexed { i, stat ->
+                    val x = xPadding + (i * xStep)
+                    val value = stat?.max ?: forecast[i].toDouble()
+                    val y = size.height - yPadding - ((value - minValue) * yScale)
+                    if (firstEnsemble) {
+                        uncertaintyPath.moveTo(x, y.toFloat())
+                        firstEnsemble = false
+                    } else {
+                        uncertaintyPath.lineTo(x, y.toFloat())
+                    }
+                }
+                
+                // Partie inférieure du ruban (Min)
+                for (i in ensembleStats.indices.reversed()) {
+                    val x = xPadding + (i * xStep)
+                    val value = ensembleStats[i]?.min ?: forecast[i].toDouble()
+                    val y = size.height - yPadding - ((value - minValue) * yScale)
+                    uncertaintyPath.lineTo(x, y.toFloat())
+                }
+                uncertaintyPath.close()
+                
+                drawPath(
+                    path = uncertaintyPath,
+                    color = graphColor.copy(alpha = 0.3f)
+                )
+
+                        // Labels pour les valeurs min/max de l'ensemble (optionnel, pour plus de clarté)
+                        ensembleStats.forEachIndexed { i, stat ->
+                            if (stat?.min != null && stat.max != null) {
+                                val x = xPadding + (i * xStep)
+                                val yMax = size.height - yPadding - ((stat.max - minValue) * yScale)
+                                val yMin = size.height - yPadding - ((stat.min - minValue) * yScale)
+                                val yAvg = size.height - yPadding - ((forecast[i].toDouble() - minValue) * yScale)
+
+                                // On ne dessine que si c'est significativement différent de la moyenne pour éviter l'encombrement
+                                if (i % 4 == 0 || i == ensembleStats.size - 1) {
+                                    val minDistance = 55f // Seuil en pixels pour éviter la superposition
+
+                                    val yMaxText = kotlin.math.min(yMax.toFloat() - 5f, yAvg.toFloat() - minDistance)
+                                    drawContext.canvas.nativeCanvas.drawText(
+                                        stat.max.toSmartString(),
+                                        x,
+                                        yMaxText,
+                                        Paint().apply {
+                                            textAlign = Paint.Align.CENTER
+                                            textSize = 25f
+                                            color = textColor
+                                        }
+                                    )
+
+                                    // les valeurs min sont toujours en bas, elles ne superposent pas le texte d'avg qui est en haut
+                                    drawContext.canvas.nativeCanvas.drawText(
+                                        stat.min.toSmartString(),
+                                        x,
+                                        yMin.toFloat() + 25f,
+                                        Paint().apply {
+                                            textAlign = Paint.Align.CENTER
+                                            textSize = 25f
+                                            color = textColor
+                                        }
+                                    )
+                                }
+                            }
+                        }
+            }
+
             // Préparation des chemins
             val linePath = Path()
             val gradientPath = Path()
@@ -592,7 +688,7 @@ fun GenericGraphGlobal(
             val firstY = size.height - yPadding - (((if(roundToInt) forecast.first().toDouble().roundToInt().toDouble() else forecast.first().toDouble()) - minValue) * yScale)
             linePath.moveTo(firstX, firstY.toFloat())
             gradientPath.moveTo(firstX, size.height) // Commence en bas à gauche
-            gradientPath.lineTo(firstX, firstY.toFloat())     // Monte au premier point
+            gradientPath.lineTo(firstX, firstY.toFloat()) // Monte au premier point
 
             // Construction des chemins pour la courbe et le dégradé
             forecast.forEachIndexed { i, point ->
@@ -607,19 +703,20 @@ fun GenericGraphGlobal(
             gradientPath.lineTo(lastX, size.height)
             gradientPath.close()
 
-            // Dégradé sous la courbe
-            val gradientColor = graphColor
-            drawPath(
-                path = gradientPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(gradientColor.copy(alpha = 0.4f), Color.Transparent),
-                    startY = 0f,
-                    endY = size.height
-                ),
-            )
+            // Dégradé sous la courbe uniquement en mode déterministe
+            if (ensembleStats == null || ensembleStats.any { it == null }) {
+                drawPath(
+                    path = gradientPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(graphColor.copy(alpha = 0.4f), Color.Transparent),
+                        startY = 0f,
+                        endY = size.height
+                    ),
+                )
+            }
 
             // Courbe
-            drawPath(linePath, gradientColor, style = Stroke(width = 8f))
+            drawPath(linePath, graphColor, style = Stroke(width = 8f))
 
             // Points + labels
             forecast.forEachIndexed { i, point ->
@@ -680,8 +777,9 @@ fun WindVectors(forecast: WeatherDataState, scrollState: ScrollState = rememberS
                     Column (
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        val windGusts = allVarsReading.wind.windGusts
                         Text (
-                            text = "${allVarsReading.wind.windGusts}",
+                            text = windGusts?.toSmartString() ?: "--",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.padding(bottom = 1.dp)
@@ -737,24 +835,6 @@ fun WeatherIconGraph(
     val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
     val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
 
-    val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord, Boolean?>>()
-
-    if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation != null) {
-        for (index in 0..23) {
-            val radiation = (forecast as WeatherDataState.SuccessHourly).data[index].skyInfo.shortwaveRadiation
-            simpleWeatherList.add(
-                Pair(
-                    getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word,
-                    if (radiation != null) radiation >= 1.0 else null
-                )
-            )
-        }
-    } else {
-        for (index in 0..23) {
-            simpleWeatherList.add(Pair(getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word, null))
-        }
-    }
-
     val isDark = androidx.compose.foundation.isSystemInDarkTheme()
     val weatherIconFilter = remember(isDark) {
         if (!isDark) {
@@ -769,12 +849,17 @@ fun WeatherIconGraph(
             .fillMaxWidth()
             .horizontalScroll(scrollState), // ScrollState partagé
     ) {
+        val hourlyData = (forecast as? WeatherDataState.SuccessHourly)?.data
         Row(
             modifier = Modifier.width(1000.dp), // Largeur fixe, identique à GenericGraph
             horizontalArrangement = Arrangement.SpaceAround, // L'arrangement gère l'espacement
             verticalAlignment = Alignment.CenterVertically
         ) {
-            simpleWeatherList.forEach { (weatherWord, isDay) ->
+            hourlyData?.forEach { data ->
+                val weatherWord = getSimpleWeather(data).word
+                val radiation = data.skyInfo.shortwaveRadiation
+                val isDay = if (radiation != null) radiation >= 1.0 else null
+                
                 val fileName = when (weatherWord) {
                     SimpleWeatherWord.SUNNY -> if (isDay != null) if (isDay) sunnyDayIconPath else sunnyNightIconPath else sunnyDayIconPath
                     SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay != null) if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath else sunnyCloudyIconPath
@@ -793,14 +878,37 @@ fun WeatherIconGraph(
                     SimpleWeatherWord.STORMY -> stormyIconPath
                 }
 
-                AsyncImage(
-                    model = fileName,
-                    contentDescription = "Icône météo actuelle",
-                    modifier = Modifier
-                        .width(41.5.dp),
-                    contentScale = ContentScale.Fit,
-                    colorFilter = weatherIconFilter
-                )
+                if (data.wmoEnsemble != null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AsyncImage(
+                            model = isDay?.let { getWeatherIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.best),
+                                (!it)
+                            ) },
+                            contentDescription = null,
+                            modifier = Modifier.width(20.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                        AsyncImage(
+                            model = isDay?.let { getWeatherIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.worst),
+                                (!it)
+                            ) },
+                            contentDescription = null,
+                            modifier = Modifier.width(20.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                    }
+                } else {
+                    AsyncImage(
+                        model = fileName,
+                        contentDescription = "Icône météo actuelle",
+                        modifier = Modifier
+                            .width(41.5.dp),
+                        contentScale = ContentScale.Fit,
+                        colorFilter = weatherIconFilter
+                    )
+                }
             }
         }
     }

@@ -10,18 +10,25 @@ class TelemetryManagerImpl(context: Context) : TelemetryManager {
 
     init {
         // Analytics dependency removed. Only exceptions via Crashlytics are supported.
-        crashlytics?.setCrashlyticsCollectionEnabled(false)
+        crashlytics?.isCrashlyticsCollectionEnabled = false
     }
 
     override fun setConsentGranted(granted: Boolean) {
-        crashlytics?.setCrashlyticsCollectionEnabled(granted)
+        crashlytics?.isCrashlyticsCollectionEnabled = granted
     }
 
     override fun logException(throwable: Throwable) {
         crashlytics?.recordException(throwable)
+        if (crashlytics == null) {
+            android.util.Log.e("Telemetry", "Exception would be sent to Crashlytics if enabled:", throwable)
+        }
     }
 
-    override fun logEvent(name: String, params: Map<String, Any?>) {
-        // Analytics disabled
+    override fun logEvent(name: String, params: Map<String, Any>?) {
+        // Analytics dependency removed. Only exceptions via Crashlytics are supported.
+        crashlytics?.log("$name: $params")
+        if (crashlytics == null) {
+            android.util.Log.d("Telemetry", "Event would be sent to Crashlytics if enabled: $name, $params")
+        }
     }
 }
