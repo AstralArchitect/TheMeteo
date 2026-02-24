@@ -155,6 +155,9 @@ class WeatherCache(
     private val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val _isBatterySaverActive = MutableStateFlow(powerManager.isPowerSaveMode)
     val isBatterySaverActive: StateFlow<Boolean> = _isBatterySaverActive.asStateFlow()
+
+    private val _isLocationPermissionGranted = MutableStateFlow(locationProvider.checkLocationPermission())
+    val isLocationPermissionGranted: StateFlow<Boolean> = _isLocationPermissionGranted.asStateFlow()
     
     init {
         // Monitor Battery Saver
@@ -236,6 +239,15 @@ class WeatherCache(
     fun addLocation(location: SavedLocation) {
         CoroutineScope(Dispatchers.IO).launch {
             userLocationsRepository.addLocation(location)
+        }
+    }
+
+    /**
+     * Met à jour l'ordre des localisations favorites.
+     */
+    fun reorderLocations(newList: List<SavedLocation>) {
+        CoroutineScope(Dispatchers.IO).launch {
+            userLocationsRepository.reorderLocations(newList)
         }
     }
 
@@ -1005,6 +1017,7 @@ class WeatherCache(
 
     fun refreshCurrentLocation() {
         val identifier = _selectedLocation.value
+        _isLocationPermissionGranted.value = locationProvider.checkLocationPermission()
         if (identifier is LocationIdentifier.CurrentUserLocation) {
             applicationScope.launch {
                 val newCoordinates = locationProvider.getCurrentLocation()

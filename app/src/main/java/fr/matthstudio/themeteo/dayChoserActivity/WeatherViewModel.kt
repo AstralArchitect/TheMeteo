@@ -66,6 +66,11 @@ class WeatherViewModel(
     val userLocation: StateFlow<GpsCoordinates?> = weatherCache.currentGpsPosition
 
     /**
+     * Expose si la permission de localisation est accordée.
+     */
+    val isLocationPermissionGranted: StateFlow<Boolean> = weatherCache.isLocationPermissionGranted
+
+    /**
      * Flow de WeatherDataState pour les donnnées actuelles à toutes les villes enregistrées.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -165,11 +170,19 @@ class WeatherViewModel(
      * Méthode appelée par l'UI pour ajouter une nouvelle localisation.
      * Le ViewModel transmet cette demande au WeatherCache, qui est la source de vérité.
      */
-    fun addLocation(location: SavedLocation) {
-        weatherCache.addLocation(location)
-    }
-
-    fun addLocationFromMap(coords: GpsCoordinates, name: String) {
+         fun addLocation(location: SavedLocation) {
+            weatherCache.addLocation(location)
+        }
+    
+        /**
+         * Méthode appelée par l'UI pour réorganiser les lieux.
+         */
+        fun reorderLocations(newList: List<SavedLocation>) {
+            weatherCache.reorderLocations(newList)
+        }
+    
+        fun addLocationFromMap(coords: GpsCoordinates, name: String) {
+    
         val newLocation = SavedLocation(
             name = name,
             latitude = coords.latitude,

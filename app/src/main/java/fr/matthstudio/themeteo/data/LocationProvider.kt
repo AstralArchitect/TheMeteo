@@ -3,6 +3,9 @@ package fr.matthstudio.themeteo.data
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Looper
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.channels.awaitClose
@@ -21,9 +24,20 @@ data class GpsCoordinates(val latitude: Double, val longitude: Double)
  * Fournit un Flow qui émet la position GPS actuelle de l'utilisateur.
  * Gère la logique d'abonnement et de désabonnement aux services de localisation.
  */
-class LocationProvider(context: Context) {
+class LocationProvider(private val context: Context) {
 
     private val fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
+
+    fun checkLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+    }
 
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): GpsCoordinates? = suspendCancellableCoroutine { continuation ->

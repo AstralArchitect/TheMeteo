@@ -505,14 +505,17 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         val selectedLocation by viewModel.selectedLocation.collectAsState()
         val currentWeathers by viewModel.currentWeather.collectAsState()
         val userSettings by viewModel.userSettings.collectAsState()
+        val isPermissionGranted by viewModel.isLocationPermissionGranted.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
             selectedLocation = selectedLocation,
             currentWeathers = currentWeathers,
             defaultLocation = userSettings.defaultLocation,
+            isPermissionGranted = isPermissionGranted,
             onSelectLocation = { viewModel.selectLocation(it) },
             onRemoveLocation = { viewModel.removeLocation(it) },
+            onReorderLocations = { viewModel.reorderLocations(it) },
             onSetDefaultLocation = { viewModel.setDefaultLocation(it) },
             onDismiss = { showLocationSheet = false },
             onAddLocationClick = {

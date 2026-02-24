@@ -28,8 +28,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.0.15"
+        versionCode = 16
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -58,6 +58,12 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("Boolean", "FIREBASE_ENABLED", "true")
+        }
+
+        // configuration pour le build de production sans Firebase
+        create("releaseNoFirebase") {
+            initWith(getByName("release"))
+            buildConfigField("Boolean", "FIREBASE_ENABLED", "false")
         }
     }
 
@@ -167,15 +173,12 @@ dependencies {
 }
 
 // Disable Google Services and Crashlytics tasks for debug builds
-// as the .debug suffix is not registered in google-services.json
+// and releaseNoFirebase builds
 afterEvaluate {
     tasks.matching {
-        it.name.contains("googleServices", ignoreCase = true) && it.name.contains("Debug")
-    }.configureEach {
-        enabled = false
-    }
-    tasks.matching {
-        it.name.contains("Crashlytics", ignoreCase = true) && it.name.contains("Debug")
+        val taskName = it.name.lowercase()
+        (taskName.contains("googleservices") || taskName.contains("crashlytics")) && 
+        (taskName.contains("debug") || taskName.contains("releasenofirebase"))
     }.configureEach {
         enabled = false
     }

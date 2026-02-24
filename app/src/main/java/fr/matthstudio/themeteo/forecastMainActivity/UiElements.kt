@@ -53,6 +53,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -61,6 +63,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -430,7 +433,6 @@ fun getUVColor(uv: Int): Color {
     }
 }
 
-// 1. LE PANNEAU QUI S'OUVRE DEPUIS LE BAS (BOTTOM SHEET)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationManagementSheet(
@@ -438,8 +440,10 @@ fun LocationManagementSheet(
     selectedLocation: LocationIdentifier,
     currentWeathers: WeatherDataState,
     defaultLocation: LocationIdentifier,
+    isPermissionGranted: Boolean,
     onSelectLocation: (LocationIdentifier) -> Unit,
     onRemoveLocation: (SavedLocation) -> Unit,
+    onReorderLocations: (List<SavedLocation>) -> Unit,
     onSetDefaultLocation: (LocationIdentifier) -> Unit,
     onAddLocationClick: () -> Unit,
     onDismiss: () -> Unit,
@@ -457,23 +461,26 @@ fun LocationManagementSheet(
         {
             Text(stringResource(R.string.manage_locations), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
             LazyColumn {
-                // Item pour la position actuelle
-                item {
-                    LocationRow(
-                        name = stringResource(R.string.current_location),
-                        isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
-                        isDefault = defaultLocation is LocationIdentifier.CurrentUserLocation,
-                        onClick = {
-                            onSelectLocation(LocationIdentifier.CurrentUserLocation)
-                            onDismiss()
-                        },
-                        onDelete = null, // On ne peut pas supprimer la position actuelle
-                        onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.CurrentUserLocation) }
-                    )
+                // Item pour la position actuelle - Visible uniquement si permission accordée
+                if (isPermissionGranted) {
+                    item {
+                        LocationRow(
+                            name = stringResource(R.string.current_location),
+                            isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
+                            isDefault = defaultLocation is LocationIdentifier.CurrentUserLocation,
+                            onClick = {
+                                onSelectLocation(LocationIdentifier.CurrentUserLocation)
+                                onDismiss()
+                            },
+                            onDelete = null, // On ne peut pas supprimer la position actuelle
+                            onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.CurrentUserLocation) }
+                        )
+                    }
                 }
 
                 // Liste des lieux sauvegardés
-                items(savedLocations) { location ->
+                items(savedLocations.size) { index ->
+                    val location = savedLocations[index]
                     // On vérifie si defaultLocation est un type 'Saved' et si sa localisation interne est la même
                     val isDefault = (defaultLocation as? LocationIdentifier.Saved)?.location == location
                     val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
@@ -487,7 +494,19 @@ fun LocationManagementSheet(
                             onDismiss()
                         },
                         onDelete = { onRemoveLocation(location) },
-                        onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) }
+                        onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) },
+                        onMoveUp = if (index > 0) { {
+                            val newList = savedLocations.toMutableList()
+                            val item = newList.removeAt(index)
+                            newList.add(index - 1, item)
+                            onReorderLocations(newList)
+                        } } else null,
+                        onMoveDown = if (index < savedLocations.size - 1) { {
+                            val newList = savedLocations.toMutableList()
+                            val item = newList.removeAt(index)
+                            newList.add(index + 1, item)
+                            onReorderLocations(newList)
+                        } } else null
                     )
                 }
             }
@@ -516,7 +535,9 @@ fun LocationRow(
     currentWeatherReading: CurrentWeatherReading? = null,
     onSetAsDefault: () -> Unit,
     onClick: () -> Unit,
-    onDelete: (() -> Unit)? // Nullable car la position actuelle n'a pas de bouton de suppression
+    onDelete: (() -> Unit)?, // Nullable car la position actuelle n'a pas de bouton de suppression
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -534,12 +555,35 @@ fun LocationRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
-                fontWeight = if (isSelected) FontWeight.Bold else null
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                if (onMoveUp != null || onMoveDown != null) {
+                    Column {
+                        if (onMoveUp != null) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Monter",
+                                modifier = Modifier.size(20.dp).clickable(onClick = onMoveUp)
+                            )
+                        }
+                        if (onMoveDown != null) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Descendre",
+                                modifier = Modifier.size(20.dp).clickable(onClick = onMoveDown)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                    fontWeight = if (isSelected) FontWeight.Bold else null,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Row (verticalAlignment = Alignment.CenterVertically) {
                 if (currentWeatherReading != null) {
                     Icon(
@@ -575,6 +619,7 @@ fun LocationRow(
         }
     }
 }
+
 
 // 3. LA BOÎTE DE DIALOGUE POUR LA RECHERCHE ET L'AJOUT
 @Composable

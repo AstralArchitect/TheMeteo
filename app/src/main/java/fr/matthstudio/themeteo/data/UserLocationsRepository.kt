@@ -99,4 +99,13 @@ class UserLocationsRepository(private val dataStore: DataStore<Preferences>) {
             preferences[LOCATIONS_KEY] = Json.encodeToString(newList)
         }
     }
+
+    /**
+     * Met à jour l'ordre de la liste entière des lieux.
+     */
+    suspend fun reorderLocations(newList: List<SavedLocation>) {
+        dataStore.edit { preferences ->
+            preferences[LOCATIONS_KEY] = Json.encodeToString(newList)
+        }
+    }
 }

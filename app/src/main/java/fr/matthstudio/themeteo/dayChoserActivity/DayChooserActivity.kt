@@ -234,14 +234,17 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
         val currentWeathers by weatherViewModel.currentWeather.collectAsState()
         val defaultLocation = weatherViewModel.defaultLocation
+        val isPermissionGranted by weatherViewModel.isLocationPermissionGranted.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
             selectedLocation = selectedLocation,
             currentWeathers = currentWeathers,
             defaultLocation = defaultLocation,
+            isPermissionGranted = isPermissionGranted,
             onSelectLocation = { weatherViewModel.selectLocation(it) },
             onRemoveLocation = { weatherViewModel.removeLocation(it) },
+            onReorderLocations = { weatherViewModel.reorderLocations(it) },
             onSetDefaultLocation = { weatherViewModel.setDefaultLocation(it) },
             onDismiss = { showLocationSheet = false },
             onAddLocationClick = {

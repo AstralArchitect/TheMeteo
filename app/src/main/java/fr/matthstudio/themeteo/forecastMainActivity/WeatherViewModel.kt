@@ -68,6 +68,11 @@ class WeatherViewModel(
     val userLocation: StateFlow<GpsCoordinates?> = weatherCache.currentGpsPosition
 
     /**
+     * Expose si la permission de localisation est accordée.
+     */
+    val isLocationPermissionGranted: StateFlow<Boolean> = weatherCache.isLocationPermissionGranted
+
+    /**
      * Variable servant à forcer le rafraichissement, elle est incrémentée à chaque appel de refresh()
      */
     private val _refreshCounter = MutableStateFlow(0)
@@ -229,6 +234,13 @@ class WeatherViewModel(
      */
      fun addLocation(location: SavedLocation) {
         weatherCache.addLocation(location)
+    }
+
+    /**
+     * Méthode appelée par l'UI pour réorganiser les lieux.
+     */
+    fun reorderLocations(newList: List<SavedLocation>) {
+        weatherCache.reorderLocations(newList)
     }
 
     fun addLocationFromMap(coords: GpsCoordinates, name: String) {
