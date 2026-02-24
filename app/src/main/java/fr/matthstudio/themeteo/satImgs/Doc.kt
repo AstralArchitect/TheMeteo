@@ -11,7 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
-import fr.matthstudio.themeteo.forecastViewer.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 
 class DocActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

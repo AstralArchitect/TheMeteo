@@ -11,17 +11,17 @@
     <string name="actual_situation">Actual Situation</string>
     <string name="open_satellite_view">Open Satellite View</string>
     <string name="loc_unavaiable">Location unavailable, using Paris\' location</string>
-    <string name="temperature">Temperature</string>
-    <string name="apparent_temperature">Apparent Temperature</string>
-    <string name="dew_point">Dew Point</string>
-    <string name="humidity">Humidity</string>
-    <string name="rain">Rain + Showers</string>
-    <string name="precipitation_prob">Rain Probability</string>
-    <string name="wind_speed">Wind Speed</string>
-    <string name="pressure">Pressure</string>
-    <string name="cloud_cover">Cloud Cover</string>
-    <string name="forecast_for_the">"Forecast for the "</string>
-    <string name="next_24h_forecast">"Next 24h forecast "</string>
+    <string name="temperature">Temperature (°C)</string>
+    <string name="apparent_temperature">Feel like (°C)</string>
+    <string name="dew_point">Dew Point (°C)</string>
+    <string name="humidity">Humidity (%)</string>
+    <string name="rain">Rain (mm)</string>
+    <string name="precipitation_prob">Chance of Rain (%)</string>
+    <string name="wind_speed">Wind Speed (km/h)</string>
+    <string name="pressure">Pressure (hPa)</string>
+    <string name="cloud_cover">Cloud Cover (%)</string>
+    <string name="forecast_for_the">Forecast for the %s</string>
+    <string name="next_24h_forecast">Next 24h forecast</string>
     <string name="mid_clouds">Medium clouds :</string>
     <string name="high_clouds">High clouds :</string>
     <string name="close">Close</string>
@@ -33,30 +33,30 @@
     <string name="low_clouds">Low clouds :</string>
     <string name="total">Total cloud cover :</string>
     <string name="sky_details">Sky details :</string>
-    <string name="search_city">Search for a city…</string>
+    <string name="search_city">Search for an address…</string>
     <string name="add_city">Add a city</string>
     <string name="widget_description" translatable="false">TheMeteo Widget</string>
     <string name="title_activity_settings_activity.kt" translatable="false">SettingsActivity.kt</string>
     <string name="next_days_temperature_forecast">Next %1$d Days Temperature Forecast</string>
     <string name="unknown_error">Unknown error</string>
-    <string name="chose_model">Chose the weather forcasting model.</string>
-    <string name="precipitation">Precipitation (rain + snowfall + showers)</string>
+    <string name="chose_model">Chose the weather forecasting model.</string>
+    <string name="precipitation">Precipitation (mm)</string>
     <string name="hourly_forecast">Hourly forecast</string>
-    <string name="a_temperature_unit">App. Temp. °C</string>
+    <string name="a_temperature_unit">Feeling °C</string>
     <string name="precipitation_unit">Precip. mm/h</string>
     <string name="wind_speed_unit">Wind Speed kph</string>
     <string name="settings">Settings</string>
     <string name="temperature_unit" translatable="false">Temp. °C</string>
     <string name="daily_forecast">Daily forecast</string>
     <string name="_15_minutely_precipitation_forecast">15 Minutely Precipitation Forecast</string>
-    <string name="day_duration">Day Duration %s</string>
+    <string name="day_duration_format" translatable="false">%1$s: %2$d h %3$d min</string>
     <string name="sun">Sun</string>
-    <string name="sunrise">Sunrise %1$s</string>
-    <string name="sunset">Sunset %1$s</string>
+    <string name="sunrise">Sunrise</string>
+    <string name="sunset">Sunset</string>
     <string name="sun_infos">Sun Infos</string>
     <string name="today_s_sunrise">Today\'s Sunrise</string>
-    <string name="today">Today</string>
-    <string name="tomorrow">Tomorrow</string>
+    <string name="today">Tdy.</string>
+    <string name="tomorrow">Tmrw.</string>
     <string name="sunrise_no_value">Sunrise</string>
     <string name="sunset_no_value">Sunset</string>
     <string name="day_duration_no_value">Day duration</string>
@@ -66,4 +66,126 @@
     <string name="snowfall">Snowfall in cm</string>
     <string name="snow_depth">Snow depth in cm</string>
     <string name="wind_direction">Wind Direction</string>
+    <string name="uv_low">Low</string>
+    <string name="uv_moderate">Medium</string>
+    <string name="uv_high">High</string>
+    <string name="uv_very_high">Very High</string>
+    <string name="uv_extreme">Extreme</string>
+    <string name="uv_index">UV Index</string>
+    <string name="visibility">Visibility (km)</string>
+    <string name="opacity_graph">Opacity (%)</string>
+    <string name="details">Details</string>
+    <string name="show_more">Show more</string>
+    <string name="current_location">Current Location</string>
+    <string name="open_satellite_map">Open satellite map</string>
+    <string name="weather_details">Weather Details</string>
+    <string name="manage_locations">Manage Locations</string>
+    <string name="pick_on_map">Pick on the map</string>
+    <string name="heavy_snow">Heavy Snow</string>
+    <string name="rainy">Rainy</string>
+    <string name="drizzle">Drizzle</string>
+    <string name="stormy">Stormy</string>
+    <string name="hail">Hail</string>
+    <string name="light_snow">Light Snow</string>
+    <string name="mixed_rain_snow">Mixed Rain Snow</string>
+    <string name="dust_storm">Dust Storm</string>
+    <string name="haze">Haze</string>
+    <string name="foggy">Foggy</string>
+    <string name="cloudy">Cloudy</string>
+    <string name="sunny_cloudy">Sunny Cloudy</string>
+    <string name="clear">Clear</string>
+    <string name="currently">Currently</string>
+    <string name="goes_to_current_weather_page">Goes to Current Weather Page</string>
+    <string name="app_focus">App Focus</string>
+    <string name="curent_weather">Current Weather</string>
+    <string name="daily_forecast_setting">Daily Forecast</string>
+    <string name="no_current_risks">No current risks</string>
+    <string name="herbes">Grasses</string>
+    <string name="trees">Trees</string>
+    <string name="weed">Weeds</string>
+
+    <!-- Formatted Strings -->
+    <string name="location_coords_format" translatable="false">Position: %1$.4f, %2$.4f</string>
+    <string name="source_format" translatable="false">Source: %s</string>
+    <string name="vigilance_full_format" translatable="false">VIGILANCE %1$s</string>
+    <string name="vigilance_level_time_format">Level %1$d (%2$s) from %3$s to %4$s. Click for details.</string>
+    <string name="vigilance_level_ongoing_format">Level %1$d ongoing or expected. Click for details.</string>
+    <string name="vigilance_dept_format">Weather Alerts/Warnings(Dept. %s)</string>
+    <string name="uv_index_format">UV Index: %d</string>
+    <string name="major_pollutant_format">Major pollutant: %s</string>
+    <string name="precipitation_detail_format" translatable="false">Prob: %2$d%% | Rain: %3$.1f mm</string>
+    <string name="sun_event_format" translatable="false">%1$s: %2$s</string>
+    <string name="sun_event_day_format" translatable="false">%1$s (%2$s): %3$s</string>
+    
+    <!-- Weather Sentence Building -->
+    <string name="sky_sunny">Sunny sky</string>
+    <string name="sky_clear">Clear sky</string>
+    <string name="sky_veiled">Veiled sky</string>
+    <string name="sky_scattered">Scattered clouds</string>
+    <string name="sky_partly_cloudy">Partly cloudy sky</string>
+    <string name="sky_overcast">Overcast sky</string>
+    
+    <string name="mod_with_veil">with veil</string>
+    <string name="mod_with_veiled_sky">with veiled sky</string>
+    <string name="mod_with_light_snow">with light snow</string>
+    <string name="mod_with_moderate_snow">with moderate snow</string>
+    <string name="mod_with_heavy_snow">with heavy snow</string>
+    <string name="mod_with_light_rain">with light rain</string>
+    <string name="mod_with_moderate_rain">with moderate rain</string>
+    <string name="mod_with_heavy_rain">with heavy rain</string>
+    <string name="mod_with_torrential_rain">with torrential rain</string>
+    <string name="mod_with_precipitation">with precipitation</string>
+    
+    <string name="weather_sentence_format" translatable="false">%1$s %2$s</string>
+    <string name="snowfall_cm_h">Snowfall (cm/h)</string>
+    <string name="snow_depth_cm">Snow Depth (cm)</string>
+    <string name="no_data_available_for_day">No data available for this day</string>
+    <string name="pollen_index_format">Index : %d</string>
+    <string name="unknown">Unknown</string>
+    <string name="no_pollen_data">No pollen data</string>
+    <string name="current_polluants">Current polluants</string>
+    <string name="no_major_polluant">No Major Polluant</string>
+    <string name="health_advice">Health Advice</string>
+    <string name="no_specific_recommendation">No specific recommendation</string>
+    <string name="pollen_for_the_next_days">Pollen for the Next Days</string>
+    <string name="pollen_data_unavailable">Pollen Data Unavailable</string>
+    <string name="out_of_season">Out of Season</string>
+    <string name="low_risk_or_none">Low risk or none</string>
+    <string name="index_0">Index: 0</string>
+    <string name="today_lower">today</string>
+    <string name="tomorrow_lower">tomorrow</string>
+    <string name="vigilance_alerts_dept_code">Vigilance alerts (Dept. %1$s)</string>
+    <string name="official_website">Official Website</string>
+    <string name="air_quality_polen_title">Air Quality and Pollen</string>
+    <string name="custom_location">Custom Location</string>
+    <string name="pick_this_location">Pick this Location</string>
+    <string name="violent_wind">VIOLENT WIND</string>
+    <string name="rain_flood">RAIN-FLOOD</string>
+    <string name="thunderstorms_phenomenon">THUNDERSTORMS</string>
+    <string name="floods">FLOODS</string>
+    <string name="snow_ice">SNOW-ICE</string>
+    <string name="heatwave">HEATWAVE</string>
+    <string name="extreme_cold">EXTREME COLD</string>
+    <string name="flooding">FLOODING</string>
+    <string name="waves_submersion">WAVE SUBMERSION</string>
+    <string name="unknown_phenomenon">UNKNOWN PHENOMENON</string>
+    <string name="weather_model_title">Weather Model</string>
+    <string name="round_values_title">Round Values</string>
+    <string name="round_values_desc">Round the values on the graphics, the precipitaion graphic cannot be rounded</string>
+    <string name="animated_icons_title">Animated Icons</string>
+    <string name="animated_icons_desc">Animate the weather icon, this setting will be disabled when battery saver is on</string>
+    <string name="fill_missing_vars_title">Fill Missing Variables</string>
+    <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the \'Best Match\' model</string>
+    <string name="meilleur_mod_le_par_d_faut">Best Match (default)</string>
+    <string name="major_polluant">Major Polluant: %1$s</string>
+    <string name="gusts">Gusts</string>
+    <string name="forecast_type_title">Forecast Type</string>
+    <string name="forecast_type_desc">Choose between standard deterministic model or ensemble (uncertainty ribbon).</string>
+    <string name="deterministic">Deterministic</string>
+    <string name="ensemble">Ensemble</string>
+    <string name="best_worst_case">Best / Worst case</string>
+    <string name="ensemble_warning_title">Ensemble Mode</string>
+    <string name="ensemble_warning_message">Ensemble mode provides more detailed information but consumes more data and battery. It can also be more complex to interpret as it shows the range of possibilities (uncertainty ribbon).</string>
+    <string name="ensemble_warning_confirm">I understand</string>
+    <string name="ensemble_warning_cancel">Cancel</string>
 </resources>
