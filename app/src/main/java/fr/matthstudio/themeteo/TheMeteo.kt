@@ -10,6 +10,7 @@ import fr.matthstudio.themeteo.data.AppDataContainer
 import fr.matthstudio.themeteo.data.LocationProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.io.File
 
@@ -63,15 +64,17 @@ class TheMeteo : Application(), ImageLoaderFactory {
     }
 
     fun saveCache() {
-        try {
-            Log.d("onTerminate", "Saving cache...")
-            val json = Json {
-                allowStructuredMapKeys = true
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Log.d("saveCache", "Saving cache to disk...")
+                val json = Json {
+                    allowStructuredMapKeys = true
+                }
+                val serializedValue = json.encodeToString(weatherCache.getRawCache())
+                File(cacheDir, "weather_cache_data.json").writeText(serializedValue)
+            } catch (e: Exception) {
+                Log.e("TheMeteo", "Error saving cache", e)
             }
-            val serializedValue = json.encodeToString(weatherCache.getRawCache())
-            File(cacheDir, "weather_cache_data.json").writeText(serializedValue)
-        } catch (e: Exception) {
-            Log.e("TheMeteo", "Error saving cache", e)
         }
     }
 

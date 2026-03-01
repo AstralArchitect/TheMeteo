@@ -37,7 +37,7 @@ class WeatherViewModel(
     private val telemetryManager: TelemetryManager
 ) : ViewModel() {
 
-    private val weatherService = WeatherService(telemetryManager)
+    val weatherService = WeatherService(telemetryManager)
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
 

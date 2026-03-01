@@ -1,12 +1,13 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
-import android.location.Geocoder
 import android.os.Build
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
@@ -51,10 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -81,10 +80,12 @@ import fr.matthstudio.themeteo.GeocodingResult
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
+import kotlinx.coroutines.launch
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.max
@@ -251,7 +252,6 @@ enum class ChosenVar {
 
 @Composable
 fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onClick: () -> Unit) {
-    val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
     val weatherIconFilter = remember(isDark) {
         if (!isDark) {
@@ -358,13 +358,13 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
 @Composable
 fun EnsembleIconSmall(wmo: Int, animated: Boolean, filter: ColorFilter?) {
     if (animated) {
-        fr.matthstudio.themeteo.forecastMainActivity.AnimatedSvgIcon(
-            iconPath = fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+        AnimatedSvgIcon(
+            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
             modifier = Modifier.size(30.dp)
         )
     } else {
         AsyncImage(
-            model = fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
             contentDescription = null,
             modifier = Modifier.size(30.dp),
             contentScale = ContentScale.Fit,
@@ -626,6 +626,7 @@ fun LocationRow(
 fun AddLocationDialog(
     searchResults: List<GeocodingResult>, // Remplacez par votre type réel de résultat
     userLocation: GpsCoordinates?,
+    weatherService: WeatherService,
     onSearch: (String) -> Unit,
     onLocationSelected: (LocationIdentifier) -> Unit,
     onAddLocation: (SavedLocation) -> Unit,
@@ -640,6 +641,7 @@ fun AddLocationDialog(
         Dialog(onDismissRequest = { showMapPicker = false }) {
             MapPickerScreen(
                 initialLocation = userLocation,
+                weatherService = weatherService,
                 onLocationSelected = { coords, name ->
                     onMapLocationAdded(coords, name)
                     showMapPicker = false
@@ -701,10 +703,12 @@ fun AddLocationDialog(
 @Composable
 fun MapPickerScreen(
     initialLocation: GpsCoordinates?,
+    weatherService: WeatherService,
     onLocationSelected: (GpsCoordinates, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     // Position initiale : GPS, fallback Paris
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
@@ -744,16 +748,15 @@ fun MapPickerScreen(
                 val target = cameraPositionState.position.target
                 val coords = GpsCoordinates(target.latitude, target.longitude)
 
-                // Utilisation du Geocoder pour trouver le nom de la ville
-                val cityName = try {
-                    val geocoder = Geocoder(context, Locale.getDefault())
-                    val addresses = geocoder.getFromLocation(target.latitude, target.longitude, 1)
-                    addresses?.firstOrNull()?.locality ?: context.getString(R.string.custom_location)
-                } catch (e: Exception) {
-                    context.getString(R.string.custom_location)
+                scope.launch {
+                    val cityName = weatherService.getCityNameFromCoords(
+                        target.latitude,
+                        target.longitude,
+                        context
+                    ) ?: context.getString(R.string.custom_location)
+                    
+                    onLocationSelected(coords, cityName)
                 }
-
-                onLocationSelected(coords, cityName)
             }
         ) {
             Text(stringResource(R.string.pick_this_location))
@@ -968,7 +971,7 @@ fun WeatherIconGraph(
     viewModel: WeatherViewModel,
     scrollState: ScrollState = rememberScrollState()
 ) {
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = isSystemInDarkTheme()
     val weatherIconFilter = remember(isDark) {
         if (!isDark) {
             ColorFilter.colorMatrix(ColorMatrix().apply {

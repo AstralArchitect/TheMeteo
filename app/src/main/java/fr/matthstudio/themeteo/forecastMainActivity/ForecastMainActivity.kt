@@ -533,6 +533,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         AddLocationDialog(
             searchResults = searchResults,
             userLocation = userLocation,
+            weatherService = viewModel.weatherService,
             onSearch = { viewModel.searchCity(it) },
             onLocationSelected = { viewModel.selectLocation(it) },
             onAddLocation = { viewModel.addLocation(it) },

@@ -1,12 +1,15 @@
 package fr.matthstudio.themeteo.dayChoserActivity
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,6 +32,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -61,26 +65,20 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
-import android.view.MotionEvent
-import android.view.ViewGroup
-import android.webkit.WebView
 import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
+import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
 import fr.matthstudio.themeteo.forecastMainActivity.AddLocationDialog
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
-import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivityScreen
 import fr.matthstudio.themeteo.forecastMainActivity.LocationManagementSheet
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
-import fr.matthstudio.themeteo.data.WeatherModelRegistry
-import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -109,7 +107,7 @@ fun getWeatherIconPath(word: SimpleWeatherWord): String {
 
 @Composable
 fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = isSystemInDarkTheme()
     
     // Filtre CSS pour adapter les couleurs au thème clair
     val filterStyle = if (!isDark) {
@@ -198,7 +196,10 @@ class DayChooserActivity : ComponentActivity() {
                 Surface(
                     modifier = Modifier
                         .fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = if (!isSystemInDarkTheme())
+                        MaterialTheme.colorScheme.surfaceVariant
+                    else
+                        MaterialTheme.colorScheme.background
                 ) {
                     DayChooser(weatherViewModel = weatherViewModel, isLauncherActivity)
                 }
@@ -262,6 +263,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         AddLocationDialog(
             searchResults = searchResults,
             userLocation = userLocation,
+            weatherService = weatherViewModel.weatherService,
             onSearch = { weatherViewModel.searchCity(it) },
             onLocationSelected = { weatherViewModel.selectLocation(it) },
             onAddLocation = { weatherViewModel.addLocation(it) },
@@ -403,7 +405,6 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                                         tint = Color.White
                                     )
 
-                                    val dateFormatter = DateTimeFormatter.ofPattern("dd MMM")
                                     Text(
                                         text = stringResource(R.string.currently),
                                         style = MaterialTheme.typography.labelLarge
@@ -558,9 +559,15 @@ fun SingleDailyForecastCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.small
+        shape = MaterialTheme.shapes.small,
+        colors = CardDefaults.cardColors(
+            containerColor = if (!isSystemInDarkTheme())
+                MaterialTheme.colorScheme.background.copy(alpha = 0.4f)
+            else
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        )
     ) {
-        val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+        val isDark = isSystemInDarkTheme()
         val weatherIconFilter = remember(isDark) {
             if (!isDark) {
                 ColorFilter.colorMatrix(ColorMatrix().apply {

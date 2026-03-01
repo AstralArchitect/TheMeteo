@@ -274,6 +274,34 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
+    suspend fun getCityNameFromCoords(latitude: Double, longitude: Double, context: Context): String? {
+        val url = "https://maps.googleapis.com/maps/api/geocode/json"
+        val sha1 = getSigningSha1(context) ?: return null
+        return try {
+            val response = client.get(url) {
+                parameter("latlng", "$latitude,$longitude")
+                parameter("key", BuildConfig.MAPS_API_KEY)
+                parameter("language", java.util.Locale.getDefault().language)
+                parameter("result_type", "locality|sublocality|administrative_area_level_1|administrative_area_level_2")
+                header("X-Android-Package", context.packageName)
+                header("X-Android-Cert", sha1)
+            }
+            if (response.status.value == 200) {
+                val geocodingResponse = response.body<GoogleGeocodingResponse>()
+                if (geocodingResponse.status == "OK" && geocodingResponse.results.isNotEmpty()) {
+                    val components = geocodingResponse.results.first().addressComponents
+                    components.find { "locality" in it.types }?.longName
+                        ?: components.find { "sublocality" in it.types }?.longName
+                        ?: components.find { "administrative_area_level_2" in it.types }?.longName
+                        ?: components.find { "administrative_area_level_1" in it.types }?.longName
+                } else null
+            } else null
+        } catch (e: Exception) {
+            telemetryManager?.logException(e)
+            null
+        }
+    }
+
     /**
      * Récupère les prévisions de pollen auprès de l'API Google Maps Pollen.
      */
