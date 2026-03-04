@@ -90,6 +90,12 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Job
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -449,10 +455,15 @@ fun LocationManagementSheet(
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState()
 ) {
+    // État local pour la liste réorganisable
+    var listState by remember(savedLocations) { mutableStateOf(savedLocations) }
+    val lazyListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MaterialTheme.colorScheme.surface.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
+        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MaterialTheme.colorScheme.secondaryContainer.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
         scrimColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(alpha = 0.5f)
     ) {
         Column(modifier = Modifier
@@ -460,7 +471,11 @@ fun LocationManagementSheet(
             .padding(16.dp))
         {
             Text(stringResource(R.string.manage_locations), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
-            LazyColumn {
+            
+            LazyColumn(
+                state = lazyListState,
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
                 // Item pour la position actuelle - Visible uniquement si permission accordée
                 if (isPermissionGranted) {
                     item {
@@ -479,11 +494,13 @@ fun LocationManagementSheet(
                 }
 
                 // Liste des lieux sauvegardés
-                items(savedLocations.size) { index ->
-                    val location = savedLocations[index]
-                    // On vérifie si defaultLocation est un type 'Saved' et si sa localisation interne est la même
+                items(listState.size, key = { listState[it].name + listState[it].latitude + listState[it].longitude }) { index ->
+                    val location = listState[index]
                     val isDefault = (defaultLocation as? LocationIdentifier.Saved)?.location == location
                     val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
+                    
+                    var itemOffset by remember { mutableStateOf(0f) }
+
                     LocationRow(
                         name = location.name,
                         isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
@@ -495,18 +512,46 @@ fun LocationManagementSheet(
                         },
                         onDelete = { onRemoveLocation(location) },
                         onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) },
-                        onMoveUp = if (index > 0) { {
-                            val newList = savedLocations.toMutableList()
-                            val item = newList.removeAt(index)
-                            newList.add(index - 1, item)
-                            onReorderLocations(newList)
-                        } } else null,
-                        onMoveDown = if (index < savedLocations.size - 1) { {
-                            val newList = savedLocations.toMutableList()
-                            val item = newList.removeAt(index)
-                            newList.add(index + 1, item)
-                            onReorderLocations(newList)
-                        } } else null
+                        modifier = Modifier
+                            .offset(y = itemOffset.dp)
+                            .pointerInput(Unit) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { /* Optionnel: retour haptique */ },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        itemOffset += dragAmount.y / density
+                                        
+                                        // Logique de swap simple
+                                        val threshold = 30f // Seuil pour déclencher le swap
+                                        if (itemOffset > threshold && index < listState.size - 1) {
+                                            val newList = listState.toMutableList()
+                                            val item = newList.removeAt(index)
+                                            newList.add(index + 1, item)
+                                            listState = newList
+                                            itemOffset = 0f
+                                            onReorderLocations(newList)
+                                        } else if (itemOffset < -threshold && index > 0) {
+                                            val newList = listState.toMutableList()
+                                            val item = newList.removeAt(index)
+                                            newList.add(index - 1, item)
+                                            listState = newList
+                                            itemOffset = 0f
+                                            onReorderLocations(newList)
+                                        }
+                                    },
+                                    onDragEnd = { itemOffset = 0f },
+                                    onDragCancel = { itemOffset = 0f }
+                                )
+                            },
+                        dragHandle = {
+                            Icon(
+                                imageVector = Icons.Default.DragHandle,
+                                contentDescription = "Réorganiser",
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .padding(4.dp)
+                            )
+                        }
                     )
                 }
             }
@@ -536,11 +581,11 @@ fun LocationRow(
     onSetAsDefault: () -> Unit,
     onClick: () -> Unit,
     onDelete: (() -> Unit)?, // Nullable car la position actuelle n'a pas de bouton de suppression
-    onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    dragHandle: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(64.dp)
             .clickable(onClick = onClick)
@@ -556,23 +601,8 @@ fun LocationRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                if (onMoveUp != null || onMoveDown != null) {
-                    Column {
-                        if (onMoveUp != null) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = "Monter",
-                                modifier = Modifier.size(20.dp).clickable(onClick = onMoveUp)
-                            )
-                        }
-                        if (onMoveDown != null) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Descendre",
-                                modifier = Modifier.size(20.dp).clickable(onClick = onMoveDown)
-                            )
-                        }
-                    }
+                if (dragHandle != null) {
+                    dragHandle()
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(

@@ -1,34 +1,37 @@
 package fr.matthstudio.themeteo.ui.theme
+import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 
 private val lightScheme = lightColorScheme(
-    primary = primaryLight,
-    onPrimary = onPrimaryLight,
-    primaryContainer = primaryContainerLight,
-    onPrimaryContainer = onPrimaryContainerLight,
-    secondary = secondaryLight,
-    onSecondary = onSecondaryLight,
-    secondaryContainer = secondaryContainerLight,
-    onSecondaryContainer = onSecondaryContainerLight,
-    tertiary = tertiaryLight,
-    onTertiary = onTertiaryLight,
-    tertiaryContainer = tertiaryContainerLight,
-    onTertiaryContainer = onTertiaryContainerLight,
-    error = errorLight,
-    onError = onErrorLight,
-    errorContainer = errorContainerLight,
-    onErrorContainer = onErrorContainerLight,
-    background = backgroundLight,
+    primary = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.primaryLight,
+    onPrimary = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onPrimaryLight,
+    primaryContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.primaryContainerLight,
+    onPrimaryContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onPrimaryContainerLight,
+    secondary = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.secondaryLight,
+    onSecondary = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onSecondaryLight,
+    secondaryContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.secondaryContainerLight,
+    onSecondaryContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onSecondaryContainerLight,
+    tertiary = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.tertiaryLight,
+    onTertiary = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onTertiaryLight,
+    tertiaryContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.tertiaryContainerLight,
+    onTertiaryContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onTertiaryContainerLight,
+    error = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.errorLight,
+    onError = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onErrorLight,
+    errorContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.errorContainerLight,
+    onErrorContainer = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.onErrorContainerLight,
+    background = _root_ide_package_.fr.matthstudio.themeteo.ui.theme.backgroundLight,
     onBackground = onBackgroundLight,
     surface = surfaceLight,
     onSurface = onSurfaceLight,
