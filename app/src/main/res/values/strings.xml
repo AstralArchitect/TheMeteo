@@ -188,4 +188,6 @@
     <string name="ensemble_warning_message">Ensemble mode provides more detailed information but consumes more data and battery. It can also be more complex to interpret as it shows the range of possibilities (uncertainty ribbon).</string>
     <string name="ensemble_warning_confirm">I understand</string>
     <string name="ensemble_warning_cancel">Cancel</string>
+    <string name="no_precipitation_expected">No precipitation expected</string>
+    <string name="no_precipitations">No precipitations</string>
 </resources>

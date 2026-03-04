@@ -165,6 +165,7 @@ fun SettingsScreen(cache: WeatherCache) {
 
             ModelFallbackSetting(
                 isChecked = userSettings.enableModelFallback,
+                enabled = userSettings.forecastType != ForecastType.ENSEMBLE,
                 onCheckedChange = { enabled ->
                     scope.launch {
                         cache.userSettingsRepository.updateEnableModelFallback(enabled)
@@ -197,7 +198,7 @@ fun SettingsScreen(cache: WeatherCache) {
                         cache.userSettingsRepository.updateDefaultActivity(if (isOn) DefaultScreen.FORECAST_MAIN else DefaultScreen.DAY_CHOSER)
                         
                         // 2. Attendre 1 seconde
-                        kotlinx.coroutines.delay(1000)
+                        kotlinx.coroutines.delay(500)
                         
                         // 3. Relancer l'application
                         val packageManager = activity?.packageManager
@@ -302,7 +303,7 @@ fun ModelSelectionSetting(
                 label = { Text("Selected Model") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier
-                    .menuAnchor(MenuAnchorType.PrimaryEditable, true)
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, true)
                     .fillMaxWidth()
             )
             ExposedDropdownMenu(
@@ -463,27 +464,35 @@ fun AnimatedIconsSetting(
 @Composable
 fun ModelFallbackSetting(
     isChecked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val alpha = if (enabled) 1f else 0.5f
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!isChecked) }
+            .clickable(enabled = enabled) { onCheckedChange(!isChecked) }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.fill_missing_vars_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.fill_missing_vars_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+            )
             Text(
                 stringResource(R.string.fill_missing_vars_desc),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
             )
         }
         Switch(
             checked = isChecked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
         )
     }
 }

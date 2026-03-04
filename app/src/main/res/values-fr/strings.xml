@@ -171,4 +171,5 @@
     <string name="ensemble_warning_message">Le mode ensemble fournit des informations plus détaillées mais consomme plus de données et de batterie. Il peut également être plus complexe à interpréter car il montre l\'éventail des possibles (ruban d\'incertitude).</string>
     <string name="ensemble_warning_confirm">J\'ai compris</string>
     <string name="ensemble_warning_cancel">Annuler</string>
+    <string name="no_precipitation_expected">Aucune précipitation prévue</string>
 </resources>

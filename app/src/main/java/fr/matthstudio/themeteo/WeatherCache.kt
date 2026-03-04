@@ -520,8 +520,8 @@ class WeatherCache(
             val mergedPrecipitationData = p.precipitationData.copy(
                 precipitation = p.precipitationData.precipitation.nanToNull() ?: f.precipitationData.precipitation.nanToNull(),
                 precipitationProbability = p.precipitationData.precipitationProbability ?: f.precipitationData.precipitationProbability,
-                rain = (if (p.precipitationData.rain.nanToNull() == null || (p.precipitationData.rain == 0.0 && f.precipitationData.rain != 0.0 && f.precipitationData.rain.nanToNull() != null)) f.precipitationData.rain else p.precipitationData.rain).nanToNull(),
-                snowfall = (if (p.precipitationData.snowfall.nanToNull() == null || (p.precipitationData.snowfall == 0.0 && f.precipitationData.snowfall != 0.0 && f.precipitationData.snowfall.nanToNull() != null)) f.precipitationData.snowfall else p.precipitationData.snowfall).nanToNull(),
+                rain = p.precipitationData.rain.nanToNull() ?: f.precipitationData.rain.nanToNull(),
+                snowfall = p.precipitationData.snowfall.nanToNull() ?: f.precipitationData.snowfall.nanToNull(),
                 snowDepth = p.precipitationData.snowDepth ?: f.precipitationData.snowDepth
             )
 
@@ -541,10 +541,10 @@ class WeatherCache(
             }
 
             val mergedSkyInfo = p.skyInfo.copy(
-                cloudcoverTotal = if ((p.skyInfo.cloudcoverTotal == 0) && f.skyInfo.cloudcoverTotal != 0) f.skyInfo.cloudcoverTotal else p.skyInfo.cloudcoverTotal,
-                cloudcoverLow = if ((p.skyInfo.cloudcoverLow == 0) && f.skyInfo.cloudcoverLow != 0) f.skyInfo.cloudcoverLow else p.skyInfo.cloudcoverLow,
-                cloudcoverMid = if ((p.skyInfo.cloudcoverMid == 0) && f.skyInfo.cloudcoverMid != 0) f.skyInfo.cloudcoverMid else p.skyInfo.cloudcoverMid,
-                cloudcoverHigh = if ((p.skyInfo.cloudcoverHigh == 0) && f.skyInfo.cloudcoverHigh != 0) f.skyInfo.cloudcoverHigh else p.skyInfo.cloudcoverHigh,
+                cloudcoverTotal = p.skyInfo.cloudcoverTotal ?: f.skyInfo.cloudcoverTotal,
+                cloudcoverLow = p.skyInfo.cloudcoverLow ?: f.skyInfo.cloudcoverLow,
+                cloudcoverMid = p.skyInfo.cloudcoverMid ?: f.skyInfo.cloudcoverMid,
+                cloudcoverHigh = p.skyInfo.cloudcoverHigh ?: f.skyInfo.cloudcoverHigh,
                 shortwaveRadiation = mergedGhi,
                 directRadiation = p.skyInfo.directRadiation.nanToNull() ?: f.skyInfo.directRadiation.nanToNull(),
                 diffuseRadiation = mergedDhi,
@@ -560,9 +560,9 @@ class WeatherCache(
                 skyInfo = mergedSkyInfo,
                 wind = mergedWindData,
                 dewpoint = p.dewpoint.nanToNull() ?: f.dewpoint.nanToNull(),
-                pressure = if (p.pressure == 0) f.pressure else p.pressure,
-                humidity = if (p.humidity == 0) f.humidity else p.humidity,
-                wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo
+                pressure = p.pressure ?: f.pressure,
+                humidity = p.humidity ?: f.humidity,
+                wmo = p.wmo ?: f.wmo
             )
         }
     }
@@ -576,7 +576,7 @@ class WeatherCache(
                 minTemperature = p.minTemperature.nanToNull() ?: f.minTemperature.nanToNull(),
                 precipitation = p.precipitation.nanToNull() ?: f.precipitation.nanToNull(),
                 maxUvIndex = p.maxUvIndex ?: f.maxUvIndex,
-                wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo,
+                wmo = p.wmo ?: f.wmo,
                 sunset = p.sunset.ifEmpty { f.sunset },
                 sunrise = p.sunrise.ifEmpty { f.sunrise }
             )

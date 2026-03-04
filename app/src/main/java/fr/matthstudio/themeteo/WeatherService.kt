@@ -53,7 +53,6 @@ import kotlin.text.format
 
 // --- DATA CLASSES (inchangées) ---
 @Serializable
-
 data class PrecipitationData(
     val precipitation: Double?, // en mm
     val precipitationProbability: Int?, // en %
@@ -64,10 +63,10 @@ data class PrecipitationData(
 
 @Serializable
 data class SkyInfoData(
-    val cloudcoverTotal: Int, // en %
-    val cloudcoverLow: Int,
-    val cloudcoverMid: Int,
-    val cloudcoverHigh: Int,
+    val cloudcoverTotal: Int?, // en %
+    val cloudcoverLow: Int?,
+    val cloudcoverMid: Int?,
+    val cloudcoverHigh: Int?,
     val shortwaveRadiation: Double?, // en W/m^2
     val directRadiation: Double?, // en W/m^2
     val diffuseRadiation: Double?, // en W/m^2
@@ -93,10 +92,10 @@ data class AllHourlyVarsReading(
     val precipitationData: PrecipitationData,
     val skyInfo: SkyInfoData,
     val wind: WindData,
-    val pressure: Int,
-    val humidity: Int,
+    val pressure: Int?,
+    val humidity: Int?,
     val dewpoint: Double?,
-    val wmo: Int,
+    val wmo: Int?,
     val ensembleStats: Map<String, EnsembleStat>? = null,
     val wmoEnsemble: WmoEnsembleStat? = null
 )
@@ -111,7 +110,7 @@ data class DailyReading(
     val precipitation: Double?,
     val maxWind: WindData,
     val maxUvIndex: Int?,
-    val wmo: Int,
+    val wmo: Int?,
     val sunset: String,
     val sunrise: String,
     val wmoEnsemble: WmoEnsembleStat? = null
@@ -661,10 +660,10 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         windDirection = windDir
                     ),
                     skyInfo = SkyInfoData(
-                        cloudcoverTotal = hourStats["cloudcover"]?.avg?.toInt() ?: 0,
-                        cloudcoverLow = 0,
-                        cloudcoverMid = 0,
-                        cloudcoverHigh = 0,
+                        cloudcoverTotal = hourStats["cloudcover"]?.avg?.toInt(),
+                        cloudcoverLow = null,
+                        cloudcoverMid = null,
+                        cloudcoverHigh = null,
                         shortwaveRadiation = shortwaveRadiation,
                         directRadiation = directRadiation,
                         diffuseRadiation = diffuseRadiation,
@@ -672,10 +671,10 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         uvIndex = null,
                         visibility = hourStats["visibility"]?.avg?.toInt()
                     ),
-                    pressure = hourStats["pressure_msl"]?.avg?.toInt() ?: 0,
-                    humidity = hourStats["relative_humidity_2m"]?.avg?.toInt() ?: 0,
+                    pressure = hourStats["pressure_msl"]?.avg?.toInt(),
+                    humidity = hourStats["relative_humidity_2m"]?.avg?.toInt(),
                     dewpoint = hourStats["dewpoint_2m"]?.avg,
-                    wmo = wmoStats?.getOrNull(index)?.worst ?: 0, 
+                    wmo = wmoStats?.getOrNull(index)?.worst,
                     ensembleStats = hourStats,
                     wmoEnsemble = wmoStats?.getOrNull(index)
                 )
@@ -690,18 +689,22 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     )
                 } else null
 
+                val dailyPrecip = if (hourlyList.any { it.precipitationData.precipitation != null }) {
+                    hourlyList.mapNotNull { it.precipitationData.precipitation }.sum()
+                } else null
+
                 DailyReading(
                     date = date,
                     maxTemperature = hourlyList.mapNotNull { it.temperature }.maxOrNull(),
                     minTemperature = hourlyList.mapNotNull { it.temperature }.minOrNull(),
-                    precipitation = hourlyList.mapNotNull { it.precipitationData.precipitation }.sum(),
+                    precipitation = dailyPrecip,
                     maxWind = WindData(
                         windspeed = hourlyList.mapNotNull { it.wind.windspeed }.maxOrNull(),
                         windGusts = null,
-                        windDirection = hourlyList.firstOrNull { it.wind.windspeed == hourlyList.mapNotNull { h -> h.wind.windspeed }.maxOrNull() }?.wind?.windDirection ?: 0.0
+                        windDirection = hourlyList.firstOrNull { it.wind.windspeed == hourlyList.mapNotNull { h -> h.wind.windspeed }.maxOrNull() }?.wind?.windDirection
                     ),
                     maxUvIndex = null,
-                    wmo = dailyWmoEnsemble?.worst ?: 0,
+                    wmo = dailyWmoEnsemble?.worst,
                     sunset = "",
                     sunrise = "",
                     wmoEnsemble = dailyWmoEnsemble
@@ -779,15 +782,15 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         precipitationData = PrecipitationData(
                             precipitation = (precip?.getOrNull(i) as? Double).nanToNull(),
                             precipitationProbability = (precipProb?.getOrNull(i) as? Double).safeToInt(),
-                            rain = ((rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0)).nanToNull(),
+                            rain = if (rain?.getOrNull(i) == null && showers?.getOrNull(i) == null) null else ((rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0)).nanToNull(),
                             snowfall = (snowfall?.getOrNull(i) as? Double).nanToNull(),
                             snowDepth = ((snowDepth?.getOrNull(i) as? Double)?.times(100)).safeToInt()
                         ),
                         skyInfo = SkyInfoData(
-                            cloudcoverTotal = (cloud?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                            cloudcoverLow = (cloudLow?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                            cloudcoverMid = (cloudMid?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                            cloudcoverHigh = (cloudHigh?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                            cloudcoverTotal = (cloud?.getOrNull(i) as? Double).safeToInt(),
+                            cloudcoverLow = (cloudLow?.getOrNull(i) as? Double).safeToInt(),
+                            cloudcoverMid = (cloudMid?.getOrNull(i) as? Double).safeToInt(),
+                            cloudcoverHigh = (cloudHigh?.getOrNull(i) as? Double).safeToInt(),
                             shortwaveRadiation = (ghi?.getOrNull(i) as? Double).nanToNull(),
                             directRadiation = (dsi?.getOrNull(i) as? Double).nanToNull(),
                             diffuseRadiation = (dhi?.getOrNull(i) as? Double).nanToNull(),
@@ -800,10 +803,10 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             windGusts = (wgust?.getOrNull(i) as? Double).nanToNull(),
                             windDirection = (windDir?.getOrNull(i) as? Double).nanToNull()
                         ),
-                        pressure = (pressure?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                        humidity = (humidity?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                        pressure = (pressure?.getOrNull(i) as? Double).safeToInt(),
+                        humidity = (humidity?.getOrNull(i) as? Double).safeToInt(),
                         dewpoint = (dewpoint?.getOrNull(i) as? Double).nanToNull(),
-                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0
+                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt()
                     )
                 } catch (e: Exception) {
                     telemetryManager?.logException(e)
@@ -851,7 +854,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             windDirection = (windDirection?.getOrNull(i) as? Double).nanToNull()
                         ),
                         maxUvIndex = (uvIndex?.getOrNull(i) as? Double).safeToInt(),
-                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt(),
                         sunset = sunset?.getOrNull(i) as? String ?: "",
                         sunrise = sunrise?.getOrNull(i) as? String ?: ""
                     )

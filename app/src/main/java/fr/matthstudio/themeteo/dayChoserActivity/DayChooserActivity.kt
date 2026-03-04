@@ -8,6 +8,7 @@ import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Card
@@ -55,6 +57,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -75,6 +78,7 @@ import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
 import fr.matthstudio.themeteo.forecastMainActivity.AddLocationDialog
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
 import fr.matthstudio.themeteo.forecastMainActivity.LocationManagementSheet
+import fr.matthstudio.themeteo.forecastMainActivity.ResponsiveText
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
@@ -126,7 +130,7 @@ fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    settings.javaScriptEnabled = true
+                    settings.javaScriptEnabled = false
                     setBackgroundColor(0)
                     isVerticalScrollBarEnabled = false
                     isHorizontalScrollBarEnabled = false
@@ -348,7 +352,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                 }
             }
 
-            Text(
+            ResponsiveText(
                 text = stringResource(
                     R.string.next_days_temperature_forecast,
                     (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.size ?: 0
@@ -361,6 +365,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                 CircularProgressIndicator(modifier = Modifier.padding(16.dp))
             } else if (dailyForecast is WeatherDataState.Error || (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.isEmpty() == true) {
                 Text("Données non disponibles", modifier = Modifier.padding(16.dp))
+                Text("Erreur : ${(dailyForecast as? WeatherDataState.Error)?.message}", color = MaterialTheme.colorScheme.error)
             } else {
                 val data = (dailyForecast as WeatherDataState.SuccessDaily).data
 
@@ -395,7 +400,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                                         .fillMaxWidth(),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    // Icon first and bigger as requested
+                                    // Icon first and bigger
                                     Icon(
                                         imageVector = Icons.Rounded.AccessTime,
                                         contentDescription = "Icône météo",
@@ -450,12 +455,13 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
 fun EnsembleIcon(wmo: Int, animated: Boolean, filter: ColorFilter?) {
     if (animated) {
         AnimatedSvgIcon(
-            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            // Since WMO is never null, we can safely use the !! operator
+            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
             modifier = Modifier.size(55.dp)
         )
     } else {
         AsyncImage(
-            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
             contentDescription = null,
             modifier = Modifier.size(55.dp),
             contentScale = ContentScale.Fit,
@@ -511,6 +517,7 @@ fun SingleDailyForecastCard(
         SimpleWeatherWord.SNOWY3 -> snowy3IconPath
         SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
         SimpleWeatherWord.STORMY -> stormyIconPath
+        null -> Icons.Default.NotInterested
     }
 
     val maxTemp = dayReading.maxTemperature?.roundToInt()
@@ -616,16 +623,26 @@ fun SingleDailyForecastCard(
                         }
                     }
                 } else {
-                    if (animated) {
+                    if (animated && fileName is String) {
                         AnimatedSvgIcon(
                             iconPath = fileName,
                             modifier = Modifier
                                 .size(85.dp)
                                 .padding(bottom = 4.dp)
                         )
-                    } else {
+                    } else if (fileName is String){
                         AsyncImage(
                             model = fileName,
+                            contentDescription = "Icône météo",
+                            modifier = Modifier
+                                .size(85.dp)
+                                .padding(bottom = 4.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                    } else {
+                        Image(
+                            imageVector = fileName as ImageVector,
                             contentDescription = "Icône météo",
                             modifier = Modifier
                                 .size(85.dp)

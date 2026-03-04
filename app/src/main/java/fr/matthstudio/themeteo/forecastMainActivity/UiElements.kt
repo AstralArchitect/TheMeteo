@@ -2,6 +2,7 @@ package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
 import android.os.Build
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,6 +52,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,7 +96,9 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.coroutines.Job
 
 /**
@@ -120,11 +124,12 @@ enum class SimpleWeatherWord {
 
 data class SimpleWeather (
     var sentence: String,
-    var word: SimpleWeatherWord,
+    var word: SimpleWeatherWord?,
     var image: ImageBitmap? = null
 )
 
-fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
+fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
+    if (code == null) return null
     return when (code) {
         0 -> SimpleWeatherWord.SUNNY
         1, 2 -> SimpleWeatherWord.SUNNY_CLOUDY
@@ -190,10 +195,15 @@ fun getSimpleWeather(value: AllHourlyVarsReading): SimpleWeather {
 
     LaunchedEffect(value) {
         val skyState = value.skyInfo
-        val precipitation = value.precipitationData.precipitation
-        val rain = value.precipitationData.rain
-        val snow = value.precipitationData.snowfall
+        val precipitation = value.precipitationData.precipitation ?: 0.0
+        val rain = value.precipitationData.rain ?: 0.0
+        val snow = value.precipitationData.snowfall ?: 0.0
         val wCode = value.wmo
+
+        val cloudLow = skyState.cloudcoverLow ?: 0
+        val cloudMid = skyState.cloudcoverMid ?: 0
+        val cloudHigh = skyState.cloudcoverHigh ?: 0
+        val opacity = skyState.opacity ?: 0
 
         val newWeather = SimpleWeather("", SimpleWeatherWord.SUNNY)
         newWeather.word = weatherCodeToSimpleWord(wCode)
@@ -202,34 +212,30 @@ fun getSimpleWeather(value: AllHourlyVarsReading): SimpleWeather {
         var modifier: String? = null
 
         // 1. État du ciel
-        if (skyState.opacity in 1..30) {
+        if (opacity in 1..30) {
             skySentence = skySunny
-            if (skyState.cloudcoverHigh > 50) modifier = modWithVeil
-        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 25) {
-            skySentence = if (skyState.cloudcoverHigh > 50) skyVeiled else skyClear
-        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 50) {
+            if (cloudHigh > 50) modifier = modWithVeil
+        } else if (max(cloudLow, cloudMid) <= 25) {
+            skySentence = if (cloudHigh > 50) skyVeiled else skyClear
+        } else if (max(cloudLow, cloudMid) <= 50) {
             skySentence = skyScattered
-            if (skyState.cloudcoverHigh > 50) modifier = modWithVeiledSky
-        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 75) {
+            if (cloudHigh > 50) modifier = modWithVeiledSky
+        } else if (max(cloudLow, cloudMid) <= 75) {
             skySentence = skyPartlyCloudy
-            if (skyState.cloudcoverHigh > 50) modifier = modWithVeil
+            if (cloudHigh > 50) modifier = modWithVeil
         } else {
             skySentence = skyOvercast
         }
 
         // 2. Précipitations (Priorité à la neige)
         var precipModifier: String? = null
-        if (precipitation != null) {
-            if (precipitation >= 0.1f) {
-                if (snow != null) {
-                    if (rain != null) {
-                        precipModifier = if (snow >= 0.1f) {
-                            if (snow < 0.5) modWithLightSnow else if (snow < 1.0) modWithModerateSnow else modWithHeavySnow
-                        } else if (rain >= 0.1f) {
-                            if (rain < 0.5) modWithLightRain else if (rain < 3.0) modWithModerateRain else if (rain < 10.0) modWithHeavyRain else modWithTorrentialRain
-                        } else modWithPrecipitation
-                    }
-                }
+        if (precipitation >= 0.1) {
+            if (snow >= 0.1) {
+                precipModifier = if (snow < 0.5) modWithLightSnow else if (snow < 1.0) modWithModerateSnow else modWithHeavySnow
+            } else if (rain >= 0.1) {
+                precipModifier = if (rain < 0.5) modWithLightRain else if (rain < 3.0) modWithModerateRain else if (rain < 10.0) modWithHeavyRain else modWithTorrentialRain
+            } else {
+                precipModifier = modWithPrecipitation
             }
         }
 
@@ -329,6 +335,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                     SimpleWeatherWord.SNOWY3 -> snowy3IconPath
                     SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
                     SimpleWeatherWord.STORMY -> stormyIconPath
+                    null -> Icons.Default.NotInterested
                 }
 
                 if (dayReading.wmoEnsemble != null) {
@@ -341,15 +348,27 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                         EnsembleIconSmall(dayReading.wmoEnsemble.worst, animated, weatherIconFilter)
                     }
                 } else {
-                    AsyncImage(
-                        model = fileName,
-                        contentDescription = "Icône météo actuelle",
-                        modifier = Modifier
-                            .width(30.dp)
-                            .height(30.dp),
-                        contentScale = ContentScale.Fit,
-                        colorFilter = weatherIconFilter
-                    )
+                    if (fileName is String) {
+                        AsyncImage(
+                            model = fileName,
+                            contentDescription = "Icône météo actuelle",
+                            modifier = Modifier
+                                .width(30.dp)
+                                .height(30.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                    } else {
+                        Image(
+                            imageVector = fileName as ImageVector,
+                            contentDescription = "Icône météo actuelle",
+                            modifier = Modifier
+                                .width(30.dp)
+                                .height(30.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                    }
                 }
                 Text(
                     text = "${dayReading.maxTemperature?.roundToInt()}°/${dayReading.minTemperature?.roundToInt()}°",
@@ -362,15 +381,16 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
 }
 
 @Composable
-fun EnsembleIconSmall(wmo: Int, animated: Boolean, filter: ColorFilter?) {
+fun EnsembleIconSmall(wmo: Int?, animated: Boolean, filter: ColorFilter?) {
+    if (wmo == null) return
     if (animated) {
         AnimatedSvgIcon(
-            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
             modifier = Modifier.size(30.dp)
         )
     } else {
         AsyncImage(
-            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
+            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
             contentDescription = null,
             modifier = Modifier.size(30.dp),
             contentScale = ContentScale.Fit,
@@ -500,6 +520,8 @@ fun LocationManagementSheet(
                     val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
                     
                     var itemOffset by remember { mutableStateOf(0f) }
+                    val currentIndex by rememberUpdatedState(index)
+                    val itemHeight = 64f // Matching the Modifier.height(64.dp) below
 
                     LocationRow(
                         name = location.name,
@@ -513,29 +535,32 @@ fun LocationManagementSheet(
                         onDelete = { onRemoveLocation(location) },
                         onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) },
                         modifier = Modifier
+                            .animateItem()
                             .offset(y = itemOffset.dp)
                             .pointerInput(Unit) {
                                 detectDragGesturesAfterLongPress(
-                                    onDragStart = { /* Optionnel: retour haptique */ },
+                                    onDragStart = { /* Optionnel : retour haptique, non utilisé ici */ },
                                     onDrag = { change, dragAmount ->
                                         change.consume()
                                         itemOffset += dragAmount.y / density
                                         
-                                        // Logique de swap simple
-                                        val threshold = 30f // Seuil pour déclencher le swap
-                                        if (itemOffset > threshold && index < listState.size - 1) {
+                                        // Logique de swap corrigée
+                                        val threshold = 32f // Seuil pour déclencher le swap (moitié de la hauteur)
+                                        if (itemOffset > threshold && currentIndex < listState.size - 1) {
                                             val newList = listState.toMutableList()
-                                            val item = newList.removeAt(index)
-                                            newList.add(index + 1, item)
+                                            val item = newList.removeAt(currentIndex)
+                                            newList.add(currentIndex + 1, item)
                                             listState = newList
-                                            itemOffset = 0f
+                                            // Ajustement de l'offset pour compenser le changement de position "home"
+                                            itemOffset -= itemHeight
                                             onReorderLocations(newList)
-                                        } else if (itemOffset < -threshold && index > 0) {
+                                        } else if (itemOffset < -threshold && currentIndex > 0) {
                                             val newList = listState.toMutableList()
-                                            val item = newList.removeAt(index)
-                                            newList.add(index - 1, item)
+                                            val item = newList.removeAt(currentIndex)
+                                            newList.add(currentIndex - 1, item)
                                             listState = newList
-                                            itemOffset = 0f
+                                            // Ajustement de l'offset pour compenser le changement de position "home"
+                                            itemOffset += itemHeight
                                             onReorderLocations(newList)
                                         }
                                     },
@@ -574,6 +599,7 @@ fun LocationManagementSheet(
 // 2. LA LIGNE POUR UN LIEU INDIVIDUEL DANS LE PANNEAU
 @Composable
 fun LocationRow(
+    modifier: Modifier = Modifier,
     name: String,
     isSelected: Boolean,
     isDefault: Boolean,
@@ -581,8 +607,7 @@ fun LocationRow(
     onSetAsDefault: () -> Unit,
     onClick: () -> Unit,
     onDelete: (() -> Unit)?, // Nullable car la position actuelle n'a pas de bouton de suppression
-    dragHandle: (@Composable () -> Unit)? = null,
-    modifier: Modifier = Modifier
+    dragHandle: (@Composable () -> Unit)? = null
 ) {
     Box(
         modifier = modifier
@@ -591,7 +616,7 @@ fun LocationRow(
             .clickable(onClick = onClick)
             .padding(vertical = 12.dp)
             .background(
-                if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .5f) else Color.Transparent,
+                if (isSelected) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .5f) else Color.Transparent,
                 MaterialTheme.shapes.small
             )
     ) {
@@ -608,7 +633,7 @@ fun LocationRow(
                 Text(
                     text = name,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                    color = if (isSelected) MaterialTheme.colorScheme.tertiary else Color.Unspecified,
                     fontWeight = if (isSelected) FontWeight.Bold else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -617,9 +642,10 @@ fun LocationRow(
             Row (verticalAlignment = Alignment.CenterVertically) {
                 if (currentWeatherReading != null) {
                     Icon(
-                        imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)),
+                        imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)!!),
                         contentDescription = "Icône météo actuelle",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
                     )
                     Text(
                         text = "${currentWeatherReading.temperature?.roundToInt()}°",
@@ -630,7 +656,7 @@ fun LocationRow(
                 Icon (
                     imageVector = if (isDefault) Icons.Default.Star else Icons.Default.StarOutline,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.clickable(
                         enabled = true,
                         onClick = onSetAsDefault
@@ -1038,7 +1064,7 @@ fun WeatherIconGraph(
     val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
     val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
 
-    val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord, Boolean?>>()
+    val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord?, Boolean?>>()
 
     if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation != null) {
         for (index in 0..23) {
@@ -1054,6 +1080,9 @@ fun WeatherIconGraph(
             simpleWeatherList.add(Pair(getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word, null))
         }
     }
+
+    // If one of the wmo is null, do not display the Icon Graphic
+    if (simpleWeatherList.any { it.first == null }) return
 
     Box(
         modifier = Modifier
@@ -1083,6 +1112,7 @@ fun WeatherIconGraph(
                     SimpleWeatherWord.SNOWY3 -> snowy3IconPath
                     SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
                     SimpleWeatherWord.STORMY -> stormyIconPath
+                    null -> Icons.Default.NotInterested
                 }
 
                 AsyncImage(

@@ -1,5 +1,6 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -42,19 +43,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.Air
-import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Compress
@@ -84,7 +83,6 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -102,9 +100,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextOverflow
-import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -116,9 +111,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.LocationIdentifier
@@ -127,9 +125,11 @@ import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
+import fr.matthstudio.themeteo.dayChoserActivity.EnsembleIcon
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
 import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
+import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
@@ -263,6 +263,28 @@ fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
                 webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
             }
         )
+    }
+}
+
+// Helper function to convert ISO8601 string (e.g., "2024-05-30T05:58:00+02:00") to LocalDateTime
+fun String.toEventLocalDateTime(appContext: Context): LocalDateTime? {
+    return try {
+        // Try parsing with timezone offset (OffsetDateTime)
+        OffsetDateTime.parse(this).toLocalDateTime()
+    } catch (e: Exception) {
+        try {
+            // Fallback: ZonedDateTime (if zone ID is used)
+            ZonedDateTime.parse(this).toLocalDateTime()
+        } catch (e2: Exception) {
+            try {
+                // Fallback: Simple LocalDateTime (if no offset/zone is included)
+                LocalDateTime.parse(this)
+            } catch (e3: Exception) {
+                // Handle parsing error
+                (appContext as TheMeteo).container.telemetryManager.logException(e3)
+                null
+            }
+        }
     }
 }
 
@@ -446,6 +468,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
     val hourlyForecast by viewModel.hourlyForecast.collectAsState()
+    val dailyForecast by viewModel.dailyForecast.collectAsState()
 
     val weatherIconFilter = remember(isDark) {
         if (!isDark) {
@@ -465,9 +488,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         else -> SimpleWeather("Error", SimpleWeatherWord.SUNNY)
     }
 
-    val isNight = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.skyInfo?.shortwaveRadiation?.let { it <= 0.1f } ?: false
-
-    val stateIcon = getStateIconFromWord(weatherState.word)
+    val isNight = (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.sunset
+        ?.toEventLocalDateTime(context.applicationContext)?.isBefore(LocalDateTime.now()) ?: false
 
     val description = when(weatherState.word) {
         SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)
@@ -483,6 +505,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         SimpleWeatherWord.CLOUDY -> stringResource(R.string.cloudy)
         SimpleWeatherWord.SUNNY_CLOUDY -> stringResource(R.string.sunny_cloudy)
         SimpleWeatherWord.SUNNY -> stringResource(R.string.clear)
+        null -> ""
     }
 
     // --- GESTION DE L'ÉTAT DE L'UI ---
@@ -571,7 +594,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             }
         }
 
-        BlurredBackground(weatherState.word, isNight)
+        BlurredBackground(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight)
 
         Box(
             modifier = Modifier
@@ -669,22 +692,18 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
                             
                             if (userSettings.enableAnimatedIcons && !isBatterySaverActive) {
-                                (hourlyForecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation?.let {
-                                    AnimatedSvgIcon(
-                                        iconPath = getWeatherIconPath(weatherState.word, it <= 0.1),
-                                        modifier = Modifier.size(120.dp)
-                                    )
-                                }
+                                AnimatedSvgIcon(
+                                    iconPath = getWeatherIconPath(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight),
+                                    modifier = Modifier.size(120.dp)
+                                )
                             } else {
-                                (hourlyForecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation?.let {
-                                    AsyncImage(
-                                        model = getWeatherIconPath(weatherState.word, it <= 0.1),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(100.dp),
-                                        contentScale = ContentScale.Fit,
-                                        colorFilter = weatherIconFilter
-                                    )
-                                }
+                                AsyncImage(
+                                    model = getWeatherIconPath(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(100.dp),
+                                    contentScale = ContentScale.Fit,
+                                    colorFilter = weatherIconFilter
+                                )
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                             val temperature = (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
@@ -851,33 +870,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         // --- Logic for calculating next two sun events ---
                         val now = LocalDateTime.now()
 
-                        // Helper function to convert ISO8601 string (e.g., "2024-05-30T05:58:00+02:00") to LocalDateTime
-                        fun String.toEventLocalDateTime(): LocalDateTime? {
-                            return try {
-                                // Try parsing with timezone offset (OffsetDateTime)
-                                OffsetDateTime.parse(this).toLocalDateTime()
-                            } catch (e: Exception) {
-                                try {
-                                    // Fallback: ZonedDateTime (if zone ID is used)
-                                    ZonedDateTime.parse(this).toLocalDateTime()
-                                } catch (e2: Exception) {
-                                    try {
-                                        // Fallback: Simple LocalDateTime (if no offset/zone is included)
-                                        LocalDateTime.parse(this)
-                                    } catch (e3: Exception) {
-                                        // Handle parsing error
-                                        (context.applicationContext as TheMeteo).container.telemetryManager.logException(e3)
-                                        null
-                                    }
-                                }
-                            }
-                        }
-
                         val allEvents = mutableListOf<NextSunEvent>()
 
                         // Today's events (Data index 0)
                         val todayReading = data[0]
-                        todayReading.sunrise.toEventLocalDateTime()?.let { dt ->
+                        todayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.let { dt ->
                             allEvents.add(
                                 NextSunEvent(
                                     stringResource(R.string.sunrise),
@@ -886,7 +883,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 )
                             )
                         }
-                        todayReading.sunset.toEventLocalDateTime()?.let { dt ->
+                        todayReading.sunset.toEventLocalDateTime(context.applicationContext)?.let { dt ->
                             allEvents.add(
                                 NextSunEvent(
                                     stringResource(R.string.sunset),
@@ -898,7 +895,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                         // Tomorrow's events (Data index 1, if available)
                         val tomorrowReading = data.getOrNull(1)
-                        tomorrowReading?.sunrise?.toEventLocalDateTime()?.let { dt ->
+                        tomorrowReading?.sunrise?.toEventLocalDateTime(context.applicationContext)?.let { dt ->
                             allEvents.add(
                                 NextSunEvent(
                                     stringResource(R.string.sunrise),
@@ -907,7 +904,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 )
                             )
                         }
-                        tomorrowReading?.sunset?.toEventLocalDateTime()?.let { dt ->
+                        tomorrowReading?.sunset?.toEventLocalDateTime(context.applicationContext)?.let { dt ->
                             allEvents.add(
                                 NextSunEvent(
                                     stringResource(R.string.sunset),
@@ -933,8 +930,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             when (futureEvents[0].type) {
                                 stringResource(R.string.sunrise) if tomorrowReading != null -> {
                                     val duration = Duration.between(
-                                        todayReading.sunset.toEventLocalDateTime(),
-                                        tomorrowReading.sunrise.toEventLocalDateTime()
+                                        todayReading.sunset.toEventLocalDateTime(context.applicationContext),
+                                        tomorrowReading.sunrise.toEventLocalDateTime(context.applicationContext)
                                     )
                                     text =
                                         "${stringResource(R.string.night)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
@@ -942,8 +939,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                                 stringResource(R.string.sunset) -> {
                                     val duration = Duration.between(
-                                        todayReading.sunrise.toEventLocalDateTime(),
-                                        todayReading.sunset.toEventLocalDateTime()
+                                        todayReading.sunrise.toEventLocalDateTime(context.applicationContext),
+                                        todayReading.sunset.toEventLocalDateTime(context.applicationContext)
                                     )
                                     text =
                                         "${stringResource(R.string.day)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
@@ -1135,22 +1132,30 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                     Text(stringResource(R.string.best_worst_case), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                             } else {
-                                                if (userSettings.enableAnimatedIcons && !isBatterySaverActive) {
+                                                if (userSettings.enableAnimatedIcons && !isBatterySaverActive && selectedDayReading.wmo != null) {
                                                     AnimatedSvgIcon(
                                                         iconPath = getWeatherIconPath(
                                                             weatherCodeToSimpleWord(
                                                                 selectedDayReading.wmo
-                                                            )
+                                                            )!!
                                                         ),
                                                         modifier = Modifier.size(100.dp)
                                                     )
-                                                } else {
+                                                } else if (selectedDayReading.wmo != null) {
                                                     AsyncImage(
                                                         model = getWeatherIconPath(
                                                             weatherCodeToSimpleWord(
                                                                 selectedDayReading.wmo
-                                                            )
+                                                            )!!
                                                         ),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(100.dp),
+                                                        contentScale = ContentScale.Fit,
+                                                        colorFilter = weatherIconFilter
+                                                    )
+                                                } else {
+                                                    AsyncImage(
+                                                        model = Icons.Default.NotInterested,
                                                         contentDescription = null,
                                                         modifier = Modifier.size(100.dp),
                                                         contentScale = ContentScale.Fit,
@@ -1630,7 +1635,9 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     }
 
     val details = listOfNotNull(
-        WeatherDetailItem(Icons.Rounded.Thermostat, stringResource(R.string.temperature), "${actualReading.temperature?.toSmartString()}°"),
+        actualReading.temperature?.let {
+            WeatherDetailItem(Icons.Rounded.Thermostat, stringResource(R.string.temperature), "${it.toSmartString()}°")
+        },
         actualReading.apparentTemperature?.let {
             WeatherDetailItem(Icons.Rounded.DeviceThermostat, stringResource(R.string.apparent_temperature), "${it.toSmartString()}°")
         },
@@ -1642,24 +1649,66 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                 getUVDescription(uv)
             )
         },
-        WeatherDetailItem(Icons.Rounded.Water, stringResource(R.string.dew_point), "${actualReading.dewpoint?.toSmartString()}°"),
-        WeatherDetailItem(Icons.Rounded.WaterDrop, stringResource(R.string.humidity), "${actualReading.humidity.toSmartString()}%"),
-        WeatherDetailItem(
-            Icons.Rounded.Umbrella,
-            stringResource(R.string.precipitation),
-            "${actualReading.precipitationData.precipitation?.toSmartString()} mm",
-            "${if (actualReading.precipitationData.precipitationProbability != null) "Prob: ${actualReading.precipitationData.precipitationProbability}% " else ""}${if (actualReading.precipitationData.rain != 0.0)
-                "| Rain: ${actualReading.precipitationData.rain?.toSmartString()} mm " else ""}${if (actualReading.precipitationData.snowfall != 0.0)
-                "| Snow: ${actualReading.precipitationData.snowfall?.toSmartString()}" else ""}"
-        ),
-        actualReading.precipitationData.snowDepth?.takeIf { it != 0 }?.let {
+        actualReading.dewpoint?.let {
+            WeatherDetailItem(Icons.Rounded.Water, stringResource(R.string.dew_point), "${it.toSmartString()}°")
+        },
+        actualReading.humidity?.let { hu ->
+            WeatherDetailItem(Icons.Rounded.WaterDrop, stringResource(R.string.humidity), "${hu.toSmartString()}%")
+        },
+        actualReading.precipitationData.precipitation?.let { precip ->
+            val subValue = buildString {
+                actualReading.precipitationData.precipitationProbability?.let { append("Prob: $it% ") }
+                actualReading.precipitationData.rain?.takeIf { it > 0 }?.let {
+                    if (isNotEmpty() && !endsWith(" ")) append("| ")
+                    append("Rain: ${it.toSmartString()} mm ")
+                }
+                actualReading.precipitationData.snowfall?.takeIf { it > 0 }?.let {
+                    if (isNotEmpty() && !endsWith(" ")) append("| ")
+                    append("Snow: ${it.toSmartString()} cm")
+                }
+            }.trim()
+            WeatherDetailItem(
+                Icons.Rounded.Umbrella,
+                stringResource(R.string.precipitation),
+                "${precip.toSmartString()} mm",
+                subValue.takeIf { it.isNotEmpty() }
+            )
+        },
+        actualReading.precipitationData.snowDepth?.takeIf { it > 0 }?.let {
             WeatherDetailItem(Icons.Rounded.SevereCold, stringResource(R.string.snow_depth), "${it.toSmartString()} cm")
         },
-        WeatherDetailItem(Icons.Rounded.Air, stringResource(R.string.wind_speed), "${actualReading.wind.windspeed?.toSmartString()} km/h", "Direction: ${actualReading.wind.windDirection}°${if (actualReading.wind.windGusts != null) "\n${stringResource(R.string.gusts)}: ${actualReading.wind.windGusts} kph" else ""}"),
-        WeatherDetailItem(Icons.Rounded.Compress, stringResource(R.string.pressure), "${actualReading.pressure.toSmartString()} hPa"),
-        WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${actualReading.skyInfo.cloudcoverTotal.toSmartString()}%", "Low: ${actualReading.skyInfo.cloudcoverLow.toSmartString()}% | Mid: ${actualReading.skyInfo.cloudcoverMid.toSmartString()}% | High: ${actualReading.skyInfo.cloudcoverHigh.toSmartString()}%"),
+        actualReading.wind.windspeed?.let { ws ->
+            val subValue = buildString {
+                actualReading.wind.windDirection?.let { append("Direction: $it°") }
+                actualReading.wind.windGusts?.let {
+                    if (isNotEmpty()) append("\n")
+                    append("${stringResource(R.string.gusts)}: ${it.toSmartString()} km/h")
+                }
+            }
+            WeatherDetailItem(
+                Icons.Rounded.Air,
+                stringResource(R.string.wind_speed),
+                "${ws.toSmartString()} km/h",
+                subValue.takeIf { it.isNotEmpty() }
+            )
+        },
+        actualReading.pressure?.let {
+            WeatherDetailItem(Icons.Rounded.Compress, stringResource(R.string.pressure), "${it.toSmartString()} hPa")
+        },
+        actualReading.skyInfo.cloudcoverTotal?.let { cct ->
+            // If low cloud cover is available, all levels are too
+            val subValue = if (actualReading.skyInfo.cloudcoverLow != null) {
+                "Low: ${actualReading.skyInfo.cloudcoverLow.toSmartString()}% | Mid: ${actualReading.skyInfo.cloudcoverMid?.toSmartString()}% | High: ${actualReading.skyInfo.cloudcoverHigh?.toSmartString()}%"
+            } else null
+            WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${cct.toSmartString()}%", subValue)
+        },
         actualReading.skyInfo.opacity?.let { op ->
-            WeatherDetailItem(Icons.Rounded.Opacity, stringResource(R.string.opacity), "${op.toSmartString()}%", "Radiation: ${actualReading.skyInfo.shortwaveRadiation?.roundToInt()} W/m²")
+            WeatherDetailItem(
+                Icons.Rounded.Opacity,
+                stringResource(R.string.opacity),
+                "${op.toSmartString()}%",
+                actualReading.skyInfo.shortwaveRadiation?.let { "Radiation: ${it.roundToInt()} W/m²" }
+            )
         },
         actualReading.skyInfo.visibility?.let { vis ->
             val visibility = if (vis < 1000) vis else (vis.toDouble() / 1000.0).roundToInt()
@@ -1963,24 +2012,6 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                 }
             }
         }
-    }
-}
-
-@Composable
-fun EnsembleIcon(wmo: Int, animated: Boolean, filter: ColorFilter?) {
-    if (animated) {
-        AnimatedSvgIcon(
-            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
-            modifier = Modifier.size(40.dp)
-        )
-    } else {
-        AsyncImage(
-            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
-            contentDescription = null,
-            modifier = Modifier.size(40.dp),
-            contentScale = ContentScale.Fit,
-            colorFilter = filter
-        )
     }
 }
 
