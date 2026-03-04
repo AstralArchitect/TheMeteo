@@ -198,3 +198,9 @@ TheMeteo propose une sélection exhaustive de modèles issus des plus grands ins
 - **ICON Ensemble** : Version probabiliste du modèle allemand.
 - **GEM Ensemble** : Système d'ensemble canadien.
 - **UKMO Ensemble** : Version probabiliste britannique.
+
+## ⚖️ Licences
+
+- **Code Source :** Distribué sous licence **GPL v3**. (Consultez le fichier LICENSE).
+- **Logo & Design :** Tous droits réservés à **AstralArchitect**.
+- **Crédits Tierces :** Icônes sous licence MIT et données via RainViewer/EUMETSAT.
