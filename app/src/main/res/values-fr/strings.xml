@@ -182,4 +182,7 @@
     <string name="temperature_unit_title">Unité de Température</string>
     <string name="temperature_unit_desc">Choisissez entre Celsius, Farenheit et Kelvin.</string>
     <string name="app_focus_desc">Choisissez quelle page s\'ouvre à l\'ouverture de l\'app.</string>
+    <string name="weather_alert">VIGILANCE JAUNE</string>
+    <string name="weather_warning">VIGILANCE ORANGE</string>
+    <string name="severe_weather_warning">VIGILANCE ROUGE</string>
 </resources>

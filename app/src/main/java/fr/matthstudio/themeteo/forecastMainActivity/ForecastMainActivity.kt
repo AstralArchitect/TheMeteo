@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Compress
@@ -68,6 +69,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SevereCold
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Thunderstorm
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Warning
@@ -111,9 +113,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -128,12 +128,12 @@ import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayChoserActivity.EnsembleIcon
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
-import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
-import fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature
+import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import java.time.Duration
 import java.time.LocalDate
@@ -216,7 +216,7 @@ fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    settings.javaScriptEnabled = true
+                    settings.javaScriptEnabled = false
                     setBackgroundColor(0)
                     isVerticalScrollBarEnabled = false
                     isHorizontalScrollBarEnabled = false
@@ -712,10 +712,12 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             Spacer(modifier = Modifier.width(8.dp))
                             val temperature = (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
                             Text(
-                                text = fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(
+                                text = UnitConverter.formatTemperature(
                                     celsius = temperature,
                                     unit = userSettings.temperatureUnit,
-                                    roundToInt = userSettings.roundToInt
+                                    roundToInt = true,
+                                    showUnitSymbol = false,
+                                    showDegreeSymbol = true
                                 ),
                                 style = MaterialTheme.typography.displayLarge.copy(
                                     fontSize = 104.sp,
@@ -774,18 +776,27 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(
-                                    text = stringResource(R.string.hourly_forecast),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(start = 12.dp, top = 20.dp)
-                                )
+                                Row (
+                                    modifier = Modifier.padding(start = 12.dp, top = 20.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Timer,
+                                        contentDescription = null,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.hourly_forecast),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
                                 Icon(
                                     Icons.AutoMirrored.Rounded.ArrowForward,
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(40.dp)
-                                        .padding(end = 20.dp)
+                                        .padding(end = 20.dp, top = 20.dp)
                                 )
                             }
 
@@ -999,256 +1010,134 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         BentoCard(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable(true, onClick = {
-                                    val intent = Intent(context, DayChooserActivity::class.java)
-                                    context.startActivity(intent)
-                                })
                         ) {
                             if (dailyForecast == WeatherDataState.Loading) {
                                 Box(
-                                    modifier = Modifier.padding(16.dp)
+                                    modifier = Modifier.padding(32.dp).fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     CircularProgressIndicator()
                                 }
                                 return@BentoCard
                             }
 
-                            if (dailyForecast is WeatherDataState.Error)
+                            if (dailyForecast is WeatherDataState.Error || (dailyForecast as? WeatherDataState.SuccessDaily)?.data.isNullOrEmpty())
                                 return@BentoCard
 
-                            if ((dailyForecast as WeatherDataState.SuccessDaily).data.isEmpty())
-                                return@BentoCard
+                            val dailyData = (dailyForecast as WeatherDataState.SuccessDaily).data
+                            val minOverallTemp = dailyData.minOf { it.minTemperature ?: 0.0 }
+                            val maxOverallTemp = dailyData.maxOf { it.maxTemperature ?: 0.0 }
+                            val userSettings by viewModel.userSettings.collectAsState()
+                            val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-                            var selectedDayReading by remember {
-                                mutableStateOf(
-                                    (dailyForecast as WeatherDataState.SuccessDaily).data[0]
-                                )
-                            }
-                            var shouldExpand by remember { mutableStateOf(false) }
+                            var expandedDayIndex by remember { mutableStateOf(-1) }
 
-                            Column {
+                            Column(modifier = Modifier.padding(vertical = 16.dp)) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.daily_forecast),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        modifier = Modifier.padding(
-                                            start = 20.dp,
-                                            top = 20.dp
-                                        )
-                                    )
-                                    Icon(
-                                        Icons.AutoMirrored.Rounded.ArrowForward,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .padding(end = 20.dp)
-                                    )
-                                }
-
-                                LazyRow(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp), // Space between cards
+                                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                                        .clickable {
+                                            val intent = Intent(context, DayChooserActivity::class.java)
+                                            context.startActivity(intent)
+                                        },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    items(
-                                        (dailyForecast as? WeatherDataState.SuccessDaily)?.data
-                                            ?: emptyList()
-                                    ) { dayReading ->
-                                        DailyWeatherBox(dayReading, viewModel) {
-                                            shouldExpand =
-                                                if (dayReading == selectedDayReading) !shouldExpand else true
-                                            selectedDayReading = dayReading
-                                        }
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Rounded.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        Text(text = stringResource(R.string.daily_forecast), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     }
+                                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                if (shouldExpand) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable(true, onClick = {
-                                                // Create an Intent to launch DayGraphsActivity
-                                                val intent = Intent(
-                                                    context,
-                                                    DayGraphsActivity::class.java
-                                                ).apply {
-                                                    putExtra(
-                                                        "START_DATE_TIME",
-                                                        selectedDayReading.date.atTime(0, 0)
-                                                    )
-                                                    putExtra(
-                                                        "SELECTED_LOCATION",
-                                                        viewModel.selectedLocation.value
-                                                    )
-                                                }
-                                                // Start the activity
-                                                context.startActivity(intent)
-                                            })
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                dailyData.take(7).forEachIndexed { index, dayReading ->
+                                    DailyForecastRow(
+                                        dayReading = dayReading,
+                                        isExpanded = expandedDayIndex == index,
+                                        minOverallTemp = minOverallTemp,
+                                        maxOverallTemp = maxOverallTemp,
+                                        userSettings = userSettings,
+                                        isBatterySaverActive = isBatterySaverActive,
+                                        weatherIconFilter = weatherIconFilter,
+                                        onClick = {
+                                            expandedDayIndex = if (expandedDayIndex == index) -1 else index
+                                        }
                                     ) {
-                                        // get the hourly forecast for the selected day
+                                        // Expanded Content: Graph and Details
                                         val hourlyForecast by viewModel.getForecastForRange(
-                                            selectedDayReading.date.atTime(0, 0),
-                                            selectedDayReading.date.plusDays(1).atTime(0, 0)
-                                        ).collectAsState(
-                                            initial = WeatherDataState.Loading
-                                        )
-                                        Text(
-                                            text = selectedDayReading.date.format(
-                                                DateTimeFormatter.ofPattern(
-                                                    "EEEE dd MMM"
-                                                )
-                                            ),
-                                            style = MaterialTheme.typography.titleLarge,
-                                            modifier = Modifier.padding(horizontal = 16.dp)
-                                        )
-                                        Row(
+                                            dayReading.date.atTime(0, 0),
+                                            dayReading.date.plusDays(1).atTime(0, 0)
+                                        ).collectAsState(initial = WeatherDataState.Loading)
+
+                                        Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(16.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                                .padding(12.dp)
+                                                .clickable {
+                                                     val intent = Intent(context, DayGraphsActivity::class.java).apply {
+                                                        putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0))
+                                                        putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
+                                                    }
+                                                    context.startActivity(intent)
+                                                }
                                         ) {
                                             if (hourlyForecast is WeatherDataState.SuccessHourly) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .padding(end = 16.dp)
-                                                ) {
-                                                    Log.w(
-                                                        "DEBUG",
-                                                        "${(hourlyForecast as WeatherDataState.SuccessHourly).data.size}"
-                                                    )
-                                                    AdvancedGraph(
-                                                        hourlyForecast,
-                                                        viewModel.userSettings.collectAsState().value.roundToInt,
-                                                        viewModel.userSettings.collectAsState().value.temperatureUnit,
-                                                        viewModel.userSettings.collectAsState().value.windUnit,
-                                                        GraphType.TEMP,
-                                                        Color(0xFFFFF176),
-                                                        contentWidth = 750.dp,
-                                                        contentHeight = 100.dp,
-                                                        compactHourFormat = true
-                                                    )
-                                                }
+                                                AdvancedGraph(
+                                                    hourlyForecast,
+                                                    userSettings.roundToInt,
+                                                    userSettings.temperatureUnit,
+                                                    userSettings.windUnit,
+                                                    GraphType.TEMP,
+                                                    Color(0xFFFFF176),
+                                                    contentWidth = 500.dp,
+                                                    contentHeight = 80.dp,
+                                                    compactHourFormat = false
+                                                )
                                             }
-                                            val userSettings by viewModel.userSettings.collectAsState()
-                                            val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
                                             
-                                            // Logic for Ensemble Icons (Best/Worst)
-                                            val currentHourlyData = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()
+                                            Spacer(modifier = Modifier.height(12.dp))
                                             
-                                            if (currentHourlyData?.wmoEnsemble != null) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceAround
+                                            ) {
+                                                // Wind
                                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        EnsembleIcon(currentHourlyData.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        EnsembleIcon(currentHourlyData.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
+                                                    Icon(
+                                                        imageVector = if (dayReading.maxWind.windDirection != null) Icons.AutoMirrored.Filled.ArrowForward else Icons.Default.Air,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp).rotate(dayReading.maxWind.windDirection?.toFloat()?.minus(180) ?: 0f),
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                    Text(UnitConverter.formatWind(dayReading.maxWind.windspeed, userSettings.windUnit), style = MaterialTheme.typography.labelSmall)
+                                                }
+                                                // UV
+                                                if (dayReading.maxUvIndex != null) {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Icon(Icons.Rounded.WbSunny, contentDescription = null, modifier = Modifier.size(18.dp), tint = getUVColor(dayReading.maxUvIndex))
+                                                        Text("UV ${dayReading.maxUvIndex}", style = MaterialTheme.typography.labelSmall)
                                                     }
-                                                    Text(stringResource(R.string.best_worst_case), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
-                                            } else {
-                                                if (userSettings.enableAnimatedIcons && !isBatterySaverActive && selectedDayReading.wmo != null) {
-                                                    AnimatedSvgIcon(
-                                                        iconPath = getWeatherIconPath(
-                                                            weatherCodeToSimpleWord(
-                                                                selectedDayReading.wmo
-                                                            )!!
-                                                        ),
-                                                        modifier = Modifier.size(100.dp)
-                                                    )
-                                                } else if (selectedDayReading.wmo != null) {
-                                                    AsyncImage(
-                                                        model = getWeatherIconPath(
-                                                            weatherCodeToSimpleWord(
-                                                                selectedDayReading.wmo
-                                                            )!!
-                                                        ),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(100.dp),
-                                                        contentScale = ContentScale.Fit,
-                                                        colorFilter = weatherIconFilter
-                                                    )
-                                                } else {
-                                                    AsyncImage(
-                                                        model = Icons.Default.NotInterested,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(100.dp),
-                                                        contentScale = ContentScale.Fit,
-                                                        colorFilter = weatherIconFilter
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(16.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            val userSettings by viewModel.userSettings.collectAsState()
-                                            Row {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.Thermostat,
-                                                    contentDescription = null,
-                                                )
-                                                Text(
-                                                    text = "${formatTemperature(selectedDayReading.maxTemperature, userSettings.temperatureUnit, userSettings.roundToInt)} / ${formatTemperature(selectedDayReading.minTemperature, userSettings.temperatureUnit, userSettings.roundToInt)}",
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                            Row {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.WaterDrop,
-                                                    contentDescription = null,
-                                                )
-                                                Text(
-                                                    text = "${selectedDayReading.precipitation?.toSmartString() ?: "--"} mm",
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                            Row {
-                                                Icon(
-                                                    imageVector = if (selectedDayReading.maxWind.windDirection != null) Icons.AutoMirrored.Filled.ArrowForward
-                                                    else Icons.Default.Air,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.rotate(selectedDayReading.maxWind.windDirection?.toFloat()?.minus(180) ?: 0f)
-                                                )
-                                                Text(
-                                                    text = fr.matthstudio.themeteo.utilClasses.UnitConverter.formatWind(selectedDayReading.maxWind.windspeed, userSettings.windUnit),
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                            if (selectedDayReading.maxUvIndex != null) {
-                                                Row {
-                                                    Icon(
-                                                        imageVector = Icons.Rounded.WbSunny,
-                                                        contentDescription = null,
-                                                    )
-                                                    Spacer(modifier = Modifier.width(1.dp))
+                                                // Sun
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
                                                     Text(
-                                                        text = "${selectedDayReading.maxUvIndex}",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.width(1.dp))
-                                                    Icon(
-                                                        imageVector = Icons.Rounded.Circle,
-                                                        contentDescription = null,
-                                                        tint = getUVColor(selectedDayReading.maxUvIndex!!)
-                                                    )
+                                                        "${dayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.hour}:${dayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.minute} " +
+                                                                "/ ${dayReading.sunset.toEventLocalDateTime(context.applicationContext)?.hour}:${dayReading.sunset.toEventLocalDateTime(context.applicationContext)?.minute}", style = MaterialTheme.typography.labelSmall)
                                                 }
                                             }
                                         }
+                                    }
+                                    if (index < dailyData.size - 1 && index < 9) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(horizontal = 16.dp),
+                                            thickness = 0.5.dp,
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                        )
                                     }
                                 }
                             }
@@ -1550,7 +1439,9 @@ fun AirQualityPollenCard(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().height(110.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
@@ -1892,9 +1783,9 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     // Formatage du préfixe d'alerte
 
     val alertPrefix : String = when (vigilanceData.maxColorId) {
-        2 -> "WEATHER ALERT"
-        3 -> "WEATHER WARNING"
-        4 -> "SEVERE WEATHER WARNING"
+        2 -> stringResource(R.string.weather_alert)
+        3 -> stringResource(R.string.weather_warning)
+        4 -> stringResource(R.string.severe_weather_warning)
         else -> ""
     }
 
@@ -1978,7 +1869,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
 
                 Column {
                     Text(
-                        text = stringResource(R.string.vigilance_full_format, stringResource(mapPhenomenonIdToName(mainAlert.phenomenonId)).uppercase()),
+                        text = "$alertPrefix : ${stringResource(mapPhenomenonIdToName(mainAlert.phenomenonId)).uppercase()}",
                         style = MaterialTheme.typography.labelLarge,
                         color = contentColor,
                         fontWeight = FontWeight.Bold
@@ -2001,16 +1892,6 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-fun getPhenomenonIcon(phenomenonId: String): ImageVector {
-    return when (phenomenonId) {
-        "1" -> Icons.Rounded.Air // Vent
-        "2", "4", "8" -> Icons.Rounded.Water // Pluie / Crues / Inondation
-        "3" -> Icons.Rounded.FlashOn // Orages
-        "5" -> Icons.Rounded.AcUnit // Neige
-        else -> Icons.Rounded.Warning
     }
 }
 

@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.os.Parcelable
 import android.os.PowerManager
 import android.util.Log
+import androidx.glance.appwidget.updateAll
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.LocalDateSerializer
@@ -79,7 +80,9 @@ data class UserSettings(
     val enableAnimatedIcons: Boolean,
     val forecastType: ForecastType,
     val temperatureUnit: fr.matthstudio.themeteo.data.TemperatureUnit,
-    val windUnit: fr.matthstudio.themeteo.data.WindUnit
+    val windUnit: fr.matthstudio.themeteo.data.WindUnit,
+    val widgetTransparency: Int,
+    val widgetTextSize: Int
 )
 
 private data class LocationKey(val latitude: Double, val longitude: Double)
@@ -143,7 +146,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, fr.matthstudio.themeteo.data.WindUnit.KPH))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, fr.matthstudio.themeteo.data.WindUnit.KPH, 50, 1))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -186,7 +189,9 @@ class WeatherCache(
                 userSettingsRepository.enableAnimatedIcons,
                 userSettingsRepository.forecastType,
                 userSettingsRepository.temperatureUnit,
-                userSettingsRepository.windUnit
+                userSettingsRepository.windUnit,
+                userSettingsRepository.widgetTransparency,
+                userSettingsRepository.widgetTextSize
             ) { values ->
                 val model = values[0] as String?
                 val round = values[1] as Boolean
@@ -197,6 +202,8 @@ class WeatherCache(
                 val type = values[6] as ForecastType?
                 val unit = values[7] as TemperatureUnit?
                 val wUnit = values[8] as fr.matthstudio.themeteo.data.WindUnit?
+                val transparency = values[9] as Int
+                val textSize = values[10] as Int
                         
                 UserSettings(
                     model ?: "best_match",
@@ -207,10 +214,17 @@ class WeatherCache(
                     animated,
                     type ?: ForecastType.DETERMINISTIC,
                     unit ?: TemperatureUnit.CELSIUS,
-                    wUnit ?: fr.matthstudio.themeteo.data.WindUnit.KPH
+                    wUnit ?: fr.matthstudio.themeteo.data.WindUnit.KPH,
+                    transparency,
+                    textSize
                 )
             }.collect { settings ->
                 _userSettings.value = settings
+                // Trigger widget update on any setting change
+                applicationScope.launch {
+                    fr.matthstudio.themeteo.widget.WeatherWidget().updateAll(applicationContext)
+                    fr.matthstudio.themeteo.widget.DailyWeatherWidget().updateAll(applicationContext)
+                }
             }
         }
 

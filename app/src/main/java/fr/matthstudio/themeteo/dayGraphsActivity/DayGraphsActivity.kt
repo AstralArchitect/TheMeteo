@@ -543,7 +543,8 @@ fun GenericGraphGlobal(
     scrollState: ScrollState = rememberScrollState(),
     contentWidth: Dp = 1000.dp,
     contentHeight: Dp = 125.dp,
-    compactHourFormat: Boolean = false
+    compactHourFormat: Boolean = false,
+    sparseMode: Boolean = false
 ) {
     Box(
         modifier = Modifier
@@ -829,32 +830,37 @@ fun GenericGraphGlobal(
                 val x = xPadding + (i * xStep)
                 val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
 
-                // Point
-                drawCircle(Color.White, radius = 6f, center = Offset(x, y.toFloat()))
+                // Value, Point and Hour label logic with sparseMode
+                val shouldDraw = !sparseMode || (i % 2 == 0)
 
-                // Value
-                drawContext.canvas.nativeCanvas.drawText(
-                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toSmartString(),
-                    x,
-                    y.toFloat() - 20f,
-                    Paint().apply {
-                        textAlign = Paint.Align.CENTER
-                        textSize = 40f
-                        color = textColor
-                    }
-                )
+                if (shouldDraw) {
+                    // Point
+                    drawCircle(Color.White, radius = 6f, center = Offset(x, y.toFloat()))
 
-                // Heure
-                drawContext.canvas.nativeCanvas.drawText(
-                    times[i],
-                    x,
-                    size.height - 20f, // Positionnement relatif au bas du graphique
-                    Paint().apply {
-                        textAlign = Paint.Align.CENTER
-                        textSize = 40f // Légèrement augmenté pour la lisibilité
-                        color = textColor
-                    }
-                )
+                    // Value label
+                    drawContext.canvas.nativeCanvas.drawText(
+                        if (roundToInt) point.toDouble().roundToInt().toString() else point.toSmartString(),
+                        x,
+                        y.toFloat() - 20f,
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 40f
+                            color = textColor
+                        }
+                    )
+
+                    // Heure label
+                    drawContext.canvas.nativeCanvas.drawText(
+                        times[i],
+                        x,
+                        size.height - 20f, // Positionnement relatif au bas du graphique
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 40f // Légèrement augmenté pour la lisibilité
+                            color = textColor
+                        }
+                    )
+                }
             }
         }
     }

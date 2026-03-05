@@ -82,6 +82,7 @@ import fr.matthstudio.themeteo.forecastMainActivity.ResponsiveText
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -531,7 +532,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
             )
         ) {
-            append(fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, userSettings.roundToInt))
+            append(UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true))
         }
         append(" / ")
         withStyle(
@@ -540,7 +541,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
             )
         ) {
-            append(fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, userSettings.roundToInt))
+            append(UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true))
         }
     }
     val precipitationText = buildAnnotatedString {
@@ -558,7 +559,7 @@ fun SingleDailyForecastCard(
                 fontWeight = FontWeight.Bold
             )
         ) {
-            append(fr.matthstudio.themeteo.utilClasses.UnitConverter.formatWind(dayReading.maxWind.windspeed, userSettings.windUnit))
+            append(UnitConverter.formatWind(dayReading.maxWind.windspeed, userSettings.windUnit))
         }
     }
 

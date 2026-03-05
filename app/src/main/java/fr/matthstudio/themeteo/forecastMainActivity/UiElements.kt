@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -105,8 +106,18 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.filled.NotInterested
+import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.Flood
 import androidx.compose.material.icons.rounded.Grain
+import androidx.compose.material.icons.rounded.SevereCold
+import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.material.icons.rounded.Tsunami
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.Water
+import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -117,6 +128,7 @@ import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.toSmartString
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -389,10 +401,174 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                 }
                 val userSettings by viewModel.userSettings.collectAsState()
                 Text(
-                    text = "${UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, userSettings.roundToInt, false, true)} / ${UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, userSettings.roundToInt, false, true)}",
+                    text = "${UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit,
+                        roundToInt = true,
+                        showUnitSymbol = false,
+                        showDegreeSymbol = true
+                    )} / ${UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit,
+                        roundToInt = true,
+                        showUnitSymbol = false,
+                        showDegreeSymbol = true
+                    )}",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun TemperatureRangeBar(
+    minTemp: Double,
+    maxTemp: Double,
+    minOverallTemp: Double,
+    maxOverallTemp: Double,
+    unit: TemperatureUnit,
+    modifier: Modifier = Modifier
+) {
+    val range = maxOverallTemp - minOverallTemp
+    if (range <= 0) return
+
+    val startFactor = (minTemp - minOverallTemp) / range
+    val endFactor = (maxTemp - minOverallTemp) / range
+
+    Canvas(modifier = modifier.height(4.dp).fillMaxWidth()) {
+        val width = size.width
+        val height = size.height
+        val startX = (width * startFactor).toFloat()
+        val endX = (width * endFactor).toFloat()
+
+        // Background track
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.2f),
+            size = androidx.compose.ui.geometry.Size(width, height),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2, height / 2)
+        )
+
+        // Range bar
+        drawRoundRect(
+            brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                colors = listOf(Color(0xFF64B5F6), Color(0xFFFFD54F), Color(0xFFFF8A65))
+            ),
+            topLeft = androidx.compose.ui.geometry.Offset(startX, 0f),
+            size = androidx.compose.ui.geometry.Size(endX - startX, height),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2, height / 2)
+        )
+    }
+}
+
+@Composable
+fun DailyForecastRow(
+    dayReading: DailyReading,
+    isExpanded: Boolean,
+    minOverallTemp: Double,
+    maxOverallTemp: Double,
+    userSettings: UserSettings,
+    isBatterySaverActive: Boolean,
+    weatherIconFilter: ColorFilter?,
+    onClick: () -> Unit,
+    expandedContent: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Jour
+            Text(
+                text = if (dayReading.date == java.time.LocalDate.now()) stringResource(R.string.today)
+                else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.width(50.dp)
+            )
+
+            // Icône
+            val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
+            val iconPath = if (weatherWord != null) getWeatherIconPath(weatherWord) else ""
+            
+            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                if (dayReading.wmoEnsemble != null) {
+                    Row {
+                        EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
+                    }
+                } else if (userSettings.enableAnimatedIcons && !isBatterySaverActive && weatherWord != null) {
+                    AnimatedSvgIcon(
+                        iconPath = iconPath,
+                        modifier = Modifier.size(32.dp)
+                    )
+                } else if (weatherWord != null) {
+                    AsyncImage(
+                        model = iconPath,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        contentScale = ContentScale.Fit,
+                        colorFilter = weatherIconFilter
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Précipitations
+            Row(
+                modifier = Modifier.width(60.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                if (dayReading.precipitation != null && dayReading.precipitation > 0.1) {
+                    Icon(
+                        Icons.Rounded.Water,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = Color(0xFF64B5F6)
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        text = "${dayReading.precipitation.toSmartString()}mm",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF64B5F6)
+                    )
+                }
+            }
+
+            // Températures
+            Text(
+                text = UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                modifier = Modifier.width(35.dp)
+            )
+
+            TemperatureRangeBar(
+                minTemp = dayReading.minTemperature ?: 0.0,
+                maxTemp = dayReading.maxTemperature ?: 0.0,
+                minOverallTemp = minOverallTemp,
+                maxOverallTemp = maxOverallTemp,
+                unit = userSettings.temperatureUnit,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+            )
+
+            Text(
+                text = UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                modifier = Modifier.width(35.dp)
+            )
+        }
+
+        AnimatedVisibility(visible = isExpanded) {
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                expandedContent()
             }
         }
     }
@@ -995,7 +1171,8 @@ fun AdvancedGraph(
         scrollState,
         contentWidth,
         contentHeight,
-        compactHourFormat
+        compactHourFormat,
+        sparseMode = true
     )
 }
 
@@ -1502,4 +1679,18 @@ fun mapPhenomenonIdToName(id: String): Int = when (id) {
     "8" -> R.string.flooding
     "9" -> R.string.waves_submersion
     else -> R.string.unknown_phenomenon
+}
+
+fun getPhenomenonIcon(phenomenonId: String): ImageVector {
+    return when (phenomenonId) {
+        "1" -> Icons.Rounded.Air // Vent
+        "2" -> Icons.Rounded.Water // Pluie / Innondation
+        "3" -> Icons.Rounded.FlashOn // Orages
+        "4" -> Icons.Rounded.Flood // Crues
+        "5" -> Icons.Rounded.AcUnit // Neige
+        "6" -> Icons.Rounded.Thermostat // Chaud
+        "7" -> Icons.Rounded.SevereCold // Froid
+        "9" -> Icons.Rounded.Tsunami // Waves
+        else -> Icons.Rounded.Warning
+    }
 }

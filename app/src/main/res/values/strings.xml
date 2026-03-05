@@ -202,4 +202,14 @@
     <string name="remerciement_2">And a huge thank you to the exceptional work of the Open Source community. A massive thank you to Open-Meteo, Axellum, Makin-Things, and all the contributors to the Home Assistant (HACF) project for sharing their resources and expertise.</string>
     <string name="credits_sources_legal_mentions">Credits, Sources &amp; Legal Mentions</string>
     <string name="app_focus_desc">Choose which page will be opened at the app start.</string>
+    <string name="weather_alert">WEATHER ALERT</string>
+    <string name="weather_warning">WEATHER WARNING</string>
+    <string name="severe_weather_warning">SEVERE WEATHER WARNING</string>
+    <string name="widget_settings">Widget Settings</string>
+    <string name="widget_transparency">Widget Transparency</string>
+    <string name="widget_text_size">Widget Text Size</string>
+    <string name="text_size_small">Small</string>
+    <string name="text_size_medium">Medium</string>
+    <string name="text_size_large">Large</string>
+    <string name="daily_widget_description" translatable="false">Daily Weather Widget</string>
 </resources>

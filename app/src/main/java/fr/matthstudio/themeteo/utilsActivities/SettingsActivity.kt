@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -235,9 +236,27 @@ fun SettingsScreen(cache: WeatherCache) {
 
             FilledTonalButton(
                 onClick = {
+                    val intent = android.content.Intent(activity, WidgetSettingsActivity::class.java)
+                    activity?.startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(imageVector = Icons.Rounded.Widgets, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.widget_settings),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            FilledTonalButton(
+                onClick = {
                     val intent = android.content.Intent(activity, CreditActivity::class.java)
                     activity?.startActivity(intent)
                 },
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text (
                     text = stringResource(R.string.credits_sources_legal_mentions),

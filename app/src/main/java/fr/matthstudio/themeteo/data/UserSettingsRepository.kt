@@ -43,9 +43,25 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val FORECAST_TYPE = intPreferencesKey("forecast_type")
         val TEMPERATURE_UNIT = intPreferencesKey("temperature_unit")
         val WIND_UNIT = intPreferencesKey("wind_unit")
+        val WIDGET_TRANSPARENCY = intPreferencesKey("widget_transparency")
+        val WIDGET_TEXT_SIZE = intPreferencesKey("widget_text_size")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour la transparence du widget (0-100).
+     */
+    val widgetTransparency: Flow<Int> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.WIDGET_TRANSPARENCY] ?: 50
+    }
+
+    /**
+     * Flow pour la taille du texte du widget (petit, moyen, grand -> 0, 1, 2).
+     */
+    val widgetTextSize: Flow<Int> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.WIDGET_TEXT_SIZE] ?: 1
+    }
 
     /**
      * Flow pour l'unité de température (CELSIUS, FAHRENHEIT, KELVIN).
@@ -220,6 +236,24 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateWindUnit(unit: WindUnit) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.WIND_UNIT] = unit.ordinal
+        }
+    }
+
+    /**
+     * Met à jour la transparence du widget.
+     */
+    suspend fun updateWidgetTransparency(transparency: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WIDGET_TRANSPARENCY] = transparency
+        }
+    }
+
+    /**
+     * Met à jour la taille du texte du widget.
+     */
+    suspend fun updateWidgetTextSize(sizeIndex: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WIDGET_TEXT_SIZE] = sizeIndex
         }
     }
 }
