@@ -11,13 +11,13 @@
     <string name="actual_situation">Actual Situation</string>
     <string name="open_satellite_view">Open Satellite View</string>
     <string name="loc_unavaiable">Location unavailable, using Paris\' location</string>
-    <string name="temperature">Temperature (°C)</string>
-    <string name="apparent_temperature">Feel like (°C)</string>
-    <string name="dew_point">Dew Point (°C)</string>
+    <string name="temperature">Temperature</string>
+    <string name="apparent_temperature">Feel like</string>
+    <string name="dew_point">Dew Point</string>
     <string name="humidity">Humidity (%)</string>
     <string name="rain">Rain (mm)</string>
     <string name="precipitation_prob">Chance of Rain (%)</string>
-    <string name="wind_speed">Wind Speed (km/h)</string>
+    <string name="wind_speed">Wind Speed</string>
     <string name="pressure">Pressure (hPa)</string>
     <string name="cloud_cover">Cloud Cover (%)</string>
     <string name="forecast_for_the">Forecast for the %s</string>
@@ -98,6 +98,15 @@
     <string name="goes_to_current_weather_page">Goes to Current Weather Page</string>
     <string name="app_focus">App Focus</string>
     <string name="curent_weather">Current Weather</string>
+    <string name="temperature_unit_title">Temperature Unit</string>
+    <string name="temperature_unit_desc">Choose between Celsius, Fahrenheit and Kelvin.</string>
+    <string name="celsius" translatable="false">Celsius</string>
+    <string name="fahrenheit" translatable="false">Fahrenheit</string>
+    <string name="kelvin" translatable="false">Kelvin</string>
+    <string name="wind_unit_title">Wind Speed Unit</string>
+    <string name="wind_unit_desc">Choose between Kilometers per hour and Miles per hour.</string>
+    <string name="kph">km/h</string>
+    <string name="mph">mph</string>
     <string name="daily_forecast_setting">Daily Forecast</string>
     <string name="no_current_risks">No current risks</string>
     <string name="herbes">Grasses</string>
@@ -154,7 +163,7 @@
     <string name="index_0">Index: 0</string>
     <string name="today_lower">today</string>
     <string name="tomorrow_lower">tomorrow</string>
-    <string name="vigilance_alerts_dept_code">Vigilance alerts (Dept. %1$s)</string>
+    <string name="vigilance_alerts_dept_code">Alerts / Warnings (Dept. %1$s)</string>
     <string name="official_website">Official Website</string>
     <string name="air_quality_polen_title">Air Quality and Pollen</string>
     <string name="custom_location">Custom Location</string>
@@ -188,6 +197,9 @@
     <string name="ensemble_warning_message">Ensemble mode provides more detailed information but consumes more data and battery. It can also be more complex to interpret as it shows the range of possibilities (uncertainty ribbon).</string>
     <string name="ensemble_warning_confirm">I understand</string>
     <string name="ensemble_warning_cancel">Cancel</string>
-    <string name="no_precipitation_expected">No precipitation expected</string>
-    <string name="no_precipitations">No precipitations</string>
+    <string name="no_precipitations">No precipitations expected</string>
+    <string name="remerciement_1">A big thank you to Google Maps, Open-Meteo, RainViewer, EUMETSAT, Axellum and Makin-Things for their exceptional work and the provision of these valuable resources, without which this application would not have been possible.</string>
+    <string name="remerciement_2">And a huge thank you to the exceptional work of the Open Source community. A massive thank you to Open-Meteo, Axellum, Makin-Things, and all the contributors to the Home Assistant (HACF) project for sharing their resources and expertise.</string>
+    <string name="credits_sources_legal_mentions">Credits, Sources &amp; Legal Mentions</string>
+    <string name="app_focus_desc">Choose which page will be opened at the app start.</string>
 </resources>

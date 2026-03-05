@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Documentation des Images Satellites RGB</title>
     <style>
+        .legal-header {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
@@ -53,6 +60,11 @@
     </style>
 </head>
 <body>
+
+    <div class="legal-header">
+        <strong>Information Légale :</strong> Les données et méthodes d'interprétation présentées ici sont basées sur les ressources fournies par <b>EUMETSAT</b>.
+        L'imagerie satellite affichée dans l'application est la propriété de © EUMETSAT 2026.
+    </div>
 
     <h1>Documentation des Interprétations Couleurs des Images Satellites RGB</h1>
     <p>Cette légende combine les interprétations des couleurs de deux guides RGB (Red-Green-Blue) utilisés pour l'analyse des images satellites, notamment pour l'identification des types de nuages et des phénomènes atmosphériques.</p>
@@ -189,7 +201,13 @@
     </ul>
 
     <footer>
-        <p><em>Sources: GOES-16 ABI Sensor (North America) & MSG SEVIRI Night Microphysics RGB (EUMETSAT recommended recipe).</em></p>
+        <p>Sources et ressources officielles :</p>
+        <ul>
+            <li>Portail de données : <a href="https://view.eumetsat.int/">EUMETSAT Visualization Service</a></li>
+            <li>Documentation technique : <a href="https://user.eumetsat.int/resources/user-guides/cloud-type-rgb-quick-guide">EUMETSAT Cloud Type RGB Quick Guide</a>,
+                <a href="https://user.eumetsat.int/resources/user-guides/night-microphysics-rgb-quick-guide">EUMETSAT Night Microphysics RGB Quick Guide</a> </li>
+        </ul>
+        <p><em>TheMeteo par AstralArchitect - Projet Open Source (GPL v3)</em></p>
     </footer>
 
 </body>

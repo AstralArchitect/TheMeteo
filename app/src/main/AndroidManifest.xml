@@ -68,6 +68,10 @@
         <activity android:name=".rainMapActivity.RainMapActivity"
             android:exported="false"
             android:theme="@style/AppTheme.Compose"/>
+        <activity android:name=".utilsActivities.CreditActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.Compose"/>
+
     </application>
 
 </manifest>

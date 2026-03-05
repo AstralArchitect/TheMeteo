@@ -241,6 +241,13 @@ class WeatherViewModel(
         weatherCache.reorderLocations(newList)
     }
 
+    /**
+     * Méthode appelée par l'UI pour renommer un lieu.
+     */
+    fun renameLocation(location: SavedLocation, newName: String) {
+        weatherCache.renameLocation(location, newName)
+    }
+
     fun addLocationFromMap(coords: GpsCoordinates, name: String) {
         val newLocation = SavedLocation(
             name = name,

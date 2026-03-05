@@ -170,25 +170,32 @@ class WeatherViewModel(
      * Méthode appelée par l'UI pour ajouter une nouvelle localisation.
      * Le ViewModel transmet cette demande au WeatherCache, qui est la source de vérité.
      */
-         fun addLocation(location: SavedLocation) {
-            weatherCache.addLocation(location)
-        }
+    fun addLocation(location: SavedLocation) {
+        weatherCache.addLocation(location)
+    }
     
-        /**
-         * Méthode appelée par l'UI pour réorganiser les lieux.
-         */
-        fun reorderLocations(newList: List<SavedLocation>) {
-            weatherCache.reorderLocations(newList)
-        }
+    /**
+     * Méthode appelée par l'UI pour réorganiser les lieux.
+     */
+    fun reorderLocations(newList: List<SavedLocation>) {
+        weatherCache.reorderLocations(newList)
+    }
+
+    /**
+     * Méthode appelée par l'UI pour renommer un lieu.
+     */
+    fun renameLocation(location: SavedLocation, newName: String) {
+        weatherCache.renameLocation(location, newName)
+    }
     
-        fun addLocationFromMap(coords: GpsCoordinates, name: String) {
-    
+    fun addLocationFromMap(coords: GpsCoordinates, name: String) {
         val newLocation = SavedLocation(
             name = name,
             latitude = coords.latitude,
             longitude = coords.longitude,
             country = "Unknown"
         )
+
         addLocation(newLocation)
         // Optionnel : Sélectionner immédiatement cette nouvelle position
         selectLocation(LocationIdentifier.Saved(newLocation))

@@ -18,6 +18,17 @@ enum class ForecastType {
     ENSEMBLE
 }
 
+enum class TemperatureUnit {
+    CELSIUS,
+    FAHRENHEIT,
+    KELVIN
+}
+
+enum class WindUnit {
+    KPH,
+    MPH
+}
+
 class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     // 1. Définir les clés pour chaque paramètre
@@ -30,9 +41,29 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val ENABLE_ANIMATED_ICONS = booleanPreferencesKey("enable_animated_icons")
         val FIREBASE_CONSENT = stringPreferencesKey("firebase_consent")
         val FORECAST_TYPE = intPreferencesKey("forecast_type")
+        val TEMPERATURE_UNIT = intPreferencesKey("temperature_unit")
+        val WIND_UNIT = intPreferencesKey("wind_unit")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour l'unité de température (CELSIUS, FAHRENHEIT, KELVIN).
+     */
+    val temperatureUnit: Flow<TemperatureUnit> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.TEMPERATURE_UNIT]?.let { index ->
+            TemperatureUnit.entries.getOrNull(index)
+        } ?: TemperatureUnit.CELSIUS
+    }
+
+    /**
+     * Flow pour l'unité de vent (KPH, MPH).
+     */
+    val windUnit: Flow<WindUnit> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.WIND_UNIT]?.let { index ->
+            WindUnit.entries.getOrNull(index)
+        } ?: WindUnit.KPH
+    }
 
     /**
      * Flow pour le type de prévision (DETERMINISTIC ou ENSEMBLE).
@@ -171,6 +202,24 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateForecastType(type: ForecastType) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.FORECAST_TYPE] = type.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'unité de température.
+     */
+    suspend fun updateTemperatureUnit(unit: TemperatureUnit) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.TEMPERATURE_UNIT] = unit.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'unité de vent.
+     */
+    suspend fun updateWindUnit(unit: WindUnit) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WIND_UNIT] = unit.ordinal
         }
     }
 }

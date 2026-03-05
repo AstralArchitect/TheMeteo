@@ -14,6 +14,7 @@ import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import fr.matthstudio.themeteo.data.LocationProvider
 import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.UserLocationsRepository
 import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
@@ -76,7 +77,9 @@ data class UserSettings(
     val defaultScreen: DefaultScreen,
     val enableModelFallback: Boolean,
     val enableAnimatedIcons: Boolean,
-    val forecastType: ForecastType
+    val forecastType: ForecastType,
+    val temperatureUnit: fr.matthstudio.themeteo.data.TemperatureUnit,
+    val windUnit: fr.matthstudio.themeteo.data.WindUnit
 )
 
 private data class LocationKey(val latitude: Double, val longitude: Double)
@@ -140,7 +143,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, fr.matthstudio.themeteo.data.WindUnit.KPH))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -181,7 +184,9 @@ class WeatherCache(
                 userSettingsRepository.defaultScreen,
                 userSettingsRepository.enableModelFallback,
                 userSettingsRepository.enableAnimatedIcons,
-                userSettingsRepository.forecastType
+                userSettingsRepository.forecastType,
+                userSettingsRepository.temperatureUnit,
+                userSettingsRepository.windUnit
             ) { values ->
                 val model = values[0] as String?
                 val round = values[1] as Boolean
@@ -190,6 +195,8 @@ class WeatherCache(
                 val fallback = values[4] as Boolean
                 val animated = values[5] as Boolean
                 val type = values[6] as ForecastType?
+                val unit = values[7] as TemperatureUnit?
+                val wUnit = values[8] as fr.matthstudio.themeteo.data.WindUnit?
                         
                 UserSettings(
                     model ?: "best_match",
@@ -198,7 +205,9 @@ class WeatherCache(
                     screen ?: DefaultScreen.FORECAST_MAIN,
                     fallback,
                     animated,
-                    type ?: ForecastType.DETERMINISTIC
+                    type ?: ForecastType.DETERMINISTIC,
+                    unit ?: TemperatureUnit.CELSIUS,
+                    wUnit ?: fr.matthstudio.themeteo.data.WindUnit.KPH
                 )
             }.collect { settings ->
                 _userSettings.value = settings
@@ -251,6 +260,15 @@ class WeatherCache(
     fun reorderLocations(newList: List<SavedLocation>) {
         CoroutineScope(Dispatchers.IO).launch {
             userLocationsRepository.reorderLocations(newList)
+        }
+    }
+
+    /**
+     * Renomme une localisation existante.
+     */
+    fun renameLocation(location: SavedLocation, newName: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            userLocationsRepository.renameLocation(location, newName)
         }
     }
 

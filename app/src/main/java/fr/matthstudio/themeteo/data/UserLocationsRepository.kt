@@ -108,4 +108,27 @@ class UserLocationsRepository(private val dataStore: DataStore<Preferences>) {
             preferences[LOCATIONS_KEY] = Json.encodeToString(newList)
         }
     }
+
+    /**
+     * Renomme une localisation existante.
+     */
+    suspend fun renameLocation(location: SavedLocation, newName: String) {
+        dataStore.edit { preferences ->
+            val currentListJson = preferences[LOCATIONS_KEY] ?: return@edit
+            val currentList = try {
+                Json.decodeFromString<List<SavedLocation>>(currentListJson)
+            } catch (e: Exception) {
+                return@edit
+            }
+
+            val newList = currentList.map {
+                if (it.latitude == location.latitude && it.longitude == location.longitude) {
+                    it.copy(name = newName)
+                } else {
+                    it
+                }
+            }
+            preferences[LOCATIONS_KEY] = Json.encodeToString(newList)
+        }
+    }
 }

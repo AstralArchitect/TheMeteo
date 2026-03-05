@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -39,6 +40,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -388,9 +395,37 @@ fun RainMapContent(
                 )
             )
 
-            Text(
-                text = "© OpenStreetMap contributors, © CARTO",
-                style = MaterialTheme.typography.bodySmall
+            val uriHandler = LocalUriHandler.current
+            // ZONE D'ATTRIBUTION LÉGALE
+            val attributionString = buildAnnotatedString {
+                append("Données Radar : ")
+                pushStringAnnotation(tag = "URL", annotation = "https://www.rainviewer.com/")
+                withStyle(style = SpanStyle(
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline
+                )
+                ) {
+                    append("RainViewer")
+                }
+                pop()
+                append(" | © ")
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append("OpenStreetMap")
+                }
+                append(" contributors, © CARTO")
+            }
+
+            ClickableText(
+                text = attributionString,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                onClick = { offset ->
+                    attributionString.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                        .firstOrNull()?.let { annotation ->
+                            uriHandler.openUri(annotation.item)
+                        }
+                }
             )
         }
     }

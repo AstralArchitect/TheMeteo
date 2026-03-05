@@ -74,7 +74,7 @@ import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
-import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
+import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.forecastMainActivity.AddLocationDialog
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
 import fr.matthstudio.themeteo.forecastMainActivity.LocationManagementSheet
@@ -238,17 +238,17 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         val savedLocations by weatherViewModel.savedLocations.collectAsState()
         val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
         val currentWeathers by weatherViewModel.currentWeather.collectAsState()
-        val defaultLocation = weatherViewModel.defaultLocation
         val isPermissionGranted by weatherViewModel.isLocationPermissionGranted.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
             selectedLocation = selectedLocation,
             currentWeathers = currentWeathers,
-            defaultLocation = defaultLocation,
+            userSettings = weatherViewModel.userSettings.collectAsState().value,
             isPermissionGranted = isPermissionGranted,
             onSelectLocation = { weatherViewModel.selectLocation(it) },
             onRemoveLocation = { weatherViewModel.removeLocation(it) },
+            onRenameLocation = { location, newName -> weatherViewModel.renameLocation(location, newName) },
             onReorderLocations = { weatherViewModel.reorderLocations(it) },
             onSetDefaultLocation = { weatherViewModel.setDefaultLocation(it) },
             onDismiss = { showLocationSheet = false },
@@ -520,8 +520,7 @@ fun SingleDailyForecastCard(
         null -> Icons.Default.NotInterested
     }
 
-    val maxTemp = dayReading.maxTemperature?.roundToInt()
-    val minTemp = dayReading.minTemperature?.roundToInt()
+    val userSettings by viewModel.userSettings.collectAsState()
     val totalPrecipitation = dayReading.precipitation
 
     // Build annotated string for bold and colored temperatures and precipitation
@@ -532,7 +531,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
             )
         ) {
-            append("${maxTemp ?: "--"}°")
+            append(fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, userSettings.roundToInt))
         }
         append(" / ")
         withStyle(
@@ -541,7 +540,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
             )
         ) {
-            append("${minTemp ?: "--"}°")
+            append(fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, userSettings.roundToInt))
         }
     }
     val precipitationText = buildAnnotatedString {
@@ -559,7 +558,7 @@ fun SingleDailyForecastCard(
                 fontWeight = FontWeight.Bold
             )
         ) {
-            append("${dayReading.maxWind.windspeed?.toSmartString() ?: "--"} kph")
+            append(fr.matthstudio.themeteo.utilClasses.UnitConverter.formatWind(dayReading.maxWind.windspeed, userSettings.windUnit))
         }
     }
 

@@ -32,6 +32,8 @@ import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.data.ForecastType
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
@@ -82,7 +84,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 TextButton(onClick = {
                     scope.launch {
                         cache.userSettingsRepository.updateForecastType(ForecastType.ENSEMBLE)
-                        cache.userSettingsRepository.updateModel("ecmwf_ifs025")
+                        cache.userSettingsRepository.updateModel("ecmwf_ifs025_ensemble")
                     }
                     showEnsembleDialog = false
                 }) {
@@ -119,22 +121,6 @@ fun SettingsScreen(cache: WeatherCache) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            ForecastTypeSetting(
-                currentType = userSettings.forecastType,
-                onTypeSelected = { newType ->
-                    if (newType == ForecastType.ENSEMBLE && userSettings.forecastType == ForecastType.DETERMINISTIC) {
-                        showEnsembleDialog = true
-                    } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
-                        scope.launch {
-                            cache.userSettingsRepository.updateForecastType(newType)
-                            cache.userSettingsRepository.updateModel("best_match")
-                        }
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
             ModelSelectionSetting(
                 currentModel = userSettings.model,
                 availableModels = if (currentCoords != null) 
@@ -186,10 +172,44 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text (
-                text = stringResource(R.string.app_focus),
-                style = MaterialTheme.typography.titleMedium,
+            TemperatureUnitSetting(
+                currentUnit = userSettings.temperatureUnit,
+                onUnitSelected = { newUnit ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateTemperatureUnit(newUnit)
+                    }
+                }
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            WindUnitSetting(
+                currentUnit = userSettings.windUnit,
+                onUnitSelected = { newUnit ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateWindUnit(newUnit)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ForecastTypeSetting(
+                currentType = userSettings.forecastType,
+                onTypeSelected = { newType ->
+                    if (newType == ForecastType.ENSEMBLE && userSettings.forecastType == ForecastType.DETERMINISTIC) {
+                        showEnsembleDialog = true
+                    } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
+                        scope.launch {
+                            cache.userSettingsRepository.updateForecastType(newType)
+                            cache.userSettingsRepository.updateModel("best_match")
+                        }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             DefaultScreenSetting(
                 isOn = userSettings.defaultScreen == DefaultScreen.FORECAST_MAIN,
                 onSettingChange = { isOn ->
@@ -212,6 +232,18 @@ fun SettingsScreen(cache: WeatherCache) {
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            FilledTonalButton(
+                onClick = {
+                    val intent = android.content.Intent(activity, CreditActivity::class.java)
+                    activity?.startActivity(intent)
+                },
+            ) {
+                Text (
+                    text = stringResource(R.string.credits_sources_legal_mentions),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
 
             Text (
                 text = "Version Name: ${BuildConfig.VERSION_NAME}",
@@ -245,12 +277,14 @@ fun ForecastTypeSetting(
         Text(
             stringResource(R.string.forecast_type_desc),
             style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp)
+                .height(80.dp)
+                .padding(16.dp)
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
@@ -264,7 +298,10 @@ fun ForecastTypeSetting(
                 modifier = Modifier.weight(1f),
                 onClick = { onTypeSelected(ForecastType.DETERMINISTIC) }
             )
-            Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.White.copy(alpha = 0.5f)))
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
             SegmentItem(
                 label = stringResource(R.string.ensemble),
                 isSelected = selectedIndex == 1,
@@ -342,7 +379,8 @@ fun RoundTemperatureSetting(
             Text(
                 stringResource(R.string.round_values_desc),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
@@ -361,39 +399,51 @@ fun DefaultScreenSetting(
     var selectedIndex = if (isOn) 0 else 1
     val shape = RoundedCornerShape(40.dp) // Forme pilule
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp)
-            .padding(16.dp)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                shape = shape
+    Column {
+        Text(
+            text = stringResource(R.string.app_focus),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            stringResource(R.string.app_focus_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.curent_weather),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { selectedIndex = 0; onSettingChange(true) }
             )
-            .clip(shape)
-    ) {
-        // Bouton "Tous allumés"
-        SegmentItem(
-            label = stringResource(R.string.curent_weather),
-            isSelected = selectedIndex == 0,
-            modifier = Modifier.weight(1f),
-            onClick = { selectedIndex = 0 ; onSettingChange(true)}
-        )
 
-        // Ligne de séparation fine (optionnelle, selon le design précis)
-        Box(modifier = Modifier
-            .fillMaxHeight()
-            .width(1.dp)
-            .background(Color.White.copy(alpha = 0.5f)))
+            // Ligne de séparation fine
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .background(Color.White.copy(alpha = 0.5f))
+            )
 
-        // Bouton "Tous éteints"
-        SegmentItem(
-            label = stringResource(R.string.daily_forecast_setting),
-            isSelected = selectedIndex == 1,
-            modifier = Modifier.weight(1f),
-            onClick = { selectedIndex = 1 ; onSettingChange(false)}
-        )
+            SegmentItem(
+                label = stringResource(R.string.daily_forecast_setting),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { selectedIndex = 1; onSettingChange(false) }
+            )
+        }
     }
 }
 
@@ -451,7 +501,8 @@ fun AnimatedIconsSetting(
             Text(
                 stringResource(R.string.animated_icons_desc),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
@@ -494,5 +545,111 @@ fun ModelFallbackSetting(
             onCheckedChange = onCheckedChange,
             enabled = enabled
         )
+    }
+}
+
+@Composable
+fun TemperatureUnitSetting(
+    currentUnit: TemperatureUnit,
+    onUnitSelected: (TemperatureUnit) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val selectedIndex = currentUnit.ordinal
+
+    Column {
+        Text(stringResource(R.string.temperature_unit_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.temperature_unit_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.celsius),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(TemperatureUnit.CELSIUS) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.fahrenheit),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(TemperatureUnit.FAHRENHEIT) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.kelvin),
+                isSelected = selectedIndex == 2,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(TemperatureUnit.KELVIN) }
+            )
+        }
+    }
+}
+
+@Composable
+fun WindUnitSetting(
+    currentUnit: WindUnit,
+    onUnitSelected: (WindUnit) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val selectedIndex = currentUnit.ordinal
+
+    Column {
+        Text(stringResource(R.string.wind_unit_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.wind_unit_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.kph),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(WindUnit.KPH) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.mph),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(WindUnit.MPH) }
+            )
+        }
     }
 }

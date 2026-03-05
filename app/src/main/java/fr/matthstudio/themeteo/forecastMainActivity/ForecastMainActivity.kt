@@ -128,11 +128,12 @@ import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayChoserActivity.EnsembleIcon
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
-import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
+import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
+import fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import java.time.Duration
 import java.time.LocalDate
@@ -490,6 +491,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
     val isNight = (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.sunset
         ?.toEventLocalDateTime(context.applicationContext)?.isBefore(LocalDateTime.now()) ?: false
+            || (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.sunrise
+                ?.toEventLocalDateTime(context.applicationContext)?.isAfter(LocalDateTime.now()) ?: false
 
     val description = when(weatherState.word) {
         SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)
@@ -534,10 +537,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             savedLocations = savedLocations,
             selectedLocation = selectedLocation,
             currentWeathers = currentWeathers,
-            defaultLocation = userSettings.defaultLocation,
+            userSettings = userSettings,
             isPermissionGranted = isPermissionGranted,
             onSelectLocation = { viewModel.selectLocation(it) },
             onRemoveLocation = { viewModel.removeLocation(it) },
+            onRenameLocation = { location, newName -> viewModel.renameLocation(location, newName) },
             onReorderLocations = { viewModel.reorderLocations(it) },
             onSetDefaultLocation = { viewModel.setDefaultLocation(it) },
             onDismiss = { showLocationSheet = false },
@@ -645,7 +649,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                     }
                 }
 
-                // HERO HEADER + Settings button
+                // HERO HEADER
                 item {
                     Column(
                         modifier = Modifier
@@ -708,7 +712,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             Spacer(modifier = Modifier.width(8.dp))
                             val temperature = (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
                             Text(
-                                text = if (temperature != null) "${temperature.roundToInt()}°" else "--°",
+                                text = fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(
+                                    celsius = temperature,
+                                    unit = userSettings.temperatureUnit,
+                                    roundToInt = userSettings.roundToInt
+                                ),
                                 style = MaterialTheme.typography.displayLarge.copy(
                                     fontSize = 104.sp,
                                     fontWeight = FontWeight.Medium
@@ -785,9 +793,13 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 return@BentoCard
 
                             val scrollState = rememberScrollState()
+                            val tempUnit = viewModel.userSettings.collectAsState().value.temperatureUnit
+                            val windUnit = viewModel.userSettings.collectAsState().value.windUnit
                             when (variable) {
                                 ChosenVar.TEMPERATURE -> GenericGraph(
                                     viewModel,
+                                    tempUnit,
+                                    windUnit,
                                     GraphType.TEMP,
                                     Color(0xFFFFF176),
                                     scrollState = scrollState
@@ -796,6 +808,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 ChosenVar.APPARENT_TEMPERATURE -> if ((hourlyForecast as WeatherDataState.SuccessHourly).data.first().apparentTemperature != null)
                                     GenericGraph(
                                         viewModel,
+                                        tempUnit,
+                                        windUnit,
                                         GraphType.A_TEMP,
                                         Color(0xFFFFB300),
                                         scrollState = scrollState
@@ -803,6 +817,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                                 ChosenVar.PRECIPITATION -> GenericGraph(
                                     viewModel,
+                                    tempUnit,
+                                    windUnit,
                                     GraphType.PRECIPITATION,
                                     Color(0xFF039BE5),
                                     valueRange = 0f..3f,
@@ -811,6 +827,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                                 ChosenVar.WIND -> GenericGraph(
                                     viewModel,
+                                    tempUnit,
+                                    windUnit,
                                     GraphType.WIND_SPEED,
                                     Color(0xFF7CB342),
                                     scrollState = scrollState
@@ -1108,6 +1126,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                     AdvancedGraph(
                                                         hourlyForecast,
                                                         viewModel.userSettings.collectAsState().value.roundToInt,
+                                                        viewModel.userSettings.collectAsState().value.temperatureUnit,
+                                                        viewModel.userSettings.collectAsState().value.windUnit,
                                                         GraphType.TEMP,
                                                         Color(0xFFFFF176),
                                                         contentWidth = 750.dp,
@@ -1172,13 +1192,14 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            val userSettings by viewModel.userSettings.collectAsState()
                                             Row {
                                                 Icon(
                                                     imageVector = Icons.Rounded.Thermostat,
                                                     contentDescription = null,
                                                 )
                                                 Text(
-                                                    text = "${selectedDayReading.maxTemperature?.roundToInt() ?: "--"}° / ${selectedDayReading.minTemperature?.roundToInt() ?: "--"}°",
+                                                    text = "${formatTemperature(selectedDayReading.maxTemperature, userSettings.temperatureUnit, userSettings.roundToInt)} / ${formatTemperature(selectedDayReading.minTemperature, userSettings.temperatureUnit, userSettings.roundToInt)}",
                                                     style = MaterialTheme.typography.titleSmall,
                                                     color = MaterialTheme.colorScheme.onSurface
                                                 )
@@ -1202,7 +1223,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                     modifier = Modifier.rotate(selectedDayReading.maxWind.windDirection?.toFloat()?.minus(180) ?: 0f)
                                                 )
                                                 Text(
-                                                    text = "${selectedDayReading.maxWind.windspeed?.toSmartString() ?: "--"} km/h",
+                                                    text = fr.matthstudio.themeteo.utilClasses.UnitConverter.formatWind(selectedDayReading.maxWind.windspeed, userSettings.windUnit),
                                                     style = MaterialTheme.typography.titleSmall,
                                                     color = MaterialTheme.colorScheme.onSurface
                                                 )
@@ -1487,14 +1508,14 @@ fun AirQualityPollenCard(
     BentoCard(
         modifier = modifier
             .fillMaxWidth()
-            .height(160.dp) // Légèrement plus haut pour accommoder le texte supplémentaire
+            .height(200.dp)
             .clickable { onClick() }
     ) {
         Column(
             modifier = Modifier
                 .padding(vertical = 16.dp)
                 .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.Top
         ) {
             // Header
             Row (
@@ -1529,7 +1550,7 @@ fun AirQualityPollenCard(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(110.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
@@ -1613,6 +1634,14 @@ fun AirQualityPollenCard(
                     }
                 }
             }
+            // --- ATTRIBUTION OBLIGATOIRE GOOGLE ---
+            Text(
+                modifier = Modifier.padding(start = 16.dp),
+                text = "Powered by Google",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+                fontSize = 8.sp
+            )
         }
     }
 }
@@ -1623,6 +1652,8 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     val actualReading =
         (viewModel.hourlyForecast.collectAsState().value as? WeatherDataState.SuccessHourly)?.data?.first()
             ?: return
+
+    val userSettings by viewModel.userSettings.collectAsState()
 
     // Créer un état pour gérer l'animation de visibilité
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
@@ -1636,10 +1667,18 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
 
     val details = listOfNotNull(
         actualReading.temperature?.let {
-            WeatherDetailItem(Icons.Rounded.Thermostat, stringResource(R.string.temperature), "${it.toSmartString()}°")
+            WeatherDetailItem(
+                Icons.Rounded.Thermostat,
+                stringResource(R.string.temperature),
+                fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
+            )
         },
         actualReading.apparentTemperature?.let {
-            WeatherDetailItem(Icons.Rounded.DeviceThermostat, stringResource(R.string.apparent_temperature), "${it.toSmartString()}°")
+            WeatherDetailItem(
+                Icons.Rounded.DeviceThermostat,
+                stringResource(R.string.apparent_temperature),
+                fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
+            )
         },
         actualReading.skyInfo.uvIndex?.let { uv ->
             WeatherDetailItem(
@@ -1650,7 +1689,11 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
             )
         },
         actualReading.dewpoint?.let {
-            WeatherDetailItem(Icons.Rounded.Water, stringResource(R.string.dew_point), "${it.toSmartString()}°")
+            WeatherDetailItem(
+                Icons.Rounded.Water,
+                stringResource(R.string.dew_point),
+                fr.matthstudio.themeteo.utilClasses.UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
+            )
         },
         actualReading.humidity?.let { hu ->
             WeatherDetailItem(Icons.Rounded.WaterDrop, stringResource(R.string.humidity), "${hu.toSmartString()}%")
@@ -1682,13 +1725,13 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                 actualReading.wind.windDirection?.let { append("Direction: $it°") }
                 actualReading.wind.windGusts?.let {
                     if (isNotEmpty()) append("\n")
-                    append("${stringResource(R.string.gusts)}: ${it.toSmartString()} km/h")
+                    append("${stringResource(R.string.gusts)}: ${fr.matthstudio.themeteo.utilClasses.UnitConverter.formatWind(it, userSettings.windUnit)}")
                 }
             }
             WeatherDetailItem(
                 Icons.Rounded.Air,
                 stringResource(R.string.wind_speed),
-                "${ws.toSmartString()} km/h",
+                fr.matthstudio.themeteo.utilClasses.UnitConverter.formatWind(ws, userSettings.windUnit),
                 subValue.takeIf { it.isNotEmpty() }
             )
         },
@@ -1803,219 +1846,6 @@ fun formatPollutantUnit(unit: String?): String {
 }
 
 @Composable
-fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
-    val state by viewModel.airQualityResponse.collectAsState()
-    if (state !is WeatherDataState.SuccessAirQuality) return
-    val (aqiData, pollenData) = (state as WeatherDataState.SuccessAirQuality).data
-
-    // Créer un état pour gérer l'animation de visibilité
-    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-
-    // Fonction de fermeture qui attend la fin de l'animation
-    fun animateAndDismiss() {
-        visibleState.targetState = false
-        onDismiss()
-    }
-
-    // 1. LE SCRIM (Voile de fond)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
-                    alpha = 0.6f
-                )
-            )
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        // Utiliser AnimatedVisibility pour le contenu
-        AnimatedVisibility(
-            visibleState = visibleState,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f), // Zoom progressif
-            exit = fadeOut() + scaleOut(targetScale = 0.8f)
-        ) {
-            // 2. LE CONTENU DU DIALOGUE (Animation de zoom)
-            Box(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .clickable(enabled = false) { } // Empêche de fermer en cliquant sur le blanc
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.85f),
-                    shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.surface, // Couleur Material You pour le Dialog
-                    tonalElevation = 6.dp
-                ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Text(
-                            stringResource(R.string.air_quality_polen_title),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            // Section Polluants
-                            item {
-                                Text(
-                                    stringResource(R.string.current_polluants),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                            }
-
-                            if (aqiData.pollutants.isNullOrEmpty()) {
-                                item {
-                                    Text(
-                                        stringResource(R.string.no_major_polluant),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(bottom = 8.dp)
-                                    )
-                                }
-                            } else {
-                                items(aqiData.pollutants) { pollutant ->
-                                    DetailRow(
-                                        WeatherDetailItem(
-                                            Icons.Rounded.Air,
-                                            pollutant.displayName,
-                                            if (pollutant.concentration != null) "${pollutant.concentration.value} ${formatPollutantUnit(pollutant.concentration.units)}" else "N/A",
-                                            pollutant.code
-                                        )
-                                    )
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(
-                                            alpha = 0.5f
-                                        )
-                                    )
-                                }
-                            }
-
-                            // Section Recommandations Santé (Air Quality)
-                            aqiData.healthRecommendations?.let { recommendations ->
-                                item {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        stringResource(R.string.health_advice),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(vertical = 8.dp)
-                                    )
-                                    Text(
-                                        recommendations.generalPopulation ?: stringResource(R.string.no_specific_recommendation),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-
-                            // Section Pollen
-                            item {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    stringResource(R.string.pollen_for_the_next_days),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                            }
-
-                            if (pollenData == null || pollenData.dailyInfo.isEmpty()) {
-                                item {
-                                    Text(
-                                        stringResource(R.string.pollen_data_unavailable),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            } else {
-                                pollenData.dailyInfo.take(4).forEachIndexed { index, dailyPollen ->
-                                    item {
-                                        val dateStr = when (index) {
-                                            0 -> stringResource(R.string.today)
-                                            1 -> stringResource(R.string.tomorrow)
-                                            else -> "${dailyPollen.date.day}/${dailyPollen.date.month}"
-                                        }
-                                        Text(
-                                            dateStr,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                                        )
-                                    }
-
-                                    dailyPollen.pollenTypeInfo?.let { types ->
-                                        items(types) { type ->
-                                            val category = when {
-                                                type.indexInfo?.category != null -> type.indexInfo.category
-                                                type.inSeason == false -> stringResource(R.string.out_of_season)
-                                                else -> stringResource(R.string.low_risk_or_none)
-                                            }
-                                                                                    
-                                            val subValue = when {
-                                                type.indexInfo?.value != null -> stringResource(
-                                                    R.string.pollen_index_format,
-                                                    type.indexInfo.value
-                                                )
-
-                                                type.inSeason == false -> stringResource(R.string.no_current_risks)
-                                                else -> stringResource(R.string.index_0)
-                                            }
-
-                                            DetailRow(
-                                                WeatherDetailItem(
-                                                    Icons.Rounded.Grain,
-                                                    when (type.code) {
-                                                        "GRASS" -> stringResource(R.string.herbes)
-                                                        "TREE" -> stringResource(R.string.trees)
-                                                        "WEED" -> stringResource(R.string.weed)
-                                                        else -> type.displayName ?: type.code
-                                                    },
-                                                    category,
-                                                    subValue
-                                                )
-                                            )
-                                        }
-                                    }
-
-                                    item {
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(
-                                                alpha = 0.3f
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        TextButton(
-                            onClick = { animateAndDismiss() },
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(top = 16.dp)
-                        ) {
-                            Text("Fermer")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     val context = LocalContext.current
     val vigilanceState by viewModel.weatherVigilanceInfo.collectAsState()
@@ -2058,6 +1888,15 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
         val label = if (endDateTime.toLocalDate() == now) stringResource(R.string.today_lower) else stringResource(R.string.tomorrow_lower)
         " ($label)"
     } else ""
+
+    // Formatage du préfixe d'alerte
+
+    val alertPrefix : String = when (vigilanceData.maxColorId) {
+        2 -> "WEATHER ALERT"
+        3 -> "WEATHER WARNING"
+        4 -> "SEVERE WEATHER WARNING"
+        else -> ""
+    }
 
     val isDark = isSystemInDarkTheme()
     // Mapping des couleurs et des noms Météo-France vers Compose
@@ -2107,7 +1946,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = stringResource(R.string.vigilance_full_format, stringResource(mapPhenomenonIdToName(mainAlert.phenomenonId)).uppercase()),
+                    text = "$alertPrefix : ${stringResource(mapPhenomenonIdToName(mainAlert.phenomenonId)).uppercase()}",
                     style = MaterialTheme.typography.labelLarge,
                     color = contentColor,
                     fontWeight = FontWeight.Bold
@@ -2370,41 +2209,6 @@ fun BentoCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     ) {
         content()
     }
-}
-
-@Composable
-fun ResponsiveText(
-    text: String,
-    style: TextStyle,
-    modifier: Modifier = Modifier,
-    color: Color = Color.Unspecified,
-    fontWeight: FontWeight? = null,
-    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
-    maxLines: Int = 1,
-    targetTextSizeHeight: androidx.compose.ui.unit.TextUnit = style.fontSize
-) {
-    var textSize by remember { mutableStateOf(targetTextSizeHeight) }
-    var readyToDraw by remember { mutableStateOf(false) }
-
-    Text(
-        text = text,
-        modifier = modifier,
-        color = color,
-        fontWeight = fontWeight,
-        textAlign = textAlign,
-        fontSize = textSize,
-        style = style,
-        maxLines = maxLines,
-        softWrap = false,
-        overflow = TextOverflow.Clip,
-        onTextLayout = { textLayoutResult ->
-            if (textLayoutResult.hasVisualOverflow) {
-                textSize = (textSize.value * 0.9f).sp
-            } else {
-                readyToDraw = true
-            }
-        }
-    )
 }
 
 @Composable

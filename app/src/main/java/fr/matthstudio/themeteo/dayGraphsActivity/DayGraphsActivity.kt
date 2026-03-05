@@ -58,18 +58,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.getSimpleWeather
 import fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
-import java.text.DecimalFormat
-import java.text.DecimalFormatSymbols
+import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.toSmartString
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
@@ -133,6 +134,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
     val forecast by viewModel.hourlyForecast.collectAsState()
     val scrollState = rememberScrollState()
     val backgroundColor = MaterialTheme.colorScheme.background
+    val userSettings by viewModel.userSettings.collectAsState()
 
     val verticalScrollState = rememberScrollState()
     val showTemperatureDetailsGraphs = remember { mutableStateOf(false) }
@@ -215,7 +217,9 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                                 .padding(vertical = 4.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(stringResource(R.string.temperature), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.temperature)+ " (${UnitConverter.getSymbolWithDegree(
+                                viewModel.userSettings.collectAsState().value.temperatureUnit
+                            )})", style = MaterialTheme.typography.titleMedium)
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
                                 contentDescription = null,
@@ -232,7 +236,14 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                         if (showTemperatureDetailsGraphs.value) {
                             Column(modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f))) {
                                 if (hourlyData.first().dewpoint != null) {
-                                    Text(stringResource(R.string.dew_point), modifier = titleModifier)
+                                    Text(
+                                        stringResource(
+                                            R.string.dew_point)
+                                                + " (${UnitConverter.getSymbolWithDegree(
+                                                    viewModel.userSettings.collectAsState().value.temperatureUnit
+                                                )})",
+                                        modifier = titleModifier
+                                    )
                                     GenericGraph(
                                         viewModel,
                                         GraphType.DEW_POINT,
@@ -257,7 +268,9 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
 
                         if (hourlyData.first().apparentTemperature != null) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text(stringResource(R.string.apparent_temperature), modifier = titleModifier)
+                            Text(stringResource(R.string.apparent_temperature)+ " (${UnitConverter.getSymbolWithDegree(
+                                viewModel.userSettings.collectAsState().value.temperatureUnit
+                            )})", modifier = titleModifier)
                             GenericGraph(
                                 viewModel,
                                 GraphType.A_TEMP,
@@ -356,7 +369,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                         }
 
                         // --- WIND ---
-                        Text(stringResource(R.string.wind_speed), modifier = titleModifier)
+                        Text(stringResource(R.string.wind_speed) + " (${if(userSettings.windUnit == WindUnit.KPH) "km/h" else "mph"})", modifier = titleModifier)
                         GenericGraph(
                             viewModel,
                             GraphType.WIND_SPEED,
@@ -498,7 +511,8 @@ fun GenericGraph(
     scrollState: ScrollState = rememberScrollState()
 ) {
     val fullForecast by viewModel.hourlyForecast.collectAsState()
-    var roundToInt = viewModel.userSettings.collectAsState().value.roundToInt
+    val userSettings by viewModel.userSettings.collectAsState()
+    var roundToInt = userSettings.roundToInt
 
     if (graphType == GraphType.PRECIPITATION || graphType == GraphType.RAIN ||
         graphType == GraphType.SNOWFALL
@@ -508,6 +522,8 @@ fun GenericGraph(
     GenericGraphGlobal(
         fullForecast,
         roundToInt,
+        userSettings.temperatureUnit,
+        userSettings.windUnit,
         graphType,
         graphColor,
         valueRange,
@@ -515,19 +531,12 @@ fun GenericGraph(
     )
 }
 
-fun Number.toSmartString(): String {
-    return if (this is Double || this is Float) {
-        val df = DecimalFormat("0.0#", DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
-        df.format(this.toDouble())
-    } else {
-        this.toString()
-    }
-}
-
 @Composable
 fun GenericGraphGlobal(
     fullForecast: WeatherDataState,
     roundToInt: Boolean,
+    temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
+    windUnit: WindUnit = WindUnit.KPH,
     graphType: GraphType,
     graphColor: Color,
     valueRange: ClosedFloatingPointRange<Float>? = null,
@@ -545,18 +554,30 @@ fun GenericGraphGlobal(
         val times: List<String> =
             (fullForecast as WeatherDataState.SuccessHourly).data
                 .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + if (!compactHourFormat) "h" else "" }
+        
+        val isTemperatureGraph = graphType == GraphType.TEMP || graphType == GraphType.A_TEMP || graphType == GraphType.DEW_POINT
+
         when (graphType) {
             GraphType.TEMP -> {
-                forecast = fullForecast.data.map { f -> f.temperature ?: throw IllegalStateException("Graph data cannot be null") }
+                forecast = fullForecast.data.map { f -> 
+                    val v = f.temperature ?: throw IllegalStateException("Graph data cannot be null")
+                    UnitConverter.convertTemperature(v, temperatureUnit)
+                }
             }
 
             GraphType.A_TEMP -> {
                 forecast = fullForecast.data
-                    .map { f -> f.apparentTemperature ?: throw IllegalStateException("Graph data cannot be null") }
+                    .map { f -> 
+                        val v = f.apparentTemperature ?: throw IllegalStateException("Graph data cannot be null")
+                        UnitConverter.convertTemperature(v, temperatureUnit)
+                    }
             }
 
             GraphType.DEW_POINT -> {
-                forecast = fullForecast.data.map { it.dewpoint ?: throw IllegalStateException("Graph data cannot be null") }
+                forecast = fullForecast.data.map { f -> 
+                    val v = f.dewpoint ?: throw IllegalStateException("Graph data cannot be null")
+                    UnitConverter.convertTemperature(v, temperatureUnit)
+                }
             }
 
             GraphType.PRECIPITATION_PROB -> {
@@ -586,7 +607,10 @@ fun GenericGraphGlobal(
 
             GraphType.WIND_SPEED -> {
                 forecast = fullForecast.data
-                    .map { f -> f.wind.windspeed ?: throw IllegalStateException("Graph data cannot be null") }
+                    .map { f -> 
+                        val v = f.wind.windspeed ?: throw IllegalStateException("Graph data cannot be null")
+                        UnitConverter.convertWind(v, windUnit)
+                    }
             }
 
             GraphType.PRESSURE -> {
@@ -640,7 +664,25 @@ fun GenericGraphGlobal(
             GraphType.PRESSURE -> "pressure_msl"
             else -> null
         }
-        val ensembleStats = if (ensembleKey != null) fullForecast.data.map { it.ensembleStats?.get(ensembleKey) } else null
+        val ensembleStatsRaw = if (ensembleKey != null) fullForecast.data.map { it.ensembleStats?.get(ensembleKey) } else null
+        
+        // Convert ensemble stats if necessary
+        val ensembleStats = ensembleStatsRaw?.map { stat ->
+            if (stat == null) null
+            else if (isTemperatureGraph) {
+                stat.copy(
+                    min = UnitConverter.convertTemperature(stat.min ?: 0.0, temperatureUnit),
+                    max = UnitConverter.convertTemperature(stat.max ?: 0.0, temperatureUnit)
+                )
+            } else if (graphType == GraphType.WIND_SPEED) {
+                stat.copy(
+                    min = UnitConverter.convertWind(stat.min ?: 0.0, windUnit),
+                    max = UnitConverter.convertWind(stat.max ?: 0.0, windUnit)
+                )
+            } else {
+                stat
+            }
+        }
 
         Canvas(
             modifier = Modifier
@@ -818,12 +860,12 @@ fun GenericGraphGlobal(
     }
     // Si le graphique de vent a été choisi, alors afficher le vecteur de direction du vent
     if (graphType == GraphType.WIND_SPEED) {
-        WindVectors(fullForecast, scrollState)
+        WindVectors(fullForecast, windUnit, scrollState)
     }
 }
 
 @Composable
-fun WindVectors(forecast: WeatherDataState, scrollState: ScrollState = rememberScrollState()) {
+fun WindVectors(forecast: WeatherDataState, windUnit: WindUnit = WindUnit.KPH, scrollState: ScrollState = rememberScrollState()) {
     // Draw the icon
     Box(
         modifier = Modifier
@@ -843,7 +885,7 @@ fun WindVectors(forecast: WeatherDataState, scrollState: ScrollState = rememberS
                     ) {
                         val windGusts = allVarsReading.wind.windGusts
                         Text (
-                            text = windGusts?.toSmartString() ?: "--",
+                            text = if (windGusts != null) UnitConverter.formatValue(UnitConverter.convertWind(windGusts, windUnit)) else "--",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.padding(bottom = 1.dp)
