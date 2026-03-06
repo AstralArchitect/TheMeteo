@@ -19,6 +19,7 @@ import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.UserLocationsRepository
 import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
@@ -146,7 +147,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, fr.matthstudio.themeteo.data.WindUnit.KPH, 50, 1))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, 50, 1))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -201,7 +202,7 @@ class WeatherCache(
                 val animated = values[5] as Boolean
                 val type = values[6] as ForecastType?
                 val unit = values[7] as TemperatureUnit?
-                val wUnit = values[8] as fr.matthstudio.themeteo.data.WindUnit?
+                val wUnit = values[8] as WindUnit?
                 val transparency = values[9] as Int
                 val textSize = values[10] as Int
                         
@@ -214,7 +215,7 @@ class WeatherCache(
                     animated,
                     type ?: ForecastType.DETERMINISTIC,
                     unit ?: TemperatureUnit.CELSIUS,
-                    wUnit ?: fr.matthstudio.themeteo.data.WindUnit.KPH,
+                    wUnit ?: WindUnit.KPH,
                     transparency,
                     textSize
                 )
@@ -304,7 +305,7 @@ class WeatherCache(
         }
     }
 
-    private suspend fun getEffectiveModel(currentSettings: UserSettings, coords: GpsCoordinates?): String {
+    private fun getEffectiveModel(currentSettings: UserSettings, coords: GpsCoordinates?): String {
         var effectiveModel = currentSettings.model
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         if (coords != null) {

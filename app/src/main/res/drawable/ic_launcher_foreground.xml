@@ -6,7 +6,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Background Glow centered -->
+    <!-- Background Glow -->
     <path
         android:pathData="M54,54m-45,0a45,45 0,1 1,90 0a45,45 0,1 1,-90 0"
         android:alpha="0.15">
@@ -22,7 +22,7 @@
         </aapt:attr>
     </path>
 
-    <!-- Centered Content Group -->
+    <!-- Content Group -->
     <group
         android:translateX="2"
         android:translateY="-2">
@@ -35,45 +35,64 @@
             android:scaleY="1.6">
             
             <!-- Cloud Shadow -->
-            <path
+            <!-- <path
                 android:pathData="m 47.7,35.4 c 0,-4.6 -3.7,-8.2 -8.2,-8.2 -1,0 -1.9,0.2 -2.8,0.5 -0.3,-3.4 -3.1,-6.2 -6.6,-6.2 -3.7,0 -6.7,3 -6.7,6.7 0,0.8 0.2,1.6 0.4,2.3 -0.3,-0.1 -0.7,-0.1 -1,-0.1 -3.7,0 -6.7,3 -6.7,6.7 0,3.6 2.9,6.6 6.5,6.7 h 17.2 c 4.4,-0.5 7.9,-4 7.9,-8.4 z"
                 android:fillColor="#22000000"
                 android:translateX="-0.5"
-                android:translateY="3.5" />
+                android:translateY="3.5" /> -->
 
-            <!-- Main Cloud Body -->
+            <!-- Main Cloud Body with Hardware/Cloud Split -->
             <path
-                android:pathData="m 47.7,35.4 c 0,-4.6 -3.7,-8.2 -8.2,-8.2 -1,0 -1.9,0.2 -2.8,0.5 -0.3,-3.4 -3.1,-6.2 -6.6,-6.2 -3.7,0 -6.7,3 -6.7,6.7 0,0.8 0.2,1.6 0.4,2.3 -0.3,-0.1 -0.7,-0.1 -1,-0.1 -3.7,0 -6.7,3 -6.7,6.7 0,3.6 2.9,6.6 6.5,6.7 h 17.2 c 4.4,-0.5 7.9,-4 7.9,-8.4 z"
+                android:pathData="M 47.7,35.4 c 0,-4.6 -3.7,-8.2 -8.2,-8.2 -1,0 -1.9,0.2 -2.8,0.5 -0.3,-3.4 -3.1,-6.2 -6.6,-6.2 v 22.33 h 9.7 c 4.4,-0.5 7.9,-4 7.9,-8.4 z"
                 android:translateX="-1.5"
-                android:translateY="2.5">
-                <aapt:attr name="android:fillColor">
-                    <gradient
-                        android:type="linear"
-                        android:startX="30"
-                        android:startY="20"
-                        android:endX="30"
-                        android:endY="45">
-                        <item android:color="#FFFFFF" android:offset="0" />
-                        <item android:color="#E0E0E0" android:offset="1" />
-                    </gradient>
-                </aapt:attr>
+                android:translateY="2.5"
+                android:fillColor="#FFFFFF">
             </path>
 
-            <!-- AstralArchitect "A" Signature (Positioned relative to centered cloud) -->
+            <!-- Hardware Circuit Effect (Left Side) -->
             <group
                 android:translateX="-1.5"
                 android:translateY="2.5">
+                <!-- Main Circuit Traces -->
                 <path
-                    android:pathData="M33,30 L29,38 M33,30 L37,38 M30.5,35 L35.5,35"
+                    android:pathData="M34,24 L28,24 M28,21 L28,26 L26,26
+                                      M32,31 L26,31 L26,29
+                                      M32,34 L25,34 L22,33 M25,34 L22,36 M25,34 L22,29 M22,33 L19,33
+                                            M19,36 L22,36
+                                      M32,38 L28,38 L28,40.95 M28,38 L25,38 L25,40.95 M25,38 L23,38.5
+                                            L20,38.5"
+                    android:strokeColor="#FFFFFF"
+                    android:strokeWidth="0.8"
+                    android:strokeLineCap="round" />
+                <!-- Terminal Nodes (Circles) -->
+                <path
+                    android:pathData="M19,36 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M19,33 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M20,38.5 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M22,29 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M25,40.9 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M26,29 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M26,26 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M28,21 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0
+                                      M28,40.9 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0"
+                    android:fillColor="#FFFFFF" />
+            </group>
+
+            <!-- AstralArchitect "A" Signature (Right half) -->
+            <group
+                android:translateX="-1.5"
+                android:translateY="1">
+                <path
+                    android:pathData="M40,30 L36,38 M40,30 L44,38 M37.5,35 L42.5,35"
                     android:strokeColor="#455A64"
                     android:strokeWidth="1.2"
                     android:strokeLineCap="round"
                     android:strokeLineJoin="round"
-                    android:alpha="0.6" />
+                    android:alpha="0.8" />
             </group>
         </group>
 
-        <!-- Centered Rain Drops below the cloud -->
+        <!-- Rain Drops below the cloud -->
         <group 
             android:translateX="-2.5"
             android:translateY="-0.5">

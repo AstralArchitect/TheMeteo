@@ -325,7 +325,7 @@ class ForecastMainActivity : ComponentActivity() {
 }
 
 @Composable
-fun BlurredBackground(state: SimpleWeatherWord, isNight: Boolean = false) {
+fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
     val (baseColor, meshColors) = when (state) {
         SimpleWeatherWord.STORMY -> if (isNight) {
             Color(0xFF0D001A) to listOf(
@@ -418,10 +418,15 @@ fun BlurredBackground(state: SimpleWeatherWord, isNight: Boolean = false) {
                 Color(0xFF42A5F5).copy(alpha = 0.5f)
             )
         }
+        null -> MaterialTheme.colorScheme.background to listOf(
+            MaterialTheme.colorScheme.background,
+            MaterialTheme.colorScheme.background,
+            MaterialTheme.colorScheme.background
+        )
     }
 
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-        // Dégradé simple pour les versions anciennes
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || state == null) {
+        // Dégradé simple pour les versions anciennes ou lorsque state est null
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -598,7 +603,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             }
         }
 
-        BlurredBackground(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight)
+        BlurredBackground(weatherState.word, isNight)
 
         Box(
             modifier = Modifier
@@ -1011,6 +1016,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             modifier = Modifier
                                 .fillMaxWidth()
                         ) {
+                            val nDays = 7
                             if (dailyForecast == WeatherDataState.Loading) {
                                 Box(
                                     modifier = Modifier.padding(32.dp).fillMaxWidth(),
@@ -1025,8 +1031,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 return@BentoCard
 
                             val dailyData = (dailyForecast as WeatherDataState.SuccessDaily).data
-                            val minOverallTemp = dailyData.minOf { it.minTemperature ?: 0.0 }
-                            val maxOverallTemp = dailyData.maxOf { it.maxTemperature ?: 0.0 }
+                            val minOverallTemp = dailyData.take(nDays).minOf { it.minTemperature ?: 0.0 }
+                            val maxOverallTemp = dailyData.take(nDays).maxOf { it.maxTemperature ?: 0.0 }
                             val userSettings by viewModel.userSettings.collectAsState()
                             val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
@@ -1053,7 +1059,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                dailyData.take(7).forEachIndexed { index, dayReading ->
+                                dailyData.take(nDays).forEachIndexed { index, dayReading ->
                                     DailyForecastRow(
                                         dayReading = dayReading,
                                         isExpanded = expandedDayIndex == index,
@@ -1152,7 +1158,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                     )
                 }
 
-                if (hourlyForecast is WeatherDataState.SuccessHourly) {
+                /*if (hourlyForecast is WeatherDataState.SuccessHourly) {
                     // Rain Map Preview
                     item {
                         var lat = 0.0
@@ -1182,7 +1188,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             }
                         )
                     }
-                }
+                }*/
 
                 // Other infos
                 item {
