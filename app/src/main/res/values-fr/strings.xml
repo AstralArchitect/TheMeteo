@@ -6,13 +6,13 @@
     <string name="actual_situation">Situation Actuelle</string>
     <string name="open_satellite_view">Ouvrir les vues Satellites</string>
     <string name="loc_unavaiable">Localisation non disponible. Utilisation de Paris par défaut.</string>
-    <string name="temperature">Température (°C)</string>
-    <string name="apparent_temperature">Température Ressentie (°C)</string>
-    <string name="dew_point">Point de rosée (°C)</string>
+    <string name="temperature">Température</string>
+    <string name="apparent_temperature">Température Ressentie</string>
+    <string name="dew_point">Point de rosée</string>
     <string name="humidity">Humidité (%)</string>
     <string name="rain">Pluie (mm)</string>
     <string name="precipitation_prob">Probabilité de pluie (%)</string>
-    <string name="wind_speed">Vitesse du vent (km/h)</string>
+    <string name="wind_speed">Vitesse du vent</string>
     <string name="pressure">Pression (hPa)</string>
     <string name="cloud_cover">Couverture nuageuse (%)</string>
     <string name="forecast_for_the">Prévision pour le %s</string>
@@ -32,7 +32,7 @@
     <string name="add_city">Ajouter une ville</string>
     <string name="next_days_temperature_forecast">Prévisions pour les %1$d prochains jours</string>
     <string name="unknown_error">Erreur inconnue</string>
-    <string name="wind_speed_unit">Vitesse du vent km/h</string>
+    <string name="wind_speed_unit">Vitesse du vent</string>
     <string name="settings">Paramètres</string>
     <string name="chose_model">Choisissez le modèle pour les prévisions.</string>
     <string name="precipitation">Précipitations (mm)</string>
@@ -93,6 +93,10 @@
     <string name="herbes">Herbes</string>
     <string name="trees">Arbres</string>
     <string name="weed">Herbacées</string>
+    <string name="wind_unit_title">Unité de vitesse du vent</string>
+    <string name="wind_unit_desc">Choisissez entre Kilomètres par heure et Miles par heure.</string>
+    <string name="kph">km/h</string>
+    <string name="mph">mph</string>
 
     <!-- Formatted Strings -->
     <string name="vigilance_level_time_format">Niveau %1$d (%2$s) de %3$s à %4$s. Cliquez pour voir le détail.</string>
@@ -171,4 +175,14 @@
     <string name="ensemble_warning_message">Le mode ensemble fournit des informations plus détaillées mais consomme plus de données et de batterie. Il peut également être plus complexe à interpréter car il montre l\'éventail des possibles (ruban d\'incertitude).</string>
     <string name="ensemble_warning_confirm">J\'ai compris</string>
     <string name="ensemble_warning_cancel">Annuler</string>
+    <string name="remerciement_1">Un grand merci à Google Maps, Open-Meteo, RainViewer, EUMETSAT, Axellum et Makin-Things pour leurs travaux exceptionnels et la mise à disposition de ces ressources précieuses, sans qui cette application n\'aurait pas pu voir le jour.</string>
+    <string name="no_precipitations">Pas de précipitations prévues</string>
+    <string name="remerciement_2">Et une grande gratitude envers le travail exceptionnel de la communauté Open Source. Un immense merci à Open-Meteo, Axellum, Makin-Things ainsi qu\'à l\'ensemble des contributeurs du projet Home Assistant (HACF) pour le partage de leurs ressources et de leur savoir-faire.</string>
+    <string name="credits_sources_legal_mentions">Sources, Crédits &amp; Mentions Légales</string>
+    <string name="temperature_unit_title">Unité de Température</string>
+    <string name="temperature_unit_desc">Choisissez entre Celsius, Farenheit et Kelvin.</string>
+    <string name="app_focus_desc">Choisissez quelle page s\'ouvre à l\'ouverture de l\'app.</string>
+    <string name="weather_alert">VIGILANCE JAUNE</string>
+    <string name="weather_warning">VIGILANCE ORANGE</string>
+    <string name="severe_weather_warning">VIGILANCE ROUGE</string>
 </resources>

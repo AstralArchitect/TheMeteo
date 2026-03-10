@@ -11,6 +11,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.ToggleButton
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.ui.text.TextPainter.paint
 import androidx.lifecycle.lifecycleScope
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
@@ -27,6 +28,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.CopyrightOverlay
 import org.osmdroid.views.overlay.GroundOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.TilesOverlay

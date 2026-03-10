@@ -51,6 +51,11 @@
             android:label="@string/title_activity_settings_activity.kt"
             android:theme="@style/AppTheme.Compose" />
         <activity
+            android:name=".utilsActivities.WidgetSettingsActivity"
+            android:exported="false"
+            android:label="@string/widget_settings"
+            android:theme="@style/AppTheme.Compose" />
+        <activity
             android:name=".dayGraphsActivity.DayGraphsActivity"
             android:exported="false"
             android:label="@string/title_activity_day_graphs"
@@ -68,6 +73,30 @@
         <activity android:name=".rainMapActivity.RainMapActivity"
             android:exported="false"
             android:theme="@style/AppTheme.Compose"/>
+        <activity android:name=".utilsActivities.CreditActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.Compose"/>
+
+        <receiver android:name=".widget.WeatherWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/weather_widget_info" />
+        </receiver>
+
+        <receiver android:name=".widget.DailyWeatherWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/weather_widget_daily_info" />
+        </receiver>
+
     </application>
 
 </manifest>

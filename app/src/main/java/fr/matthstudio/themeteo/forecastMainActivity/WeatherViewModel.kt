@@ -1,7 +1,5 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
-import android.annotation.SuppressLint
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fr.matthstudio.themeteo.GeocodingResult
@@ -15,18 +13,18 @@ import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -41,7 +39,7 @@ class WeatherViewModel(
     private val telemetryManager: TelemetryManager
 ) : ViewModel() {
 
-    private val weatherService = WeatherService(telemetryManager)
+    val weatherService = WeatherService(telemetryManager)
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
 
@@ -241,6 +239,13 @@ class WeatherViewModel(
      */
     fun reorderLocations(newList: List<SavedLocation>) {
         weatherCache.reorderLocations(newList)
+    }
+
+    /**
+     * Méthode appelée par l'UI pour renommer un lieu.
+     */
+    fun renameLocation(location: SavedLocation, newName: String) {
+        weatherCache.renameLocation(location, newName)
     }
 
     fun addLocationFromMap(coords: GpsCoordinates, name: String) {

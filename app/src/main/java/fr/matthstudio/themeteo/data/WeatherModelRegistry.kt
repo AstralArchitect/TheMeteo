@@ -60,7 +60,7 @@ object WeatherModelRegistry {
         WeatherModel("jma_seamless", "JMA Seamless", "JMA", true, predictionDays = 10),
 
         // --- Modèles d'Ensemble ---
-        WeatherModel("ecmwf_ifs025", "ECMWF IFS Ensemble 0.25°", "ECMWF IFS Ensemble", true, predictionDays = 14, isEnsemble = true),
+        WeatherModel("ecmwf_ifs025_ensemble", "ECMWF IFS Ensemble 0.25°", "ECMWF IFS Ensemble", true, predictionDays = 14, isEnsemble = true),
         WeatherModel("ecmwf_aifs025_ensemble", "ECMWF AIFS 0.25° Ensemble", "ECMWF AIFS Ensemble", true, predictionDays = 14, isEnsemble = true),
         WeatherModel("ncep_gefs_seamless", "GFS Ensemble Seamless", "NCEP GFS Ensemble", true, predictionDays = 34, isEnsemble = true),
         WeatherModel("icon_seamless_eps", "ICON Ensemble Seamless", "DWD ICON Ensemble", true, predictionDays = 6, isEnsemble = true),
