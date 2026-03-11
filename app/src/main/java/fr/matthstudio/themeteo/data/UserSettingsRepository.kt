@@ -11,7 +11,6 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
-import kotlin.io.encoding.Base64
 
 enum class ForecastType {
     DETERMINISTIC,
@@ -40,6 +39,10 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val ENABLE_MODEL_FALLBACK = booleanPreferencesKey("enable_model_fallback")
         val ENABLE_ANIMATED_ICONS = booleanPreferencesKey("enable_animated_icons")
         val FIREBASE_CONSENT = stringPreferencesKey("firebase_consent")
+        val GCU_CONSENT = booleanPreferencesKey("gcu_consent")
+        val LAST_GCU_UPDATE = stringPreferencesKey("last_gcu_update")
+        val LAST_PRIVACY_POLICY_UPDATE = stringPreferencesKey("last_privacy_policy_update")
+        val HAS_OPENED_APP_ONCE = booleanPreferencesKey("has_opened_app_once")
         val FORECAST_TYPE = intPreferencesKey("forecast_type")
         val TEMPERATURE_UNIT = intPreferencesKey("temperature_unit")
         val WIND_UNIT = intPreferencesKey("wind_unit")
@@ -95,6 +98,34 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
      */
     val firebaseConsent: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.FIREBASE_CONSENT] ?: "PENDING"
+    }
+
+    /**
+     * Flow pour l'acceptation des CGU.
+     */
+    val gcuAccepted: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.GCU_CONSENT] ?: false
+    }
+
+    /**
+     * Flow pour la date de la dernière mise à jour des CGU acceptée.
+     */
+    val lastGcuUpdate: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_GCU_UPDATE]
+    }
+
+    /**
+     * Flow pour la date de la dernière mise à jour de la politique de confidentialité.
+     */
+    val lastPrivacyPolicyUpdate: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_PRIVACY_POLICY_UPDATE]
+    }
+
+    /**
+     * Flow pour savoir si l'application a déjà été ouverte une fois.
+     */
+    val hasOpenedAppOnce: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.HAS_OPENED_APP_ONCE] ?: false
     }
 
     /**
@@ -200,6 +231,42 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateFirebaseConsent(consent: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.FIREBASE_CONSENT] = consent
+        }
+    }
+
+    /**
+     * Met à jour l'acceptation des CGU.
+     */
+    suspend fun updateGcuAccepted(accepted: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GCU_CONSENT] = accepted
+        }
+    }
+
+    /**
+     * Met à jour la date de la dernière mise à jour des CGU.
+     */
+    suspend fun updateLastGcuUpdate(date: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_GCU_UPDATE] = date
+        }
+    }
+
+    /**
+     * Met à jour la date de la dernière mise à jour de la politique de confidentialité.
+     */
+    suspend fun updateLastPrivacyPolicyUpdate(date: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_PRIVACY_POLICY_UPDATE] = date
+        }
+    }
+
+    /**
+     * Met à jour le flag indiquant si l'application a déjà été ouverte une fois.
+     */
+    suspend fun updateHasOpenedAppOnce(hasOpened: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HAS_OPENED_APP_ONCE] = hasOpened
         }
     }
 

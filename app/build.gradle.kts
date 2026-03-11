@@ -28,7 +28,7 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
+        versionCode = 25
         versionName = "2.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -37,7 +37,7 @@ android {
     buildTypes {
         // Configuration pour le build de débogage
         debug {
-            // Le suffixe sera ajouté au nom de l'application (ex: Themeteo-Alpha)
+            // Le suffixe sera ajouté au nom du package de l'application.
             applicationIdSuffix = ".debug"
             // Le suffixe sera ajouté au nom de la version.
             versionNameSuffix = "-${getBuildDate()}"

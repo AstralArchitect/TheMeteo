@@ -209,7 +209,20 @@
     <string name="widget_transparency">Widget Transparency</string>
     <string name="widget_text_size">Widget Text Size</string>
     <string name="text_size_small">Small</string>
-    <string name="text_size_medium">Medium</string>
-    <string name="text_size_large">Large</string>
+    <string name="text_size_medium" translatable="false">Medium</string>
+    <string name="text_size_large" translatable="false">Large</string>
     <string name="daily_widget_description" translatable="false">Daily Weather Widget</string>
-</resources>
+    <string name="firebase_crashlytics_title">Firebase Crashlytics</string>
+    <string name="firebase_crashlytics_desc">Share anonymous error reports to help us fix bugs and improve the application.</string>
+    <string name="firebase_crashlytics_dialog_title">Enable Crashlytics?</string>
+    <string name="firebase_crashlytics_dialog_message">By enabling Firebase Crashlytics, you agree to send anonymous technical data (device model, stack trace) to Google when the application crashes. This helps us identify and fix problems more quickly. No personal data is collected.</string>
+    <string name="gcu_title">Terms of Use</string>
+    <string name="gcu_content_loading">Loading Terms of Use…</string>
+    <string name="gcu_content_error">Error loading Terms of Use. Please check your internet connection and try again.</string>
+    <string name="accept">Accept</string>
+    <string name="decline">Decline</string>
+    <string name="retry">Retry</string>
+    <string name="gcu_scroll_to_bottom">Please scroll to the bottom to accept</string>
+    <string name="policy_update_title">Policy Update</string>
+    <string name="policy_update_message">Our Terms of Use and/or Privacy Policy have been updated. Please review them.</string>
+    </resources>

@@ -1,37 +1,39 @@
 package fr.matthstudio.themeteo
 
-import android.os.Parcelable
-import android.util.Log
+// Commenter lorsqu'on utilise pas le logging
+
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.compose.runtime.traceEventEnd
+import android.os.Parcelable
+import android.util.Log
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
+import fr.matthstudio.themeteo.telemetry.TelemetryManager
+import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
 import fr.matthstudio.themeteo.utilClasses.AirQualityLocation
 import fr.matthstudio.themeteo.utilClasses.AirQualityRequest
-import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
 import fr.matthstudio.themeteo.utilClasses.AlertStep
 import fr.matthstudio.themeteo.utilClasses.GovernmentInvertedGeocodingAPIResponse
 import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.VigilanceMapResponse
-import fr.matthstudio.themeteo.telemetry.TelemetryManager
-import io.ktor.client.*
-import io.ktor.client.call.*
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.contentnegotiation.*
-
-// Commenter lorsqu'on utilise pas le logging
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.logging.Logger
-
-import io.ktor.client.request.*
+import io.ktor.client.plugins.logging.Logging
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.http.contentType
-import io.ktor.serialization.kotlinx.json.*
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -46,10 +48,9 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Collections.emptyList
-import java.util.Locale as JavaLocale
 import kotlin.math.max
 import kotlin.math.roundToInt
-import kotlin.text.format
+import java.util.Locale as JavaLocale
 
 // --- DATA CLASSES (inchangées) ---
 @Serializable
@@ -146,6 +147,12 @@ data class GeocodingResult(
 fun Double?.nanToNull(): Double? {
     return if (this == null || this.isNaN()) null else this
 }
+
+@Serializable
+data class PolicyUpdateInfo(
+    @SerialName("last_gcu_update") val lastGcuUpdate: String,
+    @SerialName("last_privacy_policy_update") val lastPrivacyPolicyUpdate: String
+)
 
 class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     // On définit la config une seule fois ici
@@ -891,5 +898,25 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     fun close() {
         client.close()
+    }
+
+    suspend fun getPolicyUpdateInfo(): PolicyUpdateInfo? {
+        return try {
+            client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").body<PolicyUpdateInfo>()
+        } catch (e: Exception) {
+            Log.e("WeatherService", "Error fetching policy updates: ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
+    }
+
+    suspend fun getTermsOfUse(): String? {
+        return try {
+            client.get("https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html").body<String>()
+        } catch (e: Exception) {
+            Log.e("WeatherService", "Error fetching terms of use: ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
     }
 }

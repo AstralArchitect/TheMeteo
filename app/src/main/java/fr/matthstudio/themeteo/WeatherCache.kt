@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Parcelable
 import android.os.PowerManager
-import android.util.Log
 import androidx.glance.appwidget.updateAll
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
@@ -80,13 +79,16 @@ data class UserSettings(
     val enableModelFallback: Boolean,
     val enableAnimatedIcons: Boolean,
     val forecastType: ForecastType,
-    val temperatureUnit: fr.matthstudio.themeteo.data.TemperatureUnit,
-    val windUnit: fr.matthstudio.themeteo.data.WindUnit,
+    val temperatureUnit: TemperatureUnit,
+    val windUnit: WindUnit,
     val widgetTransparency: Int,
-    val widgetTextSize: Int
+    val widgetTextSize: Int,
+    val firebaseConsent: String,
+    val gcuAccepted: Boolean,
+    val lastGcuUpdate: String?,
+    val lastPrivacyPolicyUpdate: String?,
+    val hasOpenedAppOnce: Boolean
 )
-
-private data class LocationKey(val latitude: Double, val longitude: Double)
 
 /**
  * Serializer générique pour TreeMap afin de garantir le support de kotlinx.serialization
@@ -147,7 +149,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, 50, 1))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, 50, 1, "PENDING", false, null, null, false))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -192,7 +194,12 @@ class WeatherCache(
                 userSettingsRepository.temperatureUnit,
                 userSettingsRepository.windUnit,
                 userSettingsRepository.widgetTransparency,
-                userSettingsRepository.widgetTextSize
+                userSettingsRepository.widgetTextSize,
+                userSettingsRepository.firebaseConsent,
+                userSettingsRepository.gcuAccepted,
+                userSettingsRepository.lastGcuUpdate,
+                userSettingsRepository.lastPrivacyPolicyUpdate,
+                userSettingsRepository.hasOpenedAppOnce
             ) { values ->
                 val model = values[0] as String?
                 val round = values[1] as Boolean
@@ -205,6 +212,11 @@ class WeatherCache(
                 val wUnit = values[8] as WindUnit?
                 val transparency = values[9] as Int
                 val textSize = values[10] as Int
+                val consent = values[11] as String
+                val gcu = values[12] as Boolean
+                val lastGcu = values[13] as String?
+                val lastPrivacy = values[14] as String?
+                val hasOpened = values[15] as Boolean
                         
                 UserSettings(
                     model ?: "best_match",
@@ -217,10 +229,17 @@ class WeatherCache(
                     unit ?: TemperatureUnit.CELSIUS,
                     wUnit ?: WindUnit.KPH,
                     transparency,
-                    textSize
+                    textSize,
+                    consent,
+                    gcu,
+                    lastGcu,
+                    lastPrivacy,
+                    hasOpened
                 )
             }.collect { settings ->
                 _userSettings.value = settings
+                // Update telemetry consent
+                (applicationContext as? TheMeteo)?.container?.telemetryManager?.setConsentGranted(settings.firebaseConsent == "GRANTED")
                 // Trigger widget update on any setting change
                 applicationScope.launch {
                     fr.matthstudio.themeteo.widget.WeatherWidget().updateAll(applicationContext)

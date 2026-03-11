@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fr.matthstudio.themeteo.GeocodingResult
 import fr.matthstudio.themeteo.LocationIdentifier
+import fr.matthstudio.themeteo.PolicyUpdateInfo
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
@@ -75,6 +76,11 @@ class WeatherViewModel(
      */
     private val _refreshCounter = MutableStateFlow(0)
     val refreshCounter: StateFlow<Int> = _refreshCounter.asStateFlow()
+
+    private val _shouldShowPolicyUpdateDialog = MutableStateFlow(false)
+    val shouldShowPolicyUpdateDialog: StateFlow<Boolean> = _shouldShowPolicyUpdateDialog.asStateFlow()
+
+    private var remotePolicyUpdateInfo: PolicyUpdateInfo? = null
 
 
     /**
@@ -189,6 +195,50 @@ class WeatherViewModel(
                         _geocodingResults.value = emptyList()
                     }
                 }
+        }
+
+        // Vérification des mises à jour des politiques
+        viewModelScope.launch {
+            checkPolicyUpdates()
+        }
+    }
+
+    private suspend fun checkPolicyUpdates() {
+        val remote = weatherService.getPolicyUpdateInfo() ?: return
+        remotePolicyUpdateInfo = remote
+        
+        val currentSettings = userSettings.value
+        
+        if (!currentSettings.hasOpenedAppOnce) {
+            // Premier lancement : on enregistre les dates sans afficher le dialogue
+            weatherCache.userSettingsRepository.updateLastGcuUpdate(remote.lastGcuUpdate)
+            weatherCache.userSettingsRepository.updateLastPrivacyPolicyUpdate(remote.lastPrivacyPolicyUpdate)
+            weatherCache.userSettingsRepository.updateHasOpenedAppOnce(true)
+        } else {
+            // Lancements ultérieurs : on compare
+            // Si les dates locales sont nulles, on les initialise sans afficher de dialogue
+            if (currentSettings.lastGcuUpdate == null || currentSettings.lastPrivacyPolicyUpdate == null) {
+                weatherCache.userSettingsRepository.updateLastGcuUpdate(currentSettings.lastGcuUpdate ?: remote.lastGcuUpdate)
+                weatherCache.userSettingsRepository.updateLastPrivacyPolicyUpdate(currentSettings.lastPrivacyPolicyUpdate ?: remote.lastPrivacyPolicyUpdate)
+                return
+            }
+
+            val gcuChanged = remote.lastGcuUpdate > currentSettings.lastGcuUpdate
+            val privacyChanged = remote.lastPrivacyPolicyUpdate > currentSettings.lastPrivacyPolicyUpdate
+            
+            if (gcuChanged || privacyChanged) {
+                _shouldShowPolicyUpdateDialog.value = true
+            }
+        }
+    }
+
+    fun acceptPolicyUpdates() {
+        viewModelScope.launch {
+            remotePolicyUpdateInfo?.let { remote ->
+                weatherCache.userSettingsRepository.updateLastGcuUpdate(remote.lastGcuUpdate)
+                weatherCache.userSettingsRepository.updateLastPrivacyPolicyUpdate(remote.lastPrivacyPolicyUpdate)
+                _shouldShowPolicyUpdateDialog.value = false
+            }
         }
     }
 

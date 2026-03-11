@@ -185,4 +185,17 @@
     <string name="weather_alert">VIGILANCE JAUNE</string>
     <string name="weather_warning">VIGILANCE ORANGE</string>
     <string name="severe_weather_warning">VIGILANCE ROUGE</string>
-</resources>
+    <string name="firebase_crashlytics_title">Firebase Crashlytics</string>
+    <string name="firebase_crashlytics_desc">Partager des rapports d\'erreur anonymes pour nous aider à corriger les bugs et améliorer l\'application.</string>
+    <string name="firebase_crashlytics_dialog_title">Activer Crashlytics ?</string>
+    <string name="firebase_crashlytics_dialog_message">En activant Firebase Crashlytics, vous acceptez d\'envoyer des données techniques anonymes (modèle d\'appareil, trace d\'erreur) à Google en cas de plantage de l\'application. Cela nous aide à identifier et corriger les problèmes plus rapidement. Aucune donnée personnelle n\'est collectée.</string>
+    <string name="gcu_title">Conditions Générales d\'Utilisation</string>
+    <string name="gcu_content_loading">Chargement des CGU…</string>
+    <string name="gcu_content_error">Erreur lors du chargement des CGU. Veuillez vérifier votre connexion internet et réessayer.</string>
+    <string name="accept">Accepter</string>
+    <string name="decline">Refuser</string>
+    <string name="retry">Réessayer</string>
+    <string name="gcu_scroll_to_bottom">Veuillez faire défiler jusqu\'en bas pour accepter</string>
+    <string name="policy_update_title">Mise à jour des conditions</string>
+    <string name="policy_update_message">Nos conditions d\'utilisation et/ou notre politique de confidentialité ont été mises à jour. Veuillez les consulter.</string>
+    </resources>

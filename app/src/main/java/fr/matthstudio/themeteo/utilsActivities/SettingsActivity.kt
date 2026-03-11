@@ -75,6 +75,7 @@ fun SettingsScreen(cache: WeatherCache) {
     // On a besoin d'une coroutine scope pour appeler les fonctions suspend du repository
     val scope = rememberCoroutineScope()
     var showEnsembleDialog by remember { mutableStateOf(false) }
+    var showCrashlyticsDialog by remember { mutableStateOf(false) }
 
     if (showEnsembleDialog) {
         AlertDialog(
@@ -94,6 +95,29 @@ fun SettingsScreen(cache: WeatherCache) {
             },
             dismissButton = {
                 TextButton(onClick = { showEnsembleDialog = false }) {
+                    Text(stringResource(R.string.ensemble_warning_cancel))
+                }
+            }
+        )
+    }
+
+    if (showCrashlyticsDialog) {
+        AlertDialog(
+            onDismissRequest = { showCrashlyticsDialog = false },
+            title = { Text(stringResource(R.string.firebase_crashlytics_dialog_title)) },
+            text = { Text(stringResource(R.string.firebase_crashlytics_dialog_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        cache.userSettingsRepository.updateFirebaseConsent("GRANTED")
+                    }
+                    showCrashlyticsDialog = false
+                }) {
+                    Text(stringResource(R.string.ensemble_warning_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCrashlyticsDialog = false }) {
                     Text(stringResource(R.string.ensemble_warning_cancel))
                 }
             }
@@ -228,6 +252,21 @@ fun SettingsScreen(cache: WeatherCache) {
                         val restartIntent = android.content.Intent.makeRestartActivityTask(componentName)
                         activity?.startActivity(restartIntent)
                         Runtime.getRuntime().exit(0)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            FirebaseCrashlyticsSetting(
+                isChecked = userSettings.firebaseConsent == "GRANTED",
+                onCheckedChange = { granted ->
+                    if (granted) {
+                        showCrashlyticsDialog = true
+                    } else {
+                        scope.launch {
+                            cache.userSettingsRepository.updateFirebaseConsent("DENIED")
+                        }
                     }
                 }
             )
@@ -622,6 +661,53 @@ fun TemperatureUnitSetting(
                 onClick = { onUnitSelected(TemperatureUnit.KELVIN) }
             )
         }
+    }
+}
+
+@Composable
+fun FirebaseCrashlyticsSetting(
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.firebase_crashlytics_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "IMPORTANT",
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.firebase_crashlytics_desc),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 

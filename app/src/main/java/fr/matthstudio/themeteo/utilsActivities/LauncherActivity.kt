@@ -3,10 +3,14 @@ package fr.matthstudio.themeteo.utilsActivities
 
 import android.content.Intent
 import android.os.Bundle
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,7 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,12 +30,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import fr.matthstudio.themeteo.BuildConfig
+import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
@@ -45,35 +55,52 @@ class LauncherActivity : ComponentActivity() {
 
         val container = (application as TheMeteo).container
         val userSettings = container.userSettingsRepository
-        val telemetryManager = container.telemetryManager
 
+        lifecycleScope.launch {
+            val isGcuAccepted = userSettings.gcuAccepted.first()
+            if (!isGcuAccepted) {
+                setContent {
+                    GcuDialog(
+                        onAccept = {
+                            lifecycleScope.launch {
+                                userSettings.updateGcuAccepted(true)
+                                checkFirebaseConsent(userSettings)
+                            }
+                        },
+                        onDecline = {
+                            finish()
+                        }
+                    )
+                }
+            } else {
+                checkFirebaseConsent(userSettings)
+            }
+        }
+    }
+
+    private suspend fun checkFirebaseConsent(userSettings: fr.matthstudio.themeteo.data.UserSettingsRepository) {
         if (BuildConfig.FIREBASE_ENABLED) {
-            val consent = runBlocking { userSettings.firebaseConsent.first() }
+            val consent = userSettings.firebaseConsent.first()
             if (consent == "PENDING") {
                 setContent {
                     ConsentDialog(
                         onAccept = {
                             lifecycleScope.launch {
                                 userSettings.updateFirebaseConsent("GRANTED")
-                                telemetryManager.setConsentGranted(true)
                                 navigateToNextScreen()
                             }
                         },
                         onDecline = {
                             lifecycleScope.launch {
                                 userSettings.updateFirebaseConsent("DENIED")
-                                telemetryManager.setConsentGranted(false)
                                 navigateToNextScreen()
                             }
                         }
                     )
                 }
                 return
-            } else if (consent == "GRANTED") {
-                telemetryManager.setConsentGranted(true)
             }
         }
-
         navigateToNextScreen()
     }
 
@@ -179,4 +206,117 @@ fun ServiceSection(title: String, description: String) {
         Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(description, fontSize = 14.sp)
     }
+}
+
+@Composable
+fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
+    var isLoading by remember { mutableStateOf(true) }
+    var hasError by remember { mutableStateOf(false) }
+    var hasScrolledToBottom by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
+    val gcuUrl = "https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html"
+
+    AlertDialog(
+        onDismissRequest = { },
+        title = { Text(stringResource(R.string.gcu_title)) },
+        text = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp)
+                ) {
+                    AndroidView(
+                        factory = { context ->
+                            WebView(context).apply {
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                        super.onPageStarted(view, url, favicon)
+                                        isLoading = true
+                                        hasError = false
+                                        hasScrolledToBottom = false
+                                    }
+
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        isLoading = false
+                                        // If content is small and doesn't scroll, it might already be at bottom
+                                        if (!canScrollVertically(1)) {
+                                            hasScrolledToBottom = true
+                                        }
+                                    }
+
+                                    override fun onReceivedError(
+                                        view: WebView?,
+                                        request: android.webkit.WebResourceRequest?,
+                                        error: android.webkit.WebResourceError?
+                                    ) {
+                                        super.onReceivedError(view, request, error)
+                                        isLoading = false
+                                        hasError = true
+                                    }
+                                }
+                                setOnScrollChangeListener { v, scrollX, scrollY, oldScrollX, oldScrollY ->
+                                    if (!canScrollVertically(1)) {
+                                        hasScrolledToBottom = true
+                                    }
+                                }
+                                loadUrl(gcuUrl)
+                            }
+                        },
+                        update = { webView ->
+                            if (refreshTrigger > 0) {
+                                webView.loadUrl(gcuUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+
+                    if (hasError) {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                stringResource(R.string.gcu_content_error),
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            Button(onClick = { refreshTrigger++ }) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        }
+                    }
+                }
+                
+                if (!hasScrolledToBottom && !isLoading && !hasError) {
+                    Text(
+                        text = stringResource(R.string.gcu_scroll_to_bottom),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAccept,
+                enabled = !isLoading && !hasError && hasScrolledToBottom
+            ) {
+                Text(stringResource(R.string.accept))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDecline) {
+                Text(stringResource(R.string.decline))
+            }
+        }
+    )
 }

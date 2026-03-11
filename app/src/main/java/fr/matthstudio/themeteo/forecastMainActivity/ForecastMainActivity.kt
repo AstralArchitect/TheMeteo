@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -38,7 +37,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -50,17 +48,14 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Dehaze
 import androidx.compose.material.icons.rounded.DeviceThermostat
-import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Grain
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Opacity
@@ -72,7 +67,6 @@ import androidx.compose.material.icons.rounded.Thunderstorm
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material.icons.rounded.Visibility
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Water
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbCloudy
@@ -125,10 +119,8 @@ import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
-import fr.matthstudio.themeteo.dayChoserActivity.EnsembleIcon
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
-import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
@@ -1264,8 +1256,32 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                     )
                 }
             }
+
+            val shouldShowPolicyUpdateDialog by viewModel.shouldShowPolicyUpdateDialog.collectAsState()
+            if (shouldShowPolicyUpdateDialog) {
+                PolicyUpdateDialog(
+                    onAccept = { viewModel.acceptPolicyUpdates() }
+                )
+            }
         }
     }
+}
+
+@Composable
+fun PolicyUpdateDialog(onAccept: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { /* Empêcher la fermeture sans acceptation si nécessaire, ou onAccept() */ },
+        title = { Text(text = stringResource(R.string.policy_update_title)) },
+        text = { Text(text = stringResource(R.string.policy_update_message)) },
+        confirmButton = {
+            Button(onClick = onAccept) {
+                Text(text = stringResource(R.string.accept))
+            }
+        },
+        dismissButton = {
+            // Optionnel : bouton pour voir les CGU
+        }
+    )
 }
 
 @Composable

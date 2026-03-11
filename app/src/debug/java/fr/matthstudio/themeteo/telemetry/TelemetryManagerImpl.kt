@@ -10,7 +10,7 @@ class TelemetryManagerImpl(context: Context) : TelemetryManager {
 
     init {
         // Only exceptions via Crashlytics are supported.
-        crashlytics?.setCrashlyticsCollectionEnabled(false)
+        crashlytics?.isCrashlyticsCollectionEnabled = false
     }
 
     override fun setConsentGranted(granted: Boolean) {
