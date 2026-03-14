@@ -28,6 +28,7 @@ foundation = "1.10.2"
 firebaseBom = "33.9.0"
 googleServices = "4.4.2"
 firebaseCrashlyticsPlugin = "3.0.3"
+roomExternalAntlr = "2.8.4"
 
 [libraries]
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }
@@ -73,6 +74,7 @@ androidx-compose-foundation = { group = "androidx.compose.foundation", name = "f
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
+androidx-room-external-antlr = { group = "androidx.room", name = "room-external-antlr", version.ref = "roomExternalAntlr" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

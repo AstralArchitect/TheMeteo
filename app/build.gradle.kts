@@ -160,6 +160,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.compose.material.core)
     implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.room.external.antlr)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 

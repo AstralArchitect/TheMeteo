@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,7 +58,10 @@ import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Dehaze
 import androidx.compose.material.icons.rounded.DeviceThermostat
 import androidx.compose.material.icons.rounded.Grain
+import androidx.compose.material.icons.rounded.Grass
+import androidx.compose.material.icons.rounded.LocalFlorist
 import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Nature
 import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Settings
@@ -97,6 +101,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -121,8 +126,11 @@ import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
+import fr.matthstudio.themeteo.dayGraphsActivity.WeatherIconGraph
 import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.utilClasses.AirQualityUI
+import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.toSmartString
@@ -1059,7 +1067,6 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         maxOverallTemp = maxOverallTemp,
                                         userSettings = userSettings,
                                         isBatterySaverActive = isBatterySaverActive,
-                                        weatherIconFilter = weatherIconFilter,
                                         onClick = {
                                             expandedDayIndex = if (expandedDayIndex == index) -1 else index
                                         }
@@ -1073,12 +1080,25 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                                .background(
+                                                    MaterialTheme.colorScheme.surfaceVariant.copy(
+                                                        alpha = 0.3f
+                                                    ), RoundedCornerShape(16.dp)
+                                                )
                                                 .padding(12.dp)
                                                 .clickable {
-                                                     val intent = Intent(context, DayGraphsActivity::class.java).apply {
-                                                        putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0))
-                                                        putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
+                                                    val intent = Intent(
+                                                        context,
+                                                        DayGraphsActivity::class.java
+                                                    ).apply {
+                                                        putExtra(
+                                                            "START_DATE_TIME",
+                                                            dayReading.date.atTime(0, 0)
+                                                        )
+                                                        putExtra(
+                                                            "SELECTED_LOCATION",
+                                                            viewModel.selectedLocation.value
+                                                        )
                                                     }
                                                     context.startActivity(intent)
                                                 }
@@ -1108,7 +1128,12 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                                     Icon(
                                                         imageVector = if (dayReading.maxWind.windDirection != null) Icons.AutoMirrored.Filled.ArrowForward else Icons.Default.Air,
                                                         contentDescription = null,
-                                                        modifier = Modifier.size(18.dp).rotate(dayReading.maxWind.windDirection?.toFloat()?.minus(180) ?: 0f),
+                                                        modifier = Modifier
+                                                            .size(18.dp)
+                                                            .rotate(
+                                                                dayReading.maxWind.windDirection?.toFloat()
+                                                                    ?.minus(180) ?: 0f
+                                                            ),
                                                         tint = MaterialTheme.colorScheme.primary
                                                     )
                                                     Text(UnitConverter.formatWind(dayReading.maxWind.windspeed, userSettings.windUnit), style = MaterialTheme.typography.labelSmall)
@@ -1144,10 +1169,26 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                 }
 
                 item {
-                    AirQualityPollenCard(
-                        viewModel = viewModel,
-                        onClick = { showAirQualityDialog = true }
-                    )
+                    val environmentalData by viewModel.environmentalData.collectAsState()
+                    environmentalData?.let { data ->
+                        val today = data.days.firstOrNull()
+                        if (today != null) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                AirQualityCard(
+                                    data = today.airQuality,
+                                    onClick = { showAirQualityDialog = true }
+                                )
+                                PollenCard(
+                                    data = today.pollen,
+                                    onClick = { showAirQualityDialog = true }
+                                )
+                            }
+                        }
+                    }
                 }
 
                 /*if (hourlyForecast is WeatherDataState.SuccessHourly) {
@@ -1381,184 +1422,157 @@ fun SummaryDetailsCard(modifier: Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-fun AirQualityPollenCard(
-    viewModel: WeatherViewModel,
+fun AirQualityCard(
+    data: AirQualityUI,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val state by viewModel.airQualityResponse.collectAsState()
-    if (state !is WeatherDataState.SuccessAirQuality) return
-
-    // Extraction de la paire (AirQualityInfo, PollenResponse?)
-    val (aqiData, pollenData) = (state as WeatherDataState.SuccessAirQuality).data
-
-    // --- Données Air Quality ---
-    val mainIndex = aqiData.indexes.firstOrNull()
-    val aqiValue = mainIndex?.aqi
-    val aqiCategory = mainIndex?.category
-    val dominantPollutant = mainIndex?.dominantPollutant
-    val aqiColor = Color(
-        mainIndex?.color?.red ?: 0.5f,
-        mainIndex?.color?.green ?: 0.5f,
-        mainIndex?.color?.blue ?: 0.5f
-    )
-
-    // --- Données Pollen (On prend le risque le plus élevé) ---
-    val todayPollen = pollenData?.dailyInfo?.firstOrNull()
-    val maxPollen = todayPollen?.pollenTypeInfo?.maxByOrNull { it.indexInfo?.value ?: 0 }
-    val pollenColor = if (maxPollen?.indexInfo?.color != null) {
-        Color(
-            maxPollen.indexInfo.color.red ?: 0.5f,
-            maxPollen.indexInfo.color.green ?: 0.5f,
-            maxPollen.indexInfo.color.blue ?: 0.5f
-        )
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-
     BentoCard(
         modifier = modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(110.dp)
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(20.dp)
+                .fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Groupe Gauche : Titre et Label
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.air_quality),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = data.label,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Barre horizontale colorée (Jauge)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.8f) 
+                        .height(9.dp)
+                        .clip(CircleShape)
+                        .background(data.color.copy(alpha = 0.2f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth((data.value.toFloat() / 100f).coerceIn(0f, 1f))
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(data.color)
+                    )
+                }
+            }
+
+            // Groupe Droite : AQI en très grand
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = data.value.toString(),
+                    style = MaterialTheme.typography.displayMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Black,
+                    lineHeight = 40.sp
+                )
+                Text(
+                    text = "AQI",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PollenCard(
+    data: PollenUI,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BentoCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(160.dp)
             .clickable { onClick() }
     ) {
         Column(
             modifier = Modifier
-                .padding(vertical = 16.dp)
+                .padding(vertical = 10.dp, horizontal = 16.dp)
                 .fillMaxSize(),
-            verticalArrangement = Arrangement.Top
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header
-            Row (
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.padding(start = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Rounded.Air,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.air_quality_polen_title),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(
-                    Icons.AutoMirrored.Rounded.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .padding(end = 20.dp)
-                )
-            }
+            Text(
+                text = "Pollen",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(110.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // --- COLONNE GAUCHE : AIR QUALITY ---
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Canvas(modifier = Modifier.size(44.dp)) {
-                            drawCircle(color = aqiColor, alpha = 0.8f)
-                        }
-                        Text(
-                            text = aqiValue?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color.Black
-                        )
-                    }
-                    Text(
-                        text = aqiCategory ?: "--",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (dominantPollutant != null) {
-                        Text(
-                            text = stringResource(R.string.major_polluant, dominantPollutant),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                        )
-                    }
-                }
-
-                // Séparateur vertical discret
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .fillMaxHeight()
-                        .background(MaterialTheme.colorScheme.outlineVariant)
-                )
-
-                // --- COLONNE DROITE : POLLEN ---
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (maxPollen != null) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Canvas(modifier = Modifier.size(44.dp)) {
-                                drawCircle(color = pollenColor, alpha = 0.8f)
-                            }
+                listOfNotNull(
+                    data.tree to Pair(stringResource(R.string.trees), Icons.Rounded.Nature),
+                    data.grass to Pair(stringResource(R.string.weed), Icons.Rounded.LocalFlorist),
+                    data.weed to Pair(stringResource(R.string.grasses), Icons.Rounded.Grass)
+                ).forEach { (type, data) ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        Box {
+                            EnvironmentalGauge(
+                                value = (type?.level?.toFloat() ?: 0f) / 5f,
+                                color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
+                                modifier = Modifier.size(80.dp)
+                            )
+                            Text(
+                                text = data.first,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.align(Alignment.Center).offset(y = 6.dp)
+                            )
                             Icon(
-                                Icons.Rounded.Grain, // Icône représentant le pollen
+                                imageVector = data.second,
                                 contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = Color.Black.copy(alpha = 0.6f)
+                                modifier = Modifier.align(Alignment.Center).offset(y = (-11).dp),
+                                tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         Text(
-                            text = maxPollen.indexInfo?.category ?: stringResource(R.string.low_risk_or_none),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold
+                            text = "${type?.level ?: 0}/4",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        // Display a short description (ex: Low, Moderate, etc.)
                         Text(
-                            text = when (maxPollen.code) {
-                                "GRASS" -> stringResource(R.string.herbes)
-                                "TREE" -> stringResource(R.string.trees)
-                                "WEED" -> stringResource(R.string.weed)
-                                else -> maxPollen.displayName ?: stringResource(R.string.unknown)
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.no_pollen_data),
+                            text = getPollenShortDescFromLevel(type?.level ?: 0),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
-            // --- ATTRIBUTION OBLIGATOIRE GOOGLE ---
-            Text(
-                modifier = Modifier.padding(start = 16.dp),
-                text = "Powered by Google",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
-                fontSize = 8.sp
-            )
         }
     }
 }
-
 
 @Composable
 fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
@@ -1743,18 +1757,6 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-fun formatPollutantUnit(unit: String?): String {
-    return when (unit) {
-        "PARTS_PER_BILLION" -> "ppb"
-        "PART_PER_BILLION" -> "ppb"
-        "PARTS_PER_MILLION" -> "ppm"
-        "PART_PER_MILLION" -> "ppm"
-        "MICROGRAMS_PER_CUBIC_METER" -> "µg/m³"
-        null -> ""
-        else -> unit.lowercase()
     }
 }
 

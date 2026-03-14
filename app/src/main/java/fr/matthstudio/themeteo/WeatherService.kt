@@ -10,8 +10,10 @@ import android.util.Log
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
+import fr.matthstudio.themeteo.utilClasses.AirQualityForecastResponse
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
 import fr.matthstudio.themeteo.utilClasses.AirQualityLocation
+import fr.matthstudio.themeteo.utilClasses.AirQualityPeriod
 import fr.matthstudio.themeteo.utilClasses.AirQualityRequest
 import fr.matthstudio.themeteo.utilClasses.AlertStep
 import fr.matthstudio.themeteo.utilClasses.GovernmentInvertedGeocodingAPIResponse
@@ -276,6 +278,48 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         } catch (e: Exception) {
             Log.e("AirQuality", "Exception lors de la récupération de la qualité de l'air : ${e.message}")
             telemetryManager?.logException(e)
+            null
+        }
+    }
+
+    suspend fun getAirQualityForecast(latitude: Double, longitude: Double, context: Context): AirQualityForecastResponse? {
+        val url = "https://airquality.googleapis.com/v1/forecast:lookup"
+        val sha1 = getSigningSha1(context) ?: return null
+        val packageName = context.packageName
+
+        return try {
+            val response = client.post(url) {
+                parameter("key", BuildConfig.MAPS_API_KEY)
+                header("X-Android-Package", packageName)
+                header("X-Android-Cert", sha1)
+                setBody(
+                    AirQualityRequest(
+                        location = AirQualityLocation(latitude, longitude),
+                        extraComputations = listOf(
+                            "HEALTH_RECOMMENDATIONS",
+                            "DOMINANT_POLLUTANT_CONCENTRATION",
+                            "POLLUTANT_CONCENTRATION"
+                        ),
+                        period = AirQualityPeriod(
+                            startTime = LocalDateTime.now().toString() + "Z",
+                            endTime = LocalDateTime.now().plusDays(3).toString() + "Z"
+                        ),
+                        pageSize = 72,
+                        languageCode = java.util.Locale.getDefault().language
+                    )
+                )
+                contentType(io.ktor.http.ContentType.Application.Json)
+            }
+
+            if (response.status.value == 200) {
+                response.body<AirQualityForecastResponse>()
+            } else {
+                val errorBody = response.body<String>()
+                Log.e("AirQuality", "Erreur API Google Forecast : ${response.status} - $errorBody")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("AirQuality", "Exception lors de la récupération des prévisions d'air : ${e.message}")
             null
         }
     }

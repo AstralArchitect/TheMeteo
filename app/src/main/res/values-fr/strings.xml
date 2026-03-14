@@ -46,8 +46,8 @@
     <string name="sun">Soleil</string>
     <string name="sun_infos">Infos Solaires</string>
     <string name="today_s_sunrise">Coucher du Soleil</string>
-    <string name="today">Ajd.</string>
-    <string name="tomorrow">Dm.</string>
+    <string name="today">Auj.</string>
+    <string name="tomorrow">Dem.</string>
     <string name="sunrise_no_value">Lever de Soleil</string>
     <string name="sunset_no_value">Coucher de Soleil</string>
     <string name="day_duration_no_value">Durée du jour</string>
@@ -198,4 +198,17 @@
     <string name="gcu_scroll_to_bottom">Veuillez faire défiler jusqu\'en bas pour accepter</string>
     <string name="policy_update_title">Mise à jour des conditions</string>
     <string name="policy_update_message">Nos conditions d\'utilisation et/ou notre politique de confidentialité ont été mises à jour. Veuillez les consulter.</string>
-    </resources>
+    <string name="grasses">Herbes</string>
+    <string name="pollen_risks">Risques de Pollen</string>
+    <string name="widget_settings">Paramètres du Widget</string>
+    <string name="widget_transparency">Transparence</string>
+    <string name="widget_text_size">Taille du texte</string>
+    <string name="text_size_small">Petit</string>
+    <string name="air_quality">Qualité de l\'Air</string>
+    <string name="environmental_details">Détails Environnementaux</string>
+    <string name="air_components">Composants de l\'air</string>
+    <string name="low">Faible</string>
+    <string name="moderate">Modéré</string>
+    <string name="high">Fort</string>
+    <string name="very_high">Très fort</string>
+</resources>

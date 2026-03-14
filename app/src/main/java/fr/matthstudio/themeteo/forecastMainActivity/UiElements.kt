@@ -102,9 +102,15 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.rounded.HealthAndSafety
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.AddAPhoto
@@ -112,6 +118,9 @@ import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Flood
 import androidx.compose.material.icons.rounded.Grain
+import androidx.compose.material.icons.rounded.Grass
+import androidx.compose.material.icons.rounded.LocalFlorist
+import androidx.compose.material.icons.rounded.Nature
 import androidx.compose.material.icons.rounded.SevereCold
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Tsunami
@@ -119,7 +128,11 @@ import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Water
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.sp
@@ -433,7 +446,9 @@ fun TemperatureRangeBar(
     val startFactor = (minTemp - minOverallTemp) / range
     val endFactor = (maxTemp - minOverallTemp) / range
 
-    Canvas(modifier = modifier.height(4.dp).fillMaxWidth()) {
+    Canvas(modifier = modifier
+        .height(4.dp)
+        .fillMaxWidth()) {
         val width = size.width
         val height = size.height
         val startX = (width * startFactor).toFloat()
@@ -466,10 +481,18 @@ fun DailyForecastRow(
     maxOverallTemp: Double,
     userSettings: UserSettings,
     isBatterySaverActive: Boolean,
-    weatherIconFilter: ColorFilter?,
     onClick: () -> Unit,
     expandedContent: @Composable () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
+    val weatherIconFilter = remember(isDark) {
+        if (!isDark) {
+            ColorFilter.colorMatrix(ColorMatrix().apply {
+                // Assombrit légèrement les icônes statiques en mode clair
+                setToScale(0.7f, 0.7f, 0.7f, 1f)
+            })
+        } else null
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -528,13 +551,13 @@ fun DailyForecastRow(
                         Icons.Rounded.Water,
                         contentDescription = null,
                         modifier = Modifier.size(12.dp),
-                        tint = Color(0xFF64B5F6)
+                        tint = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
                     )
                     Spacer(Modifier.width(2.dp))
-                    Text(
+                    ResponsiveText(
                         text = "${dayReading.precipitation.toSmartString()}mm",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF64B5F6)
+                        color = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
                     )
                 }
             }
@@ -554,7 +577,9 @@ fun DailyForecastRow(
                 minOverallTemp = minOverallTemp,
                 maxOverallTemp = maxOverallTemp,
                 unit = userSettings.temperatureUnit,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
             )
 
             Text(
@@ -754,9 +779,10 @@ fun LocationManagementSheet(
                                     onDrag = { change, dragAmount ->
                                         change.consume()
                                         itemOffset += dragAmount.y / density
-                                        
+
                                         // Logique de swap corrigée
-                                        val threshold = 32f // Seuil pour déclencher le swap (moitié de la hauteur)
+                                        val threshold =
+                                            32f // Seuil pour déclencher le swap (moitié de la hauteur)
                                         if (itemOffset > threshold && currentIndex < listState.size - 1) {
                                             val newList = listState.toMutableList()
                                             val item = newList.removeAt(currentIndex)
@@ -1017,6 +1043,52 @@ fun AddLocationDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         }
     )
+}
+
+@Composable
+fun EnvironmentalGauge(
+    value: Float, // 0.0 to 1.0
+    color: Color,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit = {}
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 8.dp.toPx()
+            // Fond de la jauge (gris discret)
+            drawArc(
+                color = color.copy(alpha = 0.15f),
+                startAngle = 140f,
+                sweepAngle = 260f,
+                useCenter = false,
+                style = Stroke(strokeWidth, cap = StrokeCap.Round)
+            )
+            // Partie active de la jauge (couleur API)
+            drawArc(
+                color = color,
+                startAngle = 140f,
+                sweepAngle = 260f * value.coerceIn(0f, 1f),
+                useCenter = false,
+                style = Stroke(strokeWidth, cap = StrokeCap.Round)
+            )
+        }
+        content()
+    }
+}
+
+@Composable
+fun getPollenShortDescFromLevel(level: Int): String {
+    return when (level) {
+        0 -> "null"
+        1 -> stringResource(R.string.low)
+        2 -> stringResource(R.string.moderate)
+        3 -> stringResource(R.string.high)
+        4 -> stringResource(R.string.very_high)
+        else -> stringResource(R.string.unknown)
+    }
 }
 
 @Composable
@@ -1402,230 +1474,254 @@ fun WeatherIconGraph(
 
 @Composable
 fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
-    val state by viewModel.airQualityResponse.collectAsState()
-    if (state !is WeatherDataState.SuccessAirQuality) return
-    val (aqiData, pollenData) = (state as WeatherDataState.SuccessAirQuality).data
+    val environmentalData by viewModel.environmentalData.collectAsState()
+    val data = environmentalData ?: return
+    
+    // État du jour sélectionné
+    var selectedDayIndex by remember { mutableIntStateOf(0) }
+    val currentDay = data.days.getOrNull(selectedDayIndex) ?: data.days.first()
 
-    // Créer un état pour gérer l'animation de visibilité
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
 
-    // Fonction de fermeture qui attend la fin de l'animation
-    fun animateAndDismiss() {
-        visibleState.targetState = false
-        onDismiss()
-    }
-
-    // 1. LE SCRIM (Voile de fond)
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
-                    alpha = 0.6f
-                )
-            )
+            .background(Color.Black.copy(alpha = 0.6f))
             .clickable { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
-        // Utiliser AnimatedVisibility pour le contenu
         AnimatedVisibility(
             visibleState = visibleState,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f), // Zoom progressif
-            exit = fadeOut() + scaleOut(targetScale = 0.8f)
+            enter = fadeIn() + scaleIn(initialScale = 0.9f),
+            exit = fadeOut() + scaleOut(targetScale = 0.9f)
         ) {
-            // 2. LE CONTENU DU DIALOGUE (Animation de zoom)
-            Box(
+            Surface(
                 modifier = Modifier
                     .padding(24.dp)
-                    .clickable(enabled = false) { } // Empêche de fermer en cliquant sur le blanc
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f)
+                    .clickable(enabled = false) { },
+                shape = RoundedCornerShape(32.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
             ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.85f),
-                    shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.surface, // Couleur Material You pour le Dialog
-                    tonalElevation = 6.dp
-                ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Text(
-                            stringResource(R.string.air_quality_polen_title),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        text = stringResource(R.string.environmental_details),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
 
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            // Section Polluants
-                            item {
-                                Text(
-                                    stringResource(R.string.current_polluants),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                            }
-
-                            if (aqiData.pollutants.isNullOrEmpty()) {
-                                item {
-                                    Text(
-                                        stringResource(R.string.no_major_polluant),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(bottom = 8.dp)
-                                    )
-                                }
-                            } else {
-                                items(aqiData.pollutants) { pollutant ->
-                                    DetailRow(
-                                        WeatherDetailItem(
-                                            Icons.Rounded.Air,
-                                            pollutant.displayName,
-                                            if (pollutant.concentration != null) "${pollutant.concentration.value} ${formatPollutantUnit(pollutant.concentration.units)}" else "N/A",
-                                            pollutant.code
-                                        )
-                                    )
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(
-                                            alpha = 0.5f
-                                        )
-                                    )
-                                }
-                            }
-
-                            // Section Recommandations Santé (Air Quality)
-                            aqiData.healthRecommendations?.let { recommendations ->
-                                item {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        stringResource(R.string.health_advice),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(vertical = 8.dp)
-                                    )
-                                    Text(
-                                        recommendations.generalPopulation ?: stringResource(R.string.no_specific_recommendation),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-
-                            // Section Pollen
-                            item {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    stringResource(R.string.pollen_for_the_next_days),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                            }
-
-                            if (pollenData == null || pollenData.dailyInfo.isEmpty()) {
-                                item {
-                                    Text(
-                                        stringResource(R.string.pollen_data_unavailable),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            } else {
-                                pollenData.dailyInfo.take(4).forEachIndexed { index, dailyPollen ->
-                                    item {
-                                        val dateStr = when (index) {
-                                            0 -> stringResource(R.string.today)
-                                            1 -> stringResource(R.string.tomorrow)
-                                            else -> "${dailyPollen.date.day}/${dailyPollen.date.month}"
-                                        }
-                                        Text(
-                                            dateStr,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                                        )
-                                    }
-
-                                    dailyPollen.pollenTypeInfo?.let { types ->
-                                        items(types) { type ->
-                                            val category = when {
-                                                type.indexInfo?.category != null -> type.indexInfo.category
-                                                type.inSeason == false -> stringResource(R.string.out_of_season)
-                                                else -> stringResource(R.string.low_risk_or_none)
-                                            }
-
-                                            val subValue = when {
-                                                type.indexInfo?.value != null -> stringResource(
-                                                    R.string.pollen_index_format,
-                                                    type.indexInfo.value
-                                                )
-
-                                                type.inSeason == false -> stringResource(R.string.no_current_risks)
-                                                else -> stringResource(R.string.index_0)
-                                            }
-
-                                            DetailRow(
-                                                WeatherDetailItem(
-                                                    Icons.Rounded.Grain,
-                                                    when (type.code) {
-                                                        "GRASS" -> stringResource(R.string.herbes)
-                                                        "TREE" -> stringResource(R.string.trees)
-                                                        "WEED" -> stringResource(R.string.weed)
-                                                        else -> type.displayName ?: type.code
-                                                    },
-                                                    category,
-                                                    subValue
-                                                )
-                                            )
-                                        }
-                                    }
-
-                                    item {
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(
-                                                alpha = 0.3f
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-
-                            // --- PIED DE PAGE : ATTRIBUTION LÉGALE ---
-                            item {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.Center
+                    // NAVIGATION PAR JOURS (TRENDS)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        data.days.forEachIndexed { index, day ->
+                            val isSelected = index == selectedDayIndex
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedDayIndex = index },
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text = "Data from Google Maps Platform",
+                                        text = if (index == 0) stringResource(R.string.today) else day.dateLabel,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        fontStyle = FontStyle.Italic
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    // Point de couleur représentant le jour
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(day.globalColor)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        // SECTION 1 : QUALITÉ DE L'AIR
+                        item {
+                            EnvironmentalSectionHeader(
+                                title = stringResource(R.string.air_quality),
+                                icon = Icons.Rounded.Air,
+                                color = currentDay.airQuality.color ?: MaterialTheme.colorScheme.outline
+                            )
+                            
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            val air = currentDay.airQuality
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(air.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("${air.value} AQI", style = MaterialTheme.typography.titleMedium, color = air.color, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(air.color.copy(alpha = 0.2f))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(
+                                                (air.value.toFloat() / 100f).coerceIn(
+                                                    0f,
+                                                    1f
+                                                )
+                                            )
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(air.color)
                                     )
                                 }
                             }
                         }
 
-                        TextButton(
-                            onClick = { animateAndDismiss() },
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(top = 16.dp)
-                        ) {
-                            Text("Fermer")
+                        // Polluants
+                        currentDay.airQuality.let { air ->
+                            item {
+                                Text(stringResource(R.string.air_components), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    air.pollutants.forEach { pollutant ->
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                                Text(pollutant.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text(pollutant.value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
+
+                        // SECTION 2 : POLLEN (Toujours dispo via prévisions)
+                        item {
+                            EnvironmentalSectionHeader(
+                                title = stringResource(R.string.pollen_risks),
+                                icon = Icons.Rounded.Grain,
+                                color = currentDay.pollen.color
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                listOfNotNull(
+                                    currentDay.pollen.tree to stringResource(R.string.trees),
+                                    currentDay.pollen.grass to stringResource(R.string.weed),
+                                    currentDay.pollen.weed to stringResource(R.string.grasses)
+                                ).forEach { (type, name) ->
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        EnvironmentalGauge(
+                                            value = (type?.level?.toFloat() ?: 0f) / 5f,
+                                            color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
+                                            modifier = Modifier.size(60.dp)
+                                        )
+                                        Text(name, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+                                    }
+                                }
+                            }
+                        }
+
+                        // SECTION 3 : CONSEILS SANTÉ (Basés sur l'air ou pollen du jour)
+                        item {
+                            EnvironmentalSectionHeader(
+                                title = stringResource(R.string.health_advice),
+                                icon = Icons.Rounded.HealthAndSafety,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            val adviceList = currentDay.airQuality.healthAdvice ?: emptyList()
+                            if (adviceList.isNotEmpty()) {
+                                adviceList.forEach { advice ->
+                                    HealthAdviceCard(advice.title, advice.advice)
+                                }
+                            } else {
+                                HealthAdviceCard("Information", "Continuez à surveiller les indices pour adapter vos activités.")
+                            }
+                        }
+                        
+                        item {
+                            Text(
+                                text = "Powered by Google Maps Platform",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(stringResource(R.string.close))
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun HealthAdviceCard(title: String, advice: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f))
+            .padding(16.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text(advice, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+fun EnvironmentalSectionHeader(title: String, icon: ImageVector, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     }
 }
 

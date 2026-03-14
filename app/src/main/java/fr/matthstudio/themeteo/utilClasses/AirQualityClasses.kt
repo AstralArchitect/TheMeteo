@@ -1,5 +1,6 @@
 package fr.matthstudio.themeteo.utilClasses
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -11,7 +12,17 @@ data class AirQualityRequest(
         "POLLUTANT_ADDITIONAL_INFO",
         "POLLUTANT_CONCENTRATION"
     ),
-    val languageCode: String
+    val languageCode: String,
+    val pageSize: Int? = null,
+    val period: AirQualityPeriod? = null
+)
+
+@Serializable
+data class AirQualityPeriod(
+    @SerialName("start_time")
+    val startTime: String,
+    @SerialName("end_time")
+    val endTime: String
 )
 
 @Serializable
@@ -27,6 +38,12 @@ data class AirQualityInfo(
     val indexes: List<AQIIndex>,
     val pollutants: List<Pollutant>? = null,
     val healthRecommendations: HealthRecommendations? = null
+)
+
+@Serializable
+data class AirQualityForecastResponse(
+    val hourlyForecasts: List<AirQualityInfo>? = null,
+    val nextPageToken: String? = null
 )
 
 @Serializable

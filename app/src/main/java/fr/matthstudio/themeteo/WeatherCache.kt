@@ -19,6 +19,7 @@ import fr.matthstudio.themeteo.data.UserLocationsRepository
 import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.WindUnit
+import fr.matthstudio.themeteo.utilClasses.AirQualityForecastResponse
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
@@ -124,6 +125,8 @@ data class ModelDataCache(
     var lastCurrentWeatherFetch: LocalDateTime = LocalDateTime.MIN,
     @Serializable
     var airQualityInfo: AirQualityInfo? = null,
+    @Serializable
+    var airQualityForecast: AirQualityForecastResponse? = null,
     @Serializable
     var pollenInfo: PollenResponse? = null,
     @Serializable(with = LocalDateTimeSerializer::class)
@@ -703,7 +706,7 @@ class WeatherCache(
         }
 
         if (modelCache.airQualityInfo != null && Duration.between(modelCache.lastAirQualityFetch, now).toMinutes() < 30) {
-            emit(WeatherDataState.SuccessAirQuality(Pair(modelCache.airQualityInfo!!, modelCache.pollenInfo)))
+            emit(WeatherDataState.SuccessAirQuality(Triple(modelCache.airQualityInfo!!, modelCache.airQualityForecast, modelCache.pollenInfo)))
             return@flow
         }
 
@@ -716,20 +719,23 @@ class WeatherCache(
 
         coroutineScope {
             val airQualityDeferred = async { weatherService.getAirQuality(coords.latitude, coords.longitude, applicationContext) }
+            val airQualityForecastDeferred = async { weatherService.getAirQualityForecast(coords.latitude, coords.longitude, applicationContext) }
             val pollenDeferred = async { weatherService.getPollenForecast(coords.latitude, coords.longitude, applicationContext) }
 
             val airQualityResponse = airQualityDeferred.await()
+            val airQualityForecastResponse = airQualityForecastDeferred.await()
             val pollenResponse = pollenDeferred.await()
 
             if (airQualityResponse != null) {
                 cacheMutex.withLock {
                     modelCache.airQualityInfo = airQualityResponse
+                    modelCache.airQualityForecast = airQualityForecastResponse
                     modelCache.pollenInfo = pollenResponse
                     modelCache.lastAirQualityFetch = now
                 }
-                emit(WeatherDataState.SuccessAirQuality(Pair(airQualityResponse, pollenResponse)))
+                emit(WeatherDataState.SuccessAirQuality(Triple(airQualityResponse, airQualityForecastResponse, pollenResponse)))
             } else if (modelCache.airQualityInfo != null) {
-                emit(WeatherDataState.SuccessAirQuality(Pair(modelCache.airQualityInfo!!, modelCache.pollenInfo)))
+                emit(WeatherDataState.SuccessAirQuality(Triple(modelCache.airQualityInfo!!, modelCache.airQualityForecast, modelCache.pollenInfo)))
             } else {
                 emit(WeatherDataState.Error("Failed to fetch air quality data."))
             }
@@ -778,7 +784,7 @@ sealed class WeatherDataState {
     data class SuccessHourly(val data: List<AllHourlyVarsReading>) : WeatherDataState()
     data class SuccessDaily(val data: List<DailyReading>) : WeatherDataState()
     data class SuccessCurrent(val data: Map<Pair<Double, Double>, CurrentWeatherReading>) : WeatherDataState()
-    data class SuccessAirQuality(val data: Pair<AirQualityInfo, PollenResponse?>) : WeatherDataState()
+    data class SuccessAirQuality(val data: Triple<AirQualityInfo, AirQualityForecastResponse?, PollenResponse?>) : WeatherDataState()
     data class SuccessVigilance(val data: VigilanceInfos) : WeatherDataState()
     data class Error(val message: String) : WeatherDataState()
 }

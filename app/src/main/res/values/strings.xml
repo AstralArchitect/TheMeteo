@@ -225,4 +225,13 @@
     <string name="gcu_scroll_to_bottom">Please scroll to the bottom to accept</string>
     <string name="policy_update_title">Policy Update</string>
     <string name="policy_update_message">Our Terms of Use and/or Privacy Policy have been updated. Please review them.</string>
-    </resources>
+    <string name="air_quality">Air Quality</string>
+    <string name="grasses">Grasses</string>
+    <string name="pollen_risks">Pollen Risks</string>
+    <string name="environmental_details">Environmental Details</string>
+    <string name="air_components">Air Components</string>
+    <string name="low">Low</string>
+    <string name="moderate">Moderate</string>
+    <string name="high">High</string>
+    <string name="very_high">Very High</string>
+</resources>

@@ -29,6 +29,10 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+import fr.matthstudio.themeteo.utilClasses.EnvironmentalUIModel
+import fr.matthstudio.themeteo.utilClasses.mapToEnvironmentalUI
+import kotlinx.coroutines.flow.map
+
 /**
  * Ce ViewModel sert d'intermédiaire entre l'UI (WeatherScreen) et la logique de données (WeatherCache).
  * Il expose les états de l'application de manière simple et réactive pour que l'UI puisse les afficher.
@@ -152,6 +156,21 @@ class WeatherViewModel(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         WeatherDataState.Loading
+    )
+
+    /**
+     * Données environnementales formatées pour l'UI.
+     */
+    val environmentalData: StateFlow<EnvironmentalUIModel?> = airQualityResponse.map { state ->
+        if (state is WeatherDataState.SuccessAirQuality) {
+            mapToEnvironmentalUI(state.data.first, state.data.second, state.data.third)
+        } else {
+            null
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        null
     )
 
     /**
