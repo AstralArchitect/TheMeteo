@@ -131,17 +131,24 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import fr.matthstudio.themeteo.TheMeteo
 import kotlinx.coroutines.Job
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
+import java.time.LocalDate
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -382,7 +389,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
 
                 if (dayReading.wmoEnsemble != null) {
                     val userSettings by viewModel.userSettings.collectAsState()
-                    val isBatterySaverActive by (LocalContext.current.applicationContext as fr.matthstudio.themeteo.TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+                    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
                     val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
                     
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -457,16 +464,16 @@ fun TemperatureRangeBar(
         // Background track
         drawRoundRect(
             color = Color.White.copy(alpha = 0.2f),
-            size = androidx.compose.ui.geometry.Size(width, height),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2, height / 2)
+            size = Size(width, height),
+            cornerRadius = CornerRadius(height / 2, height / 2)
         )
 
         // Range bar
         drawRoundRect(
-            brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+            brush = Brush.horizontalGradient(
                 colors = listOf(Color(0xFF64B5F6), Color(0xFFFFD54F), Color(0xFFFF8A65))
             ),
-            topLeft = androidx.compose.ui.geometry.Offset(startX, 0f),
+            topLeft = Offset(startX, 0f),
             size = androidx.compose.ui.geometry.Size(endX - startX, height),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2, height / 2)
         )
@@ -505,7 +512,7 @@ fun DailyForecastRow(
         ) {
             // Jour
             Text(
-                text = if (dayReading.date == java.time.LocalDate.now()) stringResource(R.string.today)
+                text = if (dayReading.date == LocalDate.now()) stringResource(R.string.today)
                 else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).replaceFirstChar { it.uppercase() },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
@@ -522,18 +529,11 @@ fun DailyForecastRow(
                         EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
                         EnsembleIconSmall(dayReading.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
                     }
-                } else if (userSettings.enableAnimatedIcons && !isBatterySaverActive && weatherWord != null) {
-                    AnimatedSvgIcon(
-                        iconPath = iconPath,
-                        modifier = Modifier.size(32.dp)
-                    )
                 } else if (weatherWord != null) {
-                    AsyncImage(
-                        model = iconPath,
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        contentScale = ContentScale.Fit,
-                        colorFilter = weatherIconFilter
+                    LottieWeatherIcon(
+                        iconPath = getLottieIconPath(weatherWord, false),
+                        animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
+                        modifier = Modifier.size(32.dp)
                     )
                 }
             }
@@ -567,7 +567,7 @@ fun DailyForecastRow(
                 text = UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                textAlign = TextAlign.End,
                 modifier = Modifier.width(35.dp)
             )
 
@@ -586,7 +586,7 @@ fun DailyForecastRow(
                 text = UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                textAlign = TextAlign.Start,
                 modifier = Modifier.width(35.dp)
             )
         }
@@ -602,20 +602,13 @@ fun DailyForecastRow(
 @Composable
 fun EnsembleIconSmall(wmo: Int?, animated: Boolean, filter: ColorFilter?) {
     if (wmo == null) return
-    if (animated) {
-        AnimatedSvgIcon(
-            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
-            modifier = Modifier.size(30.dp)
-        )
-    } else {
-        AsyncImage(
-            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
-            contentDescription = null,
-            modifier = Modifier.size(30.dp),
-            contentScale = ContentScale.Fit,
-            colorFilter = filter
-        )
-    }
+    val weatherWord = weatherCodeToSimpleWord(wmo)!!
+
+    LottieWeatherIcon(
+        iconPath = getLottieIconPath(weatherWord, false),
+        animate = animated,
+        modifier = Modifier.size(30.dp)
+    )
 }
 
 /*@Composable
@@ -1099,7 +1092,7 @@ fun MapPickerScreen(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     // Position initiale : GPS, fallback Paris
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
@@ -1732,9 +1725,9 @@ fun ResponsiveText(
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
     fontWeight: FontWeight? = null,
-    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
+    textAlign: TextAlign? = null,
     maxLines: Int = 1,
-    targetTextSizeHeight: androidx.compose.ui.unit.TextUnit = style.fontSize
+    targetTextSizeHeight: TextUnit = style.fontSize
 ) {
     var textSize by remember { mutableStateOf(targetTextSizeHeight) }
     var readyToDraw by remember { mutableStateOf(false) }

@@ -145,7 +145,7 @@
     <string name="vigilance_alerts_dept_code">Vigilances (Dept. %1$s)</string>
     <string name="official_website">Site Officiel</string>
     <string name="custom_location">Position Personnalisée</string>
-    <string name="pick_this_location">Chosir ce lieu</string>
+    <string name="pick_this_location">Choisir ce lieu</string>
     <string name="violent_wind">VENT VIOLENT</string>
     <string name="rain_flood">PLUIE-INNONDATION</string>
     <string name="thunderstorms_phenomenon">ORAGES</string>

@@ -78,8 +78,11 @@ import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.forecastMainActivity.AddLocationDialog
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
 import fr.matthstudio.themeteo.forecastMainActivity.LocationManagementSheet
+import fr.matthstudio.themeteo.forecastMainActivity.LottieWeatherIcon
 import fr.matthstudio.themeteo.forecastMainActivity.ResponsiveText
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
+import fr.matthstudio.themeteo.forecastMainActivity.getLottieIconPath
+import fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
@@ -88,100 +91,6 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.roundToInt
-
-fun getWeatherIconPath(word: SimpleWeatherWord): String {
-    val folder = "file:///android_asset/icons/weather/"
-    return folder + when (word) {
-        SimpleWeatherWord.SUNNY -> "clear-day.svg"
-        SimpleWeatherWord.SUNNY_CLOUDY -> "cloudy-1-day.svg"
-        SimpleWeatherWord.CLOUDY -> "cloudy.svg"
-        SimpleWeatherWord.FOGGY -> "fog.svg"
-        SimpleWeatherWord.HAZE -> "haze.svg"
-        SimpleWeatherWord.DUST -> "dust.svg"
-        SimpleWeatherWord.DRIZZLY -> "rainy-1.svg"
-        SimpleWeatherWord.RAINY1 -> "rainy-2.svg"
-        SimpleWeatherWord.RAINY2 -> "rainy-3.svg"
-        SimpleWeatherWord.HAIL -> "hail.svg"
-        SimpleWeatherWord.SNOWY1 -> "snowy-1.svg"
-        SimpleWeatherWord.SNOWY2 -> "snowy-2.svg"
-        SimpleWeatherWord.SNOWY3 -> "snowy-3.svg"
-        SimpleWeatherWord.SNOWY_MIX -> "rain-and-snow-mix.svg"
-        SimpleWeatherWord.STORMY -> "thunderstorms.svg"
-    }
-}
-
-@Composable
-fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
-    val isDark = isSystemInDarkTheme()
-    
-    // Filtre CSS pour adapter les couleurs au thème clair
-    val filterStyle = if (!isDark) {
-        "filter: brightness(0.9) saturate(1.1) drop-shadow(0px 0px 1px rgba(0,0,0,0.2));"
-    } else ""
-
-    Box(modifier = modifier) {
-        AndroidView(
-            factory = { context ->
-                object : WebView(context) {
-                    override fun onTouchEvent(event: MotionEvent): Boolean {
-                        return false
-                    }
-                }.apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    settings.javaScriptEnabled = false
-                    setBackgroundColor(0)
-                    isVerticalScrollBarEnabled = false
-                    isHorizontalScrollBarEnabled = false
-                    settings.loadWithOverviewMode = false
-                    settings.useWideViewPort = false
-                    
-                    // Désactiver TOUTES les interactions pour laisser passer le clic au parent
-                    isEnabled = false
-                    isClickable = false
-                    isLongClickable = false
-                    isFocusable = false
-                    isFocusableInTouchMode = false
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-            update = { webView ->
-                val html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                        <style>
-                            * { 
-                                pointer-events: none !important; 
-                                -webkit-tap-highlight-color: transparent;
-                                user-select: none;
-                            }
-                            html, body { 
-                                margin: 0; padding: 0; width: 100%; height: 100%; 
-                                overflow: hidden; background: transparent; 
-                                display: flex; align-items: center; justify-content: center;
-                            }
-                            img { 
-                                width: 100%; height: 100%; 
-                                object-fit: contain; 
-                                $filterStyle
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <img src="$iconPath">
-                    </body>
-                    </html>
-                """.trimIndent()
-                webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
-            }
-        )
-        // Pas besoin d'overlay si la WebView est bien inerte
-    }
-}
 
 class DayChooserActivity : ComponentActivity() {
 
@@ -454,21 +363,12 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
 
 @Composable
 fun EnsembleIcon(wmo: Int, animated: Boolean, filter: ColorFilter?) {
-    if (animated) {
-        AnimatedSvgIcon(
-            // Since WMO is never null, we can safely use the !! operator
-            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
-            modifier = Modifier.size(55.dp)
-        )
-    } else {
-        AsyncImage(
-            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)!!),
-            contentDescription = null,
-            modifier = Modifier.size(55.dp),
-            contentScale = ContentScale.Fit,
-            colorFilter = filter
-        )
-    }
+    LottieWeatherIcon(
+        // Since WMO is never null, we can safely use the !! operator
+        iconPath = getLottieIconPath(weatherCodeToSimpleWord(wmo)!!),
+        animate = animated,
+        modifier = Modifier.size(55.dp)
+    )
 }
 
 /**
@@ -623,32 +523,13 @@ fun SingleDailyForecastCard(
                         }
                     }
                 } else {
-                    if (animated && fileName is String) {
-                        AnimatedSvgIcon(
-                            iconPath = fileName,
+                    if (weatherWord != null) {
+                        LottieWeatherIcon(
+                            iconPath = getLottieIconPath(weatherWord),
+                            animate = animated,
                             modifier = Modifier
                                 .size(85.dp)
                                 .padding(bottom = 4.dp)
-                        )
-                    } else if (fileName is String){
-                        AsyncImage(
-                            model = fileName,
-                            contentDescription = "Icône météo",
-                            modifier = Modifier
-                                .size(85.dp)
-                                .padding(bottom = 4.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
-                        )
-                    } else {
-                        Image(
-                            imageVector = fileName as ImageVector,
-                            contentDescription = "Icône météo",
-                            modifier = Modifier
-                                .size(85.dp)
-                                .padding(bottom = 4.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
                         )
                     }
                 }

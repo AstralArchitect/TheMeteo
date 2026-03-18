@@ -116,6 +116,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.LocationIdentifier
@@ -194,77 +199,45 @@ fun getWeatherIconPath(word: SimpleWeatherWord, isNight: Boolean = false): Strin
     }
 }
 
-@Composable
-fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
-    val isDark = isSystemInDarkTheme()
-    
-    // Filtre CSS pour adapter les couleurs au thème clair sans perdre les teintes d'origine
-    // En mode clair: on assombrit légèrement et on ajoute une ombre portée pour le contraste
-    val filterStyle = if (!isDark) {
-        "filter: brightness(0.8) saturate(1.2) drop-shadow(0px 0px 1px rgba(0,0,0,0.3));"
-    } else ""
-
-    Box(modifier = modifier) {
-        AndroidView(
-            factory = { ctx ->
-                object : WebView(ctx) {
-                    override fun onTouchEvent(event: MotionEvent): Boolean {
-                        return false
-                    }
-                }.apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    settings.javaScriptEnabled = false
-                    setBackgroundColor(0)
-                    isVerticalScrollBarEnabled = false
-                    isHorizontalScrollBarEnabled = false
-                    settings.loadWithOverviewMode = false
-                    settings.useWideViewPort = false
-
-                    // Désactiver TOUTES les interactions pour laisser passer le clic au parent
-                    isEnabled = false
-                    isClickable = false
-                    isLongClickable = false
-                    isFocusable = false
-                    isFocusableInTouchMode = false
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-            update = { webView ->
-                val html = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                    <style>
-                        * { 
-                            pointer-events: none !important; 
-                            -webkit-tap-highlight-color: transparent;
-                            user-select: none;
-                        }
-                        html, body { 
-                            margin: 0; padding: 0; width: 100%; height: 100%; 
-                            overflow: hidden; background: transparent; 
-                            display: flex; align-items: center; justify-content: center;
-                        }
-                        img { 
-                            width: 100%; height: 100%; 
-                            object-fit: contain; 
-                            $filterStyle
-                        }
-                    </style>
-                </head>
-                <body>
-                    <img src="$iconPath">
-                </body>
-                </html>
-            """.trimIndent()
-                webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
-            }
-        )
+fun getLottieIconPath(word: SimpleWeatherWord, isNight: Boolean = false): String {
+    val baseFolder = "icons/weather/"
+    return baseFolder + when (word) {
+        SimpleWeatherWord.SUNNY -> if (isNight) "clear-night.json" else "clear-day.json"
+        SimpleWeatherWord.SUNNY_CLOUDY -> if (isNight) "partly-cloudy-night.json" else "partly-cloudy-day.json"
+        SimpleWeatherWord.CLOUDY -> "cloudy.json"
+        SimpleWeatherWord.FOGGY -> if (isNight) "fog-night.json" else "fog-day.json"
+        SimpleWeatherWord.HAZE -> if (isNight) "haze-night.json" else "haze-day.json"
+        SimpleWeatherWord.DUST -> if (isNight) "dust-night.json" else "dust-day.json"
+        SimpleWeatherWord.DRIZZLY -> "drizzle.json"
+        SimpleWeatherWord.RAINY1 -> "rain.json"
+        SimpleWeatherWord.RAINY2 -> "extreme-rain.json"
+        SimpleWeatherWord.HAIL -> "hail.json"
+        SimpleWeatherWord.SNOWY1 -> "overcast-snow.json"
+        SimpleWeatherWord.SNOWY2 -> "extreme-snow.json"
+        SimpleWeatherWord.SNOWY3 -> "snow.json"
+        SimpleWeatherWord.SNOWY_MIX -> "extreme-sleet.json"
+        SimpleWeatherWord.STORMY -> if (isNight) "thunderstorms-night.json" else "thunderstorms-day.json"
     }
+}
+
+@Composable
+fun LottieWeatherIcon(
+    iconPath: String,
+    animate: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val composition by rememberLottieComposition(LottieCompositionSpec.Asset(iconPath))
+    val progress by animateLottieCompositionAsState(
+        composition = composition,
+        isPlaying = animate,
+        iterations = LottieConstants.IterateForever
+    )
+
+    LottieAnimation(
+        composition = composition,
+        progress = { if (animate) progress else 0f },
+        modifier = modifier
+    )
 }
 
 // Helper function to convert ISO8601 string (e.g., "2024-05-30T05:58:00+02:00") to LocalDateTime
@@ -699,21 +672,12 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                             
                             val userSettings by viewModel.userSettings.collectAsState()
                             val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
-                            
-                            if (userSettings.enableAnimatedIcons && !isBatterySaverActive) {
-                                AnimatedSvgIcon(
-                                    iconPath = getWeatherIconPath(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight),
-                                    modifier = Modifier.size(120.dp)
-                                )
-                            } else {
-                                AsyncImage(
-                                    model = getWeatherIconPath(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(100.dp),
-                                    contentScale = ContentScale.Fit,
-                                    colorFilter = weatherIconFilter
-                                )
-                            }
+
+                            LottieWeatherIcon(
+                                iconPath = getLottieIconPath(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight),
+                                animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
+                                modifier = Modifier.size(120.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             val temperature = (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
                             Text(
@@ -805,7 +769,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 )
                             }
 
-                            if ((hourlyForecast as WeatherDataState.SuccessHourly).data.isEmpty())
+                            if ((hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.isEmpty() ?: true)
                                 return@BentoCard
 
                             val scrollState = rememberScrollState()

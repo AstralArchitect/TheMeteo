@@ -28,7 +28,7 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
+        versionCode = 30
         versionName = "2.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -116,6 +116,7 @@ dependencies {
     // Dépendance de base pour Coil
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
+    implementation(libs.lottie.compose)
 
     // Ktor pour les requêtes réseau
     implementation(libs.ktor.client.core)

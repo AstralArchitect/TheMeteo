@@ -64,13 +64,16 @@ import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WindUnit
+import fr.matthstudio.themeteo.forecastMainActivity.LottieWeatherIcon
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
+import fr.matthstudio.themeteo.forecastMainActivity.getLottieIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.getSimpleWeather
 import fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
+import androidx.compose.ui.platform.LocalContext
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
@@ -922,41 +925,9 @@ fun WeatherIconGraph(
 ) {
     // Get the forecast
     val forecast by viewModel.hourlyForecast.collectAsState()
-    // Charger les icônes
-    val iconWeatherFolder = "file:///android_asset/icons/weather/"
-    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
-    val sunnyNightIconPath: String = iconWeatherFolder + "clear-night.svg"
-    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
-    val sunnyCloudyNightIconPath: String = iconWeatherFolder + "cloudy-3-night.svg"
-    val sunnyCloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
-    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
-    val dustIconPath: String = iconWeatherFolder + "dust.svg"
-    val drizzleDayIconPath: String = iconWeatherFolder + "rainy-1-day.svg"
-    val drizzleNightIconPath: String = iconWeatherFolder + "rainy-1-night.svg"
-    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
-    val rainy1DayIconPath: String = iconWeatherFolder + "rainy-2-day.svg"
-    val rainy1NightIconPath: String = iconWeatherFolder + "rainy-2-night.svg"
-    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
-    val rainy2DayIconPath: String = iconWeatherFolder + "rainy-3-day.svg"
-    val rainy2NightIconPath: String = iconWeatherFolder + "rainy-3-night.svg"
-    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
-    val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
-    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
-    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
-    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
-    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
-
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                setToScale(0.9f, 0.9f, 0.9f, 1f)
-            })
-        } else null
-    }
+    val userSettings by viewModel.userSettings.collectAsState()
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+    val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
 
     Box(
         modifier = Modifier
@@ -974,56 +945,24 @@ fun WeatherIconGraph(
                 val radiation = data.skyInfo.shortwaveRadiation
                 val isDay = if (radiation != null) radiation >= 1.0 else null
                 
-                val fileName = when (weatherWord) {
-                    SimpleWeatherWord.SUNNY -> if (isDay != null) if (isDay) sunnyDayIconPath else sunnyNightIconPath else sunnyDayIconPath
-                    SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay != null) if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath else sunnyCloudyIconPath
-                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
-                    SimpleWeatherWord.FOGGY -> foggyIconPath
-                    SimpleWeatherWord.HAZE -> hazeIconPath
-                    SimpleWeatherWord.DUST -> dustIconPath
-                    SimpleWeatherWord.DRIZZLY -> if (isDay != null) if (isDay) drizzleDayIconPath else drizzleNightIconPath else drizzleIconPath
-                    SimpleWeatherWord.RAINY1 -> if (isDay != null) if (isDay) rainy1DayIconPath else rainy1NightIconPath else rainy1IconPath
-                    SimpleWeatherWord.RAINY2 -> if (isDay != null) if (isDay) rainy2DayIconPath else rainy2NightIconPath else rainy2IconPath
-                    SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
-                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
-                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
-                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
-                    SimpleWeatherWord.STORMY -> stormyIconPath
-                    null -> Icons.Default.NotInterested
-                }
-
                 if (data.wmoEnsemble != null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        AsyncImage(
-                            // Since data.wmoEnsemble.best is never null, we can safely use the !! operator
-                            model = isDay?.let { getWeatherIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.best)!!,
-                                (!it)
-                            ) },
-                            contentDescription = null,
-                            modifier = Modifier.width(20.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
+                        LottieWeatherIcon(
+                            iconPath = getLottieIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.best)!!, (isDay == false)),
+                            animate = animated,
+                            modifier = Modifier.width(20.dp)
                         )
-                        AsyncImage(
-                            // Since data.wmoEnsemble.worst is never null, we can safely use the !! operator
-                            model = isDay?.let { getWeatherIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.worst)!!,
-                                (!it)
-                            ) },
-                            contentDescription = null,
-                            modifier = Modifier.width(20.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
+                        LottieWeatherIcon(
+                            iconPath = getLottieIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.worst)!!, (isDay == false)),
+                            animate = animated,
+                            modifier = Modifier.width(20.dp)
                         )
                     }
-                } else if (fileName is String) {
-                    AsyncImage(
-                        model = fileName,
-                        contentDescription = "Icône météo actuelle",
-                        modifier = Modifier
-                            .width(41.5.dp),
-                        contentScale = ContentScale.Fit,
-                        colorFilter = weatherIconFilter
+                } else if (weatherWord != null) {
+                    LottieWeatherIcon(
+                        iconPath = getLottieIconPath(weatherWord, (isDay == false)),
+                        animate = animated,
+                        modifier = Modifier.width(41.5.dp)
                     )
                 } else {
                     Image(
@@ -1032,7 +971,6 @@ fun WeatherIconGraph(
                         modifier = Modifier
                             .width(41.5.dp),
                         contentScale = ContentScale.Fit,
-                        colorFilter = weatherIconFilter
                     )
                 }
             }
