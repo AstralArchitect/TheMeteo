@@ -2,13 +2,9 @@ package fr.matthstudio.themeteo.dayChoserActivity
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.MotionEvent
-import android.view.ViewGroup
-import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -57,8 +53,6 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -66,8 +60,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
@@ -82,7 +74,6 @@ import fr.matthstudio.themeteo.forecastMainActivity.LottieWeatherIcon
 import fr.matthstudio.themeteo.forecastMainActivity.ResponsiveText
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.getLottieIconPath
-import fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
@@ -90,7 +81,6 @@ import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
-import kotlin.math.roundToInt
 
 class DayChooserActivity : ComponentActivity() {
 

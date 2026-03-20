@@ -77,19 +77,6 @@
                                       M28,40.9 m -1,0 a 1,1 0 1,1 2,0 a 1,1 0 1,1 -2,0"
                     android:fillColor="#FFFFFF" />
             </group>
-
-            <!-- AstralArchitect "A" Signature (Right half) -->
-            <group
-                android:translateX="-1.5"
-                android:translateY="1">
-                <path
-                    android:pathData="M40,30 L36,38 M40,30 L44,38 M37.5,35 L42.5,35"
-                    android:strokeColor="#455A64"
-                    android:strokeWidth="1.2"
-                    android:strokeLineCap="round"
-                    android:strokeLineJoin="round"
-                    android:alpha="0.8" />
-            </group>
         </group>
 
         <!-- Rain Drops below the cloud -->

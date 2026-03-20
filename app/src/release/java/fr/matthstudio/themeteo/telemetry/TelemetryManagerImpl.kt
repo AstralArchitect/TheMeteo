@@ -4,6 +4,8 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import android.content.Context
 
 import fr.matthstudio.themeteo.BuildConfig
+import java.util.concurrent.CancellationException
+import java.net.UnknownHostException
 
 class TelemetryManagerImpl(context: Context) : TelemetryManager {
     private val crashlytics = if (BuildConfig.FIREBASE_ENABLED) FirebaseCrashlytics.getInstance() else null
@@ -18,6 +20,10 @@ class TelemetryManagerImpl(context: Context) : TelemetryManager {
     }
 
     override fun logException(throwable: Throwable) {
+        if (throwable is CancellationException || 
+            throwable is UnknownHostException || 
+            throwable is java.net.ConnectException || 
+            throwable is java.net.SocketTimeoutException) return
         crashlytics?.recordException(throwable)
         if (crashlytics == null) {
             android.util.Log.e("Telemetry", "Exception would be sent to Crashlytics if enabled:", throwable)

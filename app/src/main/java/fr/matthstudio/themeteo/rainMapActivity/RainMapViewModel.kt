@@ -13,6 +13,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,6 +66,7 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
                     _uiState.value = RainMapUiState.Error("No data available")
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 (applicationContext as TheMeteo).container.telemetryManager.logException(e)
                 _uiState.value = RainMapUiState.Error(e.message ?: "Unknown error")
             }

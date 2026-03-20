@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,12 +71,13 @@ import fr.matthstudio.themeteo.forecastMainActivity.LottieWeatherIcon
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.getLottieIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.getSimpleWeather
-import fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import fr.matthstudio.themeteo.UserSettings
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
@@ -143,6 +147,27 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
     val showTemperatureDetailsGraphs = remember { mutableStateOf(false) }
     val showPrecipitationDetailsGraphs = remember { mutableStateOf(false) }
     val showUvDetailsGraphs = remember { mutableStateOf(false) }
+
+    // Auto-scroll to 6 AM if starting at 00h
+    val hasScrolled = remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    LaunchedEffect(forecast) {
+        if (forecast is WeatherDataState.SuccessHourly && !hasScrolled.value) {
+            val data = (forecast as WeatherDataState.SuccessHourly).data
+            if (data.isNotEmpty() && data.first().time.hour == 0) {
+                val index6h = data.indexOfFirst { it.time.hour == 6 }
+                if (index6h != -1) {
+                    val contentWidthPx = with(density) { 1000.dp.toPx() }
+                    val xPadding = 40f // Matching GenericGraphGlobal's xPadding
+                    val xStep = (contentWidthPx - 2 * xPadding) / (data.size - 1)
+                    val scrollOffset = xPadding + index6h * xStep - (xStep / 2)
+                    scrollState.scrollTo(scrollOffset.toInt())
+
+                    hasScrolled.value = true
+                }
+            }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -482,19 +507,18 @@ fun BackgroundGrid(
     itemCount: Int,
     contentWidth: Dp = 1000.dp
 ) {
-    val xPadding = 30f
+    val xPadding = 40f
     
     Canvas(
         modifier = Modifier
             .width(contentWidth)
             .fillMaxHeight()
-            .padding(start = 10.dp, end = 16.dp)
     ) {
         val xStep = (size.width - 2 * xPadding) / (itemCount - 1)
         val gridColor = Color.Gray.copy(alpha = 0.3f)
 
         (0 until itemCount - 1).forEach { i ->
-            val drawX = xPadding + (i * xStep) + (xStep / 2)
+            val drawX = xPadding + (i * xStep) + xStep / 2
             drawLine(
                 color = gridColor,
                 start = Offset(drawX, 0f),
@@ -690,12 +714,10 @@ fun GenericGraphGlobal(
 
         Canvas(
             modifier = Modifier
-                .width(contentWidth) // La largeur du contenu défilable
+                .width(contentWidth)
                 .height(contentHeight)
-                .padding(start = 10.dp, end = 16.dp)
         ) {
-            // 2. Ajuster le padding pour qu'il soit raisonnable
-            val xPadding = 30f // Padding sur les côtés à l'intérieur du Canvas
+            val xPadding = 40f // Unifié pour laisser de la place au texte sans padding externe
             val yPadding = 80f
             var maxValue = forecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
             var minValue = forecast.minOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
@@ -749,44 +771,44 @@ fun GenericGraphGlobal(
                     color = graphColor.copy(alpha = 0.3f)
                 )
 
-                        // Labels pour les valeurs min/max de l'ensemble (optionnel, pour plus de clarté)
-                        ensembleStats.forEachIndexed { i, stat ->
-                            if (stat?.min != null && stat.max != null) {
-                                val x = xPadding + (i * xStep)
-                                val yMax = size.height - yPadding - ((stat.max - minValue) * yScale)
-                                val yMin = size.height - yPadding - ((stat.min - minValue) * yScale)
-                                val yAvg = size.height - yPadding - ((forecast[i].toDouble() - minValue) * yScale)
+                // Labels pour les valeurs min/max de l'ensemble (optionnel, pour plus de clarté)
+                ensembleStats.forEachIndexed { i, stat ->
+                    if (stat?.min != null && stat.max != null) {
+                        val x = xPadding + (i * xStep)
+                        val yMax = size.height - yPadding - ((stat.max - minValue) * yScale)
+                        val yMin = size.height - yPadding - ((stat.min - minValue) * yScale)
+                        val yAvg = size.height - yPadding - ((forecast[i].toDouble() - minValue) * yScale)
 
-                                // On ne dessine que si c'est significativement différent de la moyenne pour éviter l'encombrement
-                                if (i % 4 == 0 || i == ensembleStats.size - 1) {
-                                    val minDistance = 55f // Seuil en pixels pour éviter la superposition
+                        // On ne dessine que si c'est significativement différent de la moyenne pour éviter l'encombrement
+                        if (i % 4 == 0 || i == ensembleStats.size - 1) {
+                            val minDistance = 55f // Seuil en pixels pour éviter la superposition
 
-                                    val yMaxText = kotlin.math.min(yMax.toFloat() - 5f, yAvg.toFloat() - minDistance)
-                                    drawContext.canvas.nativeCanvas.drawText(
-                                        stat.max.toSmartString(),
-                                        x,
-                                        yMaxText,
-                                        Paint().apply {
-                                            textAlign = Paint.Align.CENTER
-                                            textSize = 25f
-                                            color = textColor
-                                        }
-                                    )
-
-                                    // les valeurs min sont toujours en bas, elles ne superposent pas le texte d'avg qui est en haut
-                                    drawContext.canvas.nativeCanvas.drawText(
-                                        stat.min.toSmartString(),
-                                        x,
-                                        yMin.toFloat() + 25f,
-                                        Paint().apply {
-                                            textAlign = Paint.Align.CENTER
-                                            textSize = 25f
-                                            color = textColor
-                                        }
-                                    )
+                            val yMaxText = kotlin.math.min(yMax.toFloat() - 5f, yAvg.toFloat() - minDistance)
+                            drawContext.canvas.nativeCanvas.drawText(
+                                stat.max.toSmartString(),
+                                x,
+                                yMaxText,
+                                Paint().apply {
+                                    textAlign = Paint.Align.CENTER
+                                    textSize = 25f
+                                    color = textColor
                                 }
-                            }
+                            )
+
+                            // les valeurs min sont toujours en bas, elles ne superposent pas le texte d'avg qui est en haut
+                            drawContext.canvas.nativeCanvas.drawText(
+                                stat.min.toSmartString(),
+                                x,
+                                yMin.toFloat() + 25f,
+                                Paint().apply {
+                                    textAlign = Paint.Align.CENTER
+                                    textSize = 25f
+                                    color = textColor
+                                }
+                            )
                         }
+                    }
+                }
             }
 
             // Préparation des chemins
@@ -919,61 +941,108 @@ fun WindVectors(forecast: WeatherDataState, windUnit: WindUnit = WindUnit.KPH, s
 }
 
 @Composable
+fun WeatherIconGraphGlobal(
+    forecast: WeatherDataState,
+    scrollState: ScrollState = rememberScrollState(),
+    userSettings: UserSettings,
+    isBatterySaverActive: Boolean,
+    contentWidth: Dp,
+    showPairsOnly: Boolean
+) {
+    val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
+    val hourlyData = (forecast as? WeatherDataState.SuccessHourly)?.data
+
+    var numIcons = hourlyData?.size ?: 0
+    if (showPairsOnly)
+        numIcons /= 2
+
+    val iconsSize = 40.dp
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val xPaddingPx = 40f
+    
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState),
+    ) {
+        Box(modifier = Modifier.width(contentWidth)) {
+            if (hourlyData == null) return@Box
+            
+            val canvasWidthPx = with(density) { contentWidth.toPx() }
+            val xStepPx = (canvasWidthPx - 2 * xPaddingPx) / (hourlyData.size - 1)
+            
+            for (i in 0..<hourlyData.size) {
+                if (showPairsOnly && i % 2 != 0) continue
+                
+                val xPosPx = xPaddingPx + (i * xStepPx)
+                val xPosDp = with(density) { xPosPx.toDp() }
+                
+                val weatherWord = getSimpleWeather(hourlyData[i]).word
+                val radiation = hourlyData[i].skyInfo.shortwaveRadiation
+                val isDay = if (radiation != null) radiation >= 1.0 else null
+
+                Box(
+                    modifier = Modifier
+                        .offset(x = xPosDp - (iconsSize / 2))
+                        .size(iconsSize),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (hourlyData[i].wmoEnsemble != null) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            LottieWeatherIcon(
+                                iconPath = getLottieIconPath(
+                                    weatherCodeToSimpleWord(hourlyData[i].wmoEnsemble?.best)!!,
+                                    (isDay == false)
+                                ),
+                                animate = animated,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            LottieWeatherIcon(
+                                iconPath = getLottieIconPath(
+                                    weatherCodeToSimpleWord(hourlyData[i].wmoEnsemble?.worst)!!,
+                                    (isDay == false)
+                                ),
+                                animate = animated,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    } else if (weatherWord != null) {
+                        LottieWeatherIcon(
+                            iconPath = getLottieIconPath(weatherWord, (isDay == false)),
+                            animate = animated,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Image(
+                            imageVector = Icons.Default.NotInterested,
+                            contentDescription = "Icône météo actuelle",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun WeatherIconGraph(
     viewModel: WeatherViewModel,
-    scrollState: ScrollState = rememberScrollState()
+    scrollState: ScrollState = rememberScrollState(),
+    contentWidth: Dp = 1000.dp
 ) {
     // Get the forecast
     val forecast by viewModel.hourlyForecast.collectAsState()
     val userSettings by viewModel.userSettings.collectAsState()
     val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
-    val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(scrollState), // ScrollState partagé
-    ) {
-        val hourlyData = (forecast as? WeatherDataState.SuccessHourly)?.data
-        Row(
-            modifier = Modifier.width(1000.dp), // Largeur fixe, identique à GenericGraph
-            horizontalArrangement = Arrangement.SpaceAround, // L'arrangement gère l'espacement
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            hourlyData?.forEach { data ->
-                val weatherWord = getSimpleWeather(data).word
-                val radiation = data.skyInfo.shortwaveRadiation
-                val isDay = if (radiation != null) radiation >= 1.0 else null
-                
-                if (data.wmoEnsemble != null) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        LottieWeatherIcon(
-                            iconPath = getLottieIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.best)!!, (isDay == false)),
-                            animate = animated,
-                            modifier = Modifier.width(20.dp)
-                        )
-                        LottieWeatherIcon(
-                            iconPath = getLottieIconPath(weatherCodeToSimpleWord(data.wmoEnsemble.worst)!!, (isDay == false)),
-                            animate = animated,
-                            modifier = Modifier.width(20.dp)
-                        )
-                    }
-                } else if (weatherWord != null) {
-                    LottieWeatherIcon(
-                        iconPath = getLottieIconPath(weatherWord, (isDay == false)),
-                        animate = animated,
-                        modifier = Modifier.width(41.5.dp)
-                    )
-                } else {
-                    Image(
-                        imageVector = Icons.Default.NotInterested,
-                        contentDescription = "Icône météo actuelle",
-                        modifier = Modifier
-                            .width(41.5.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-            }
-        }
-    }
+    WeatherIconGraphGlobal(
+        forecast,
+        scrollState,
+        userSettings,
+        isBatterySaverActive,
+        contentWidth,
+        false
+    )
 }

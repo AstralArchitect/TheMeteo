@@ -36,6 +36,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -196,6 +197,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 parameter("format", "json")
             }.body<GeocodingResponse>().results
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("Geocoder", "Erreur de géocodage : ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -276,6 +278,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("AirQuality", "Exception lors de la récupération de la qualité de l'air : ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -319,6 +322,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("AirQuality", "Exception lors de la récupération des prévisions d'air : ${e.message}")
             null
         }
@@ -347,6 +351,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 } else null
             } else null
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             telemetryManager?.logException(e)
             null
         }
@@ -387,6 +392,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("PollenAPI", "Exception lors de la récupération des données pollen : ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -448,6 +454,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             try {
                                 OffsetDateTime.parse(it.endTime).isAfter(now)
                             } catch (e: Exception) {
+            if (e is CancellationException) throw e
                                 true
                             }
                         }.sortedBy { it.beginTime }
@@ -478,6 +485,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherService", "Exception lors de la récupération de la carte vigilance", e)
             telemetryManager?.logException(e)
             null
@@ -512,6 +520,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     // Si la liste est vide, la boucle continue et réduit la précision
                 }
             } catch (e: Exception) {
+            if (e is CancellationException) throw e
                 Log.e("WeatherService", "Erreur Geocoding à la précision $precision : ${e.message}")
                 telemetryManager?.logException(e)
                 // En cas d'erreur réseau, on peut choisir d'arrêter ou de continuer
@@ -571,6 +580,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("getCurrentWeather", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
             telemetryManager?.logException(e)
             return null
@@ -621,6 +631,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("getForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -765,6 +776,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             Pair(mergedHourly, dailyReadings)
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("getEnsembleForecast", "Error fetching ensemble forecast: ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -860,11 +872,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         wmo = (wmo?.getOrNull(i) as? Double).safeToInt()
                     )
                 } catch (e: Exception) {
+            if (e is CancellationException) throw e
                     telemetryManager?.logException(e)
                     null
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             telemetryManager?.logException(e)
             return null
         }
@@ -910,11 +924,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         sunrise = sunrise?.getOrNull(i) as? String ?: ""
                     )
                 } catch (e: Exception) {
+            if (e is CancellationException) throw e
                     telemetryManager?.logException(e)
                     null
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données journalières", e)
             telemetryManager?.logException(e)
             return null
@@ -934,6 +950,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
             return result
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherServiceParser", "Erreur lors du parsing des données actuelles", e)
             telemetryManager?.logException(e)
             return null
@@ -948,6 +965,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         return try {
             client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").body<PolicyUpdateInfo>()
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherService", "Error fetching policy updates: ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -958,6 +976,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         return try {
             client.get("https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html").body<String>()
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherService", "Error fetching terms of use: ${e.message}")
             telemetryManager?.logException(e)
             null

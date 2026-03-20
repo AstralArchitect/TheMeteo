@@ -146,6 +146,7 @@ import kotlinx.coroutines.Job
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WindUnit
+import fr.matthstudio.themeteo.dayGraphsActivity.WeatherIconGraphGlobal
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import java.time.LocalDate
@@ -521,7 +522,6 @@ fun DailyForecastRow(
 
             // Icône
             val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
-            val iconPath = if (weatherWord != null) getWeatherIconPath(weatherWord) else ""
             
             Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
                 if (dayReading.wmoEnsemble != null) {
@@ -1241,228 +1241,27 @@ fun AdvancedGraph(
     )
 }
 
-/*@Composable
-fun BarsGraph(
-    viewModel: WeatherViewModel,
-    valueRange: ClosedFloatingPointRange<Float>? = null,
-    scrollState: ScrollState = rememberScrollState()
-) {
-    val forecast by viewModel.minutelyForecast15.collectAsState()
-
-    if (forecast.isEmpty()) {
-        return // Ne rien dessiner si les données ne sont pas prêtes
-    }
-
-    Box(
-        modifier = Modifier
-            .width(1000.dp) // Largeur fixe pour correspondre aux autres graphiques
-            .horizontalScroll(scrollState),
-    ) {
-        val rainColor = Color(0xFF64B5F6) // Bleu pour la pluie
-        val snowColor = Color.White       // Blanc pour la neige
-        val textColor: Int = AndroidColor.rgb(
-            MaterialTheme.colorScheme.onBackground.red,
-            MaterialTheme.colorScheme.onBackground.green,
-            MaterialTheme.colorScheme.onBackground.blue
-        )
-
-        Canvas(
-            modifier = Modifier
-                .width(1000.dp)
-                .height(150.dp)
-        ) {
-            val xPadding = 50f
-            val yPadding = 100f
-
-            // Déterminer la valeur maximale pour l'échelle Y
-            val maxPrecipitation = forecast.maxOfOrNull { it.rain + it.snowfall }?.toFloat() ?: 1f
-            val maxValue = valueRange?.endInclusive?.coerceAtLeast(maxPrecipitation) ?: maxPrecipitation
-
-            if (maxValue <= 0f) return@Canvas // Éviter la division par zéro si aucune précipitation
-
-            val canvasWidth = size.width
-            val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
-            val barWidth = xStep * 0.7f // Laisser un peu d'espace entre les barres
-            val yScale = (size.height - 2 * yPadding) / maxValue
-
-            forecast.forEachIndexed { index, reading ->
-                val x = xPadding + (index * xStep)
-                val rainHeight = (reading.rain * yScale).toFloat()
-                val snowHeight = (reading.snowfall * yScale).toFloat()
-                val totalHeight = rainHeight + snowHeight
-
-                // 1. Dessiner la barre de pluie (en bas)
-                if (rainHeight > 0) {
-                    drawRect(
-                        color = rainColor,
-                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight),
-                        size = androidx.compose.ui.geometry.Size(barWidth, rainHeight)
-                    )
-                }
-
-                // 2. Dessiner la barre de neige (empilée sur la pluie)
-                if (snowHeight > 0) {
-                    drawRect(
-                        color = snowColor,
-                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight - snowHeight),
-                        size = androidx.compose.ui.geometry.Size(barWidth, snowHeight)
-                    )
-                }
-
-                // 3. Dessiner la valeur totale au-dessus de la barre (si > 0)
-                val totalPrecipitationValue = reading.rain + reading.snowfall
-                if (totalPrecipitationValue > 0) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        String.format(Locale.getDefault(), "%.1f", totalPrecipitationValue), // Formatter avec une décimale
-                        x,
-                        size.height - yPadding - totalHeight - 15f, // Position au-dessus de la barre
-                        Paint().apply {
-                            textAlign = Paint.Align.CENTER
-                            textSize = 25f
-                            color = textColor
-                        }
-                    )
-                }
-
-                // 4. Dessiner la minute en bas
-                drawContext.canvas.nativeCanvas.drawText(
-                    reading.time.format(DateTimeFormatter.ofPattern("mm")),
-                    x,
-                    size.height - yPadding + 90f,
-                    Paint().apply {
-                        textAlign = Paint.Align.CENTER
-                        textSize = 35f
-                        color = textColor
-                    }
-                )
-                // Dessiner l'heure au dessus de la minute si elle est égale à 0 et dessiner une barre vertical devant celle-ci
-                if (reading.time.minute == 0) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        reading.time.format(DateTimeFormatter.ofPattern("HH")) + "h",
-                        x,
-                        size.height - yPadding + 60f,
-                        Paint().apply {
-                            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                            textAlign = Paint.Align.CENTER
-                            textSize = 35f
-                            color = textColor
-                        }
-                    )
-                    drawRect(
-                        color = Color.Gray,
-                        topLeft = Offset(x - xStep / 2f, 0f),
-                        size = androidx.compose.ui.geometry.Size(2f, size.height)
-                    )
-                }
-            }
-        }
-    }
-}*/
-
 @Composable
 fun WeatherIconGraph(
     viewModel: WeatherViewModel,
-    scrollState: ScrollState = rememberScrollState()
+    forecast: WeatherDataState?,
+    scrollState: ScrollState = rememberScrollState(),
+    contentWidth: Dp = 1000.dp,
+    showPairsOnly: Boolean = false
 ) {
-    val isDark = isSystemInDarkTheme()
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                setToScale(0.9f, 0.9f, 0.9f, 1f)
-            })
-        } else null
-    }
     // Get the forecast
-    val forecast by viewModel.hourlyForecast.collectAsState()
-    // Charger les icônes
-    val iconWeatherFolder = "file:///android_asset/icons/weather/"
-    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
-    val sunnyNightIconPath: String = iconWeatherFolder + "clear-night.svg"
-    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
-    val sunnyCloudyNightIconPath: String = iconWeatherFolder + "cloudy-3-night.svg"
-    val sunnyCloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
-    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
-    val dustIconPath: String = iconWeatherFolder + "dust.svg"
-    val drizzleDayIconPath: String = iconWeatherFolder + "rainy-1-day.svg"
-    val drizzleNightIconPath: String = iconWeatherFolder + "rainy-1-night.svg"
-    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
-    val rainy1DayIconPath: String = iconWeatherFolder + "rainy-2-day.svg"
-    val rainy1NightIconPath: String = iconWeatherFolder + "rainy-2-night.svg"
-    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
-    val rainy2DayIconPath: String = iconWeatherFolder + "rainy-3-day.svg"
-    val rainy2NightIconPath: String = iconWeatherFolder + "rainy-3-night.svg"
-    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
-    val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
-    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
-    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
-    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
-    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
+    val defaultForecast by viewModel.hourlyForecast.collectAsState()
+    val userSettings by viewModel.userSettings.collectAsState()
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-    val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord?, Boolean?>>()
-
-    if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation != null) {
-        for (index in 0..23) {
-            simpleWeatherList.add(
-                Pair(
-                    getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word,
-                    (forecast as WeatherDataState.SuccessHourly).data[index].skyInfo.shortwaveRadiation!! >= 1.0
-                )
-            )
-        }
-    } else {
-        for (index in 0..23) {
-            simpleWeatherList.add(Pair(getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word, null))
-        }
-    }
-
-    // If one of the wmo is null, do not display the Icon Graphic
-    if (simpleWeatherList.any { it.first == null }) return
-
-    Box(
-        modifier = Modifier
-            .width(1000.dp) // Largeur fixe, identique à GenericGraph
-            .horizontalScroll(scrollState), // ScrollState partagé
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth(), // La Row prend toute la largeur du Box (1000.dp).
-            horizontalArrangement = Arrangement.SpaceBetween, // L'arrangement gère l'espacement
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            simpleWeatherList.forEach { (weatherWord, isDay) ->
-                val fileName = when (weatherWord) {
-                    SimpleWeatherWord.SUNNY -> if (isDay != null) if (isDay) sunnyDayIconPath else sunnyNightIconPath else sunnyDayIconPath
-                    SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay != null) if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath else sunnyCloudyIconPath
-                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
-                    SimpleWeatherWord.FOGGY -> foggyIconPath
-                    SimpleWeatherWord.HAZE -> hazeIconPath
-                    SimpleWeatherWord.DUST -> dustIconPath
-                    SimpleWeatherWord.DRIZZLY -> if (isDay != null) if (isDay) drizzleDayIconPath else drizzleNightIconPath else drizzleIconPath
-                    SimpleWeatherWord.RAINY1 -> if (isDay != null) if (isDay) rainy1DayIconPath else rainy1NightIconPath else rainy1IconPath
-                    SimpleWeatherWord.RAINY2 -> if (isDay != null) if (isDay) rainy2DayIconPath else rainy2NightIconPath else rainy2IconPath
-                    SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
-                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
-                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
-                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
-                    SimpleWeatherWord.STORMY -> stormyIconPath
-                    null -> Icons.Default.NotInterested
-                }
-
-                AsyncImage(
-                    model = fileName,
-                    contentDescription = "Icône météo actuelle",
-                    modifier = Modifier
-                        .width((1000f/24f).dp),
-                    contentScale = ContentScale.Fit,
-                    colorFilter = weatherIconFilter
-                )
-            }
-        }
-    }
+    WeatherIconGraphGlobal(
+        forecast ?: defaultForecast,
+        scrollState,
+        userSettings,
+        isBatterySaverActive,
+        contentWidth,
+        showPairsOnly
+    )
 }
 
 @Composable
