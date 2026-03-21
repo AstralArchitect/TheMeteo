@@ -3,6 +3,7 @@ package fr.matthstudio.themeteo.forecastMainActivity
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,6 +46,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -1030,5 +1032,18 @@ fun AdditionalInfos(viewModel: WeatherViewModel, context: Context) {
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.open_satellite_map))
         }
+    }
+}
+
+@Composable
+fun BentoCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(28.dp),
+        tonalElevation = 12.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    ) {
+        content()
     }
 }

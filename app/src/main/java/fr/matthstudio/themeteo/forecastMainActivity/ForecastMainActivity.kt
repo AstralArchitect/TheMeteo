@@ -80,12 +80,27 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
+import fr.matthstudio.themeteo.data.BentoCardType
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.LocationIdentifier
@@ -151,10 +166,43 @@ class ForecastMainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun BentoCardContent(
+    cardType: BentoCardType,
+    viewModel: WeatherViewModel,
+    hourlyForecast: WeatherDataState,
+    context: android.content.Context,
+    isLauncherActivity: Boolean,
+    onShowDetails: () -> Unit,
+    onShowAirQuality: () -> Unit,
+    onShowVigilance: () -> Unit
+) {
+    when (cardType) {
+        BentoCardType.VIGILANCE -> VigilanceCard(viewModel, onCardClick = onShowVigilance)
+        BentoCardType.HOURLY_FORECAST -> HourlyForecastCard(hourlyForecast, context = context, viewModel = viewModel)
+        BentoCardType.SUN_DETAILS -> SunAndDetails(viewModel, context, onShowDetails = onShowDetails)
+        BentoCardType.DAILY_FORECAST -> if (isLauncherActivity) DailyForecastCard(viewModel, context)
+        BentoCardType.AIR_QUALITY -> {
+            val environmentalData by viewModel.environmentalData.collectAsState()
+            environmentalData?.days?.firstOrNull()?.airQuality?.let { data ->
+                AirQualityCard(data = data, onClick = onShowAirQuality)
+            }
+        }
+        BentoCardType.POLLEN -> {
+            val environmentalData by viewModel.environmentalData.collectAsState()
+            environmentalData?.days?.firstOrNull()?.pollen?.let { data ->
+                PollenCard(data = data, onClick = onShowAirQuality)
+            }
+        }
+        BentoCardType.ADDITIONAL_INFOS -> AdditionalInfos(viewModel, context)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: Boolean) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val isDark = isSystemInDarkTheme()
     val hourlyForecast by viewModel.hourlyForecast.collectAsState()
     val dailyForecast by viewModel.dailyForecast.collectAsState()
@@ -201,6 +249,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
     // --- GESTION DE L'ÉTAT DE L'UI ---
     val selectedLocation by viewModel.selectedLocation.collectAsState()
+    val bentoCardsOrder by viewModel.bentoCardsOrder.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
     var showAddLocationDialog by remember { mutableStateOf(false) }
     var showDetailsDialog by remember { mutableStateOf(false) }
@@ -299,198 +348,352 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             onRefresh = { viewModel.refresh() },
             isRefreshing = isRefreshing
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // On applique le flou si la sheet est ouverte
-                    .blur(dynamicBlur),
-                contentPadding = PaddingValues(
-                    top = 40.dp,
-                    start = 16.dp,
-                    end = 16.dp,
-                    bottom = 16.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                if (isLauncherActivity) {
-                    // Settings button
-                    item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.TopEnd
-                        ) {
-                            FilledIconButton(
-                                onClick = {
-                                    val intent = Intent(context, SettingsActivity::class.java)
-                                    context.startActivity(intent)
-                                },
-                                colors = IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
-                                        alpha = 0.6f
-                                    ),
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            ) {
-                                Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+            Box(modifier = Modifier.fillMaxSize()) {
+                val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                var draggedItemKey by remember { mutableStateOf<String?>(null) }
+                var isActivelyDragging by remember { mutableStateOf(false) }
+                var draggingOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+                val coroutineScope = rememberCoroutineScope()
+                val density = androidx.compose.ui.platform.LocalDensity.current.density
+                var tempOrder by remember { mutableStateOf(bentoCardsOrder) }
+                val currentOrder by androidx.compose.runtime.rememberUpdatedState(tempOrder)
+
+                LaunchedEffect(bentoCardsOrder, isActivelyDragging) {
+                    if (!isActivelyDragging) {
+                        tempOrder = bentoCardsOrder
+                    }
+                }
+
+                // Shared swap logic to be called on drag and auto-scroll
+                val checkAndSwap: () -> Unit = {
+                    val key = draggedItemKey
+                    if (key != null) {
+                        val layoutInfo = lazyListState.layoutInfo
+                        val visibleItems = layoutInfo.visibleItemsInfo
+                        val draggedItemInfo = visibleItems.find { it.key == key }
+                        
+                        if (draggedItemInfo != null) {
+                            val currentIndex = currentOrder.indexOfFirst { it.name == key }
+                            
+                            // Prevent double swaps and layout state de-syncs by verifying 
+                            // the visible layout order of draggable items matches our state.
+                            val visibleDraggableItems = visibleItems.filter { item -> currentOrder.any { it.name == item.key } }
+                            val visibleDraggableKeys = visibleDraggableItems.map { it.key }
+                            val currentOrderVisibleKeys = currentOrder.map { it.name }.filter { it in visibleDraggableKeys }
+                            
+                            if (visibleDraggableKeys == currentOrderVisibleKeys && currentIndex != -1) {
+
+                                val draggedItemCenter = draggedItemInfo.offset + draggedItemInfo.size / 2 + draggingOffset
+
+                                val targetItem = visibleItems.find { item ->
+                                    val targetIndex = currentOrder.indexOfFirst { it.name == item.key }
+                                    val isTargetDraggable = item.key != BentoCardType.VIGILANCE.name && item.key != BentoCardType.ADDITIONAL_INFOS.name
+                                    item.key != key && targetIndex != -1 && isTargetDraggable &&
+                                            if (targetIndex > currentIndex) draggedItemCenter > item.offset + item.size / 2
+                                            else draggedItemCenter < item.offset + item.size / 2
+                                }
+
+                                if (targetItem != null) {
+                                    val targetIndex = currentOrder.indexOfFirst { it.name == targetItem.key }
+                                    if (targetIndex != -1) {
+                                        // Compensate for layout shift immediately, synchronously
+                                        draggingOffset += (draggedItemInfo.offset - targetItem.offset)
+                                        
+                                        tempOrder = currentOrder.toMutableList().apply {
+                                            add(targetIndex, removeAt(currentIndex))
+                                        }
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                // HERO HEADER
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (isLauncherActivity) {
-                            Row(
-                                modifier = Modifier
-                                    .clickable { showLocationSheet = true }, // OUVRE LE PANNEAU
-                            ) {
-                                Icon(
-                                    Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = Color.White
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                // Affiche le nom du lieu actuellement sélectionné
-                                Text(
-                                    text = when (val loc = selectedLocation) {
-                                        is LocationIdentifier.CurrentUserLocation -> stringResource(
-                                            R.string.current_location
-                                        )
+                // Auto-scroll logic when dragging near edges
+                LaunchedEffect(draggedItemKey, isActivelyDragging) {
+                    while (draggedItemKey != null && isActivelyDragging) {
+                        val layoutInfo = lazyListState.layoutInfo
+                        val draggedItemInfo = layoutInfo.visibleItemsInfo.find { it.key == draggedItemKey }
 
-                                        is LocationIdentifier.Saved -> loc.location.name
+                        if (draggedItemInfo != null) {
+                            val viewPortTop = layoutInfo.viewportStartOffset
+                            val viewPortBottom = layoutInfo.viewportEndOffset
+                            val draggedItemTop = draggedItemInfo.offset + draggingOffset
+                            val draggedItemBottom = draggedItemTop + draggedItemInfo.size
+
+                            val scrollThreshold = 60f * density
+                            var scrollAmount = 0f
+
+                            if (draggedItemTop < viewPortTop + scrollThreshold) {
+                                val diff = viewPortTop + scrollThreshold - draggedItemTop
+                                scrollAmount = -(diff / 8f).coerceIn(1f * density, 10f * density)
+                            } else if (draggedItemBottom > viewPortBottom - scrollThreshold) {
+                                val diff = draggedItemBottom - (viewPortBottom - scrollThreshold)
+                                scrollAmount = (diff / 8f).coerceIn(1f * density, 10f * density)
+                            }
+
+                            if (scrollAmount != 0f) {
+                                val consumed = lazyListState.scrollBy(scrollAmount)
+                                // CRITICAL: Keep item perfectly under finger during auto-scroll
+                                draggingOffset += consumed
+                                // Only update layout offsets, do NOT call checkAndSwap directly here.
+                                // We wait for the next frame's layout pass to avoid state de-syncs.
+                            }
+                        }
+                        androidx.compose.runtime.withFrameNanos { } // Loop perfectly synced with display refresh rate
+                    }
+                }
+
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(dynamicBlur),
+                    contentPadding = PaddingValues(
+                        top = 40.dp,
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = 16.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (isLauncherActivity) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.TopEnd
+                            ) {
+                                FilledIconButton(
+                                    onClick = {
+                                        val intent = Intent(context, SettingsActivity::class.java)
+                                        context.startActivity(intent)
                                     },
-                                    style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                                            alpha = 0.6f
+                                        ),
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                ) {
+                                    Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            if (isLauncherActivity) {
+                                Row(
+                                    modifier = Modifier
+                                        .clickable { showLocationSheet = true },
+                                ) {
+                                    Icon(
+                                        Icons.Default.LocationOn,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = when (val loc = selectedLocation) {
+                                            is LocationIdentifier.CurrentUserLocation -> stringResource(
+                                                R.string.current_location
+                                            )
+
+                                            is LocationIdentifier.Saved -> loc.location.name
+                                        },
+                                        style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
+                                    )
+                                    Icon(
+                                        Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                if (hourlyForecast !is WeatherDataState.SuccessHourly)
+                                    return@Row
+
+                                val userSettings by viewModel.userSettings.collectAsState()
+                                val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+
+                                LottieWeatherIcon(
+                                    iconPath = getLottieIconPath(
+                                        weatherState.word ?: SimpleWeatherWord.SUNNY, isNight
+                                    ),
+                                    animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
+                                    modifier = Modifier.size(120.dp)
                                 )
-                                Icon(
-                                    Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    tint = Color.White
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val temperature =
+                                    (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
+                                Text(
+                                    text = UnitConverter.formatTemperature(
+                                        celsius = temperature,
+                                        unit = userSettings.temperatureUnit,
+                                        roundToInt = true,
+                                        showUnitSymbol = false,
+                                        showDegreeSymbol = true
+                                    ),
+                                    style = MaterialTheme.typography.displayLarge.copy(
+                                        fontSize = 104.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = Color.White
+                                )
+                            }
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                            val userSettings by viewModel.userSettings.collectAsState()
+                            val max = (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.maxTemperature
+                            val min = (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.minTemperature
+                            max?.let { max ->
+                                Text (
+                                    text = "Max : ${
+                                        UnitConverter.formatTemperature(
+                                            max,
+                                            userSettings.temperatureUnit,
+                                            userSettings.roundToInt
+                                        )
+                                    } - Min : ${
+                                        UnitConverter.formatTemperature(
+                                            min,
+                                            userSettings.temperatureUnit,
+                                            userSettings.roundToInt
+                                        )
+                                    }",
+                                    style = MaterialTheme.typography.titleMedium
                                 )
                             }
                         }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            if (hourlyForecast !is WeatherDataState.SuccessHourly)
-                                return@Row
-                            
-                            val userSettings by viewModel.userSettings.collectAsState()
-                            val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+                    }
 
-                            LottieWeatherIcon(
-                                iconPath = getLottieIconPath(weatherState.word ?: SimpleWeatherWord.SUNNY, isNight),
-                                animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
-                                modifier = Modifier.size(120.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            val temperature = (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
-                            Text(
-                                text = UnitConverter.formatTemperature(
-                                    celsius = temperature,
-                                    unit = userSettings.temperatureUnit,
-                                    roundToInt = true,
-                                    showUnitSymbol = false,
-                                    showDegreeSymbol = true
-                                ),
-                                style = MaterialTheme.typography.displayLarge.copy(
-                                    fontSize = 104.sp,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = Color.White
+                    items(tempOrder, key = { it.name }) { cardType ->
+                        val isDragged = draggedItemKey == cardType.name
+                        val scale by animateFloatAsState(if (isDragged) 1.03f else 1f, label = "scale")
+                        val elevation by animateDpAsState(if (isDragged) 12.dp else 0.dp, label = "elevation")
+
+                        val isDraggable = cardType != BentoCardType.VIGILANCE && cardType != BentoCardType.ADDITIONAL_INFOS
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(if (isDragged) Modifier else Modifier.animateItem())
+                                .zIndex(if (isDragged) 1f else 0f)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                    shadowElevation = elevation.toPx()
+                                    if (isDragged) {
+                                        translationY = draggingOffset
+                                    }
+                                }
+                                .then(
+                                    if (isDraggable) {
+                                        Modifier.pointerInput(Unit) {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    draggingOffset = 0f
+                                                    draggedItemKey = cardType.name
+                                                    isActivelyDragging = true
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    draggingOffset += dragAmount.y
+                                                    checkAndSwap()
+                                                },
+                                                onDragEnd = {
+                                                    viewModel.updateBentoCardsOrder(tempOrder)
+                                                    isActivelyDragging = false
+                                                    val capturedKey = draggedItemKey
+                                                    coroutineScope.launch {
+                                                        androidx.compose.animation.core.animate(
+                                                            initialValue = draggingOffset,
+                                                            targetValue = 0f
+                                                        ) { value, _ ->
+                                                            if (draggedItemKey == capturedKey) {
+                                                                draggingOffset = value
+                                                            }
+                                                        }
+                                                        if (draggedItemKey == capturedKey) {
+                                                            draggedItemKey = null
+                                                        }
+                                                    }
+                                                },
+                                                onDragCancel = {
+                                                    tempOrder = bentoCardsOrder // Revert
+                                                    isActivelyDragging = false
+                                                    val capturedKey = draggedItemKey
+                                                    coroutineScope.launch {
+                                                        androidx.compose.animation.core.animate(
+                                                            initialValue = draggingOffset,
+                                                            targetValue = 0f
+                                                        ) { value, _ ->
+                                                            if (draggedItemKey == capturedKey) {
+                                                                draggingOffset = value
+                                                            }
+                                                        }
+                                                        if (draggedItemKey == capturedKey) {
+                                                            draggedItemKey = null
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    } else Modifier
+                                )
+                        ) {
+                            BentoCardContent(
+                                cardType,
+                                viewModel,
+                                hourlyForecast,
+                                context,
+                                isLauncherActivity,
+                                { showDetailsDialog = true },
+                                { showAirQualityDialog = true },
+                                { showVigilanceDialog = true }
                             )
                         }
-                        Text(
-                            text = description,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White.copy(alpha = 0.9f)
+                    }
+                }
+
+                if (showDetailsDialog) {
+                    WeatherDetailsDialog(viewModel, onDismiss = { showDetailsDialog = false })
+                }
+
+                if (showAirQualityDialog) {
+                    AirQualityDetailsDialog(viewModel, onDismiss = { showAirQualityDialog = false })
+                }
+
+                if (showVigilanceDialog) {
+                    val vigilanceState by viewModel.weatherVigilanceInfo.collectAsState()
+                    if (vigilanceState is WeatherDataState.SuccessVigilance) {
+                        VigilanceDetailsDialog(
+                            vigilanceData = (vigilanceState as WeatherDataState.SuccessVigilance).data,
+                            onDismiss = { showVigilanceDialog = false }
                         )
                     }
                 }
 
-                // Vigilance
-                item {
-                    VigilanceCard(viewModel, onCardClick = { showVigilanceDialog = true })
-                }
-
-                // Hourly forecast
-                item {
-                    HourlyForecastCard(
-                        hourlyForecast,
-                        context = context,
-                        viewModel = viewModel
+                val shouldShowPolicyUpdateDialog by viewModel.shouldShowPolicyUpdateDialog.collectAsState()
+                if (shouldShowPolicyUpdateDialog) {
+                    PolicyUpdateDialog(
+                        onAccept = { viewModel.acceptPolicyUpdates() }
                     )
                 }
-
-                // Sun + Details
-                item {
-                    SunAndDetails(viewModel, context, onShowDetails = { showDetailsDialog = true })
-                }
-
-                if (isLauncherActivity) {
-                    // Daily Boxes
-                    item {
-                        DailyForecastCard(viewModel, context)
-                    }
-                }
-
-                item {
-                    val environmentalData by viewModel.environmentalData.collectAsState()
-                    environmentalData?.let { data ->
-                        val today = data.days.firstOrNull()
-                        if (today != null) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                AirQualityCard(
-                                    data = today.airQuality,
-                                    onClick = { showAirQualityDialog = true }
-                                )
-                                PollenCard(
-                                    data = today.pollen,
-                                    onClick = { showAirQualityDialog = true }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Other infos
-                item {
-                    AdditionalInfos(viewModel, context)
-                }
-            }
-
-            if (showDetailsDialog) {
-                WeatherDetailsDialog(viewModel, onDismiss = { showDetailsDialog = false })
-            }
-
-            if (showAirQualityDialog) {
-                AirQualityDetailsDialog(viewModel, onDismiss = { showAirQualityDialog = false })
-            }
-
-            if (showVigilanceDialog) {
-                val vigilanceState by viewModel.weatherVigilanceInfo.collectAsState()
-                if (vigilanceState is WeatherDataState.SuccessVigilance) {
-                    VigilanceDetailsDialog(
-                        vigilanceData = (vigilanceState as WeatherDataState.SuccessVigilance).data,
-                        onDismiss = { showVigilanceDialog = false }
-                    )
-                }
-            }
-
-            val shouldShowPolicyUpdateDialog by viewModel.shouldShowPolicyUpdateDialog.collectAsState()
-            if (shouldShowPolicyUpdateDialog) {
-                PolicyUpdateDialog(
-                    onAccept = { viewModel.acceptPolicyUpdates() }
-                )
             }
         }
     }
@@ -1039,19 +1242,6 @@ fun DetailRow(item: WeatherDetailItem) {
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold
         )
-    }
-}
-
-@Composable
-fun BentoCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-        shape = RoundedCornerShape(28.dp),
-        tonalElevation = 12.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-    ) {
-        content()
     }
 }
 

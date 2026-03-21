@@ -9,6 +9,7 @@ import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
+import fr.matthstudio.themeteo.data.BentoCardType
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
@@ -74,6 +75,24 @@ class WeatherViewModel(
      * Expose si la permission de localisation est accordée.
      */
     val isLocationPermissionGranted: StateFlow<Boolean> = weatherCache.isLocationPermissionGranted
+
+    /**
+     * Expose l'ordre des cartes Bento.
+     */
+    val bentoCardsOrder: StateFlow<List<BentoCardType>> = weatherCache.userSettingsRepository.bentoCardsOrder.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        BentoCardType.entries
+    )
+
+    /**
+     * Met à jour l'ordre des cartes Bento.
+     */
+    fun updateBentoCardsOrder(newOrder: List<BentoCardType>) {
+        viewModelScope.launch {
+            weatherCache.userSettingsRepository.updateBentoCardsOrder(newOrder)
+        }
+    }
 
     /**
      * Variable servant à forcer le rafraichissement, elle est incrémentée à chaque appel de refresh()

@@ -10,6 +10,7 @@ import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.LocationIdentifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 enum class ForecastType {
@@ -48,6 +49,7 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val WIND_UNIT = intPreferencesKey("wind_unit")
         val WIDGET_TRANSPARENCY = intPreferencesKey("widget_transparency")
         val WIDGET_TEXT_SIZE = intPreferencesKey("widget_text_size")
+        val BENTO_CARDS_ORDER = stringPreferencesKey("bento_cards_order")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
@@ -64,6 +66,22 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
      */
     val widgetTextSize: Flow<Int> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.WIDGET_TEXT_SIZE] ?: 1
+    }
+
+    /**
+     * Flow pour l'ordre des cartes Bento.
+     */
+    val bentoCardsOrder: Flow<List<BentoCardType>> = dataStore.data.map { preferences ->
+        val data = preferences[PreferencesKeys.BENTO_CARDS_ORDER]
+        if (data != null) {
+            try {
+                Json.decodeFromString<List<BentoCardType>>(data)
+            } catch (e: Exception) {
+                BentoCardType.entries
+            }
+        } else {
+            BentoCardType.entries
+        }
     }
 
     /**
@@ -321,6 +339,15 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateWidgetTextSize(sizeIndex: Int) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.WIDGET_TEXT_SIZE] = sizeIndex
+        }
+    }
+
+    /**
+     * Met à jour l'ordre des cartes Bento.
+     */
+    suspend fun updateBentoCardsOrder(newOrder: List<BentoCardType>) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.BENTO_CARDS_ORDER] = Json.encodeToString(newOrder)
         }
     }
 }
