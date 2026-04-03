@@ -14,7 +14,8 @@ data class AirQualityRequest(
     ),
     val languageCode: String,
     val pageSize: Int? = null,
-    val period: AirQualityPeriod? = null
+    val period: AirQualityPeriod? = null,
+    val universalAqi: Boolean? = null
 )
 
 @Serializable
@@ -81,7 +82,7 @@ data class HealthRecommendations(
 
 @Serializable
 data class AirQualityColor(
-    val red: Float?,
-    val green: Float?,
-    val blue: Float?
+    val red: Float? = null,
+    val green: Float? = null,
+    val blue: Float? = null
 )

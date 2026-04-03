@@ -42,11 +42,11 @@
     <string name="chose_model">Chose the weather forecasting model.</string>
     <string name="precipitation">Precipitation (mm)</string>
     <string name="hourly_forecast">Hourly forecast</string>
-    <string name="a_temperature_unit">Feeling °C</string>
+    <string name="a_temperature_unit">Feel like</string>
     <string name="precipitation_unit">Precip. mm/h</string>
-    <string name="wind_speed_unit">Wind Speed kph</string>
+    <string name="wind_speed_unit">Wind Speed</string>
     <string name="settings">Settings</string>
-    <string name="temperature_unit" translatable="false">Temp. °C</string>
+    <string name="temperature_unit" translatable="false">Temp.</string>
     <string name="daily_forecast">Daily forecast</string>
     <string name="_15_minutely_precipitation_forecast">15 Minutely Precipitation Forecast</string>
     <string name="day_duration_format" translatable="false">%1$s: %2$d h %3$d min</string>
@@ -112,6 +112,9 @@
     <string name="herbes">Grasses</string>
     <string name="trees">Trees</string>
     <string name="weed">Weeds</string>
+    <string name="pollen_components">Plants in season (components)</string>
+    <string name="rain_expected">Rain Expected</string>
+    <string name="rain_at_format">Expected at %s</string>
 
     <!-- Formatted Strings -->
     <string name="location_coords_format" translatable="false">Position: %1$.4f, %2$.4f</string>
@@ -198,8 +201,8 @@
     <string name="ensemble_warning_confirm">I understand</string>
     <string name="ensemble_warning_cancel">Cancel</string>
     <string name="no_precipitations">No precipitations expected</string>
-    <string name="remerciement_1">A big thank you to Google Maps, Open-Meteo, RainViewer, EUMETSAT, Axellum and Makin-Things for their exceptional work and the provision of these valuable resources, without which this application would not have been possible.</string>
-    <string name="remerciement_2">And a huge thank you to the exceptional work of the Open Source community. A massive thank you to Open-Meteo, Axellum, Makin-Things, and all the contributors to the Home Assistant (HACF) project for sharing their resources and expertise.</string>
+    <string name="remerciement_1">A big thank you to Google Maps, Open-Meteo, RainViewer, EUMETSAT and Basmilius for their exceptional work and the provision of these valuable resources, without which this application would not have been possible.</string>
+    <string name="remerciement_2">And a huge thank you to the exceptional work of the Open Source community. A massive thank you to Open-Meteo and Basmilius, for sharing their resources and expertise.</string>
     <string name="credits_sources_legal_mentions">Credits, Sources &amp; Legal Mentions</string>
     <string name="app_focus_desc">Choose which page will be opened at the app start.</string>
     <string name="weather_alert">WEATHER ALERT</string>
@@ -234,4 +237,5 @@
     <string name="moderate">Moderate</string>
     <string name="high">High</string>
     <string name="very_high">Very High</string>
+    <string name="none">None</string>
 </resources>

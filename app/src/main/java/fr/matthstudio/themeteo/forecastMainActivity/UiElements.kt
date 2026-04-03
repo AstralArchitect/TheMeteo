@@ -540,9 +540,9 @@ fun DailyForecastRow(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Précipitations
+            // Précipitations + vent
             Row(
-                modifier = Modifier.width(60.dp),
+                modifier = Modifier.width(80.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start
             ) {
@@ -558,6 +558,15 @@ fun DailyForecastRow(
                         text = "${dayReading.precipitation.toSmartString()}mm",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                if (dayReading.maxWind.windspeed != null && dayReading.maxWind.windspeed >= 30) {
+                    Icon(
+                        Icons.Rounded.Air,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -1075,7 +1084,7 @@ fun EnvironmentalGauge(
 @Composable
 fun getPollenShortDescFromLevel(level: Int): String {
     return when (level) {
-        0 -> "null"
+        0 -> stringResource(R.string.none)
         1 -> stringResource(R.string.low)
         2 -> stringResource(R.string.moderate)
         3 -> stringResource(R.string.high)
@@ -1366,7 +1375,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(air.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Text("${air.value} AQI", style = MaterialTheme.typography.titleMedium, color = air.color, fontWeight = FontWeight.Bold)
+                                    Text("${air.value} AQI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Box(
@@ -1406,11 +1415,29 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
                                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (pollutant.color != Color.Gray) pollutant.color.copy(alpha = 0.5f)
+                                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            )
                                         ) {
-                                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                                Text(pollutant.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                Text(pollutant.value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (pollutant.color != Color.Gray) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(8.dp)
+                                                            .clip(CircleShape)
+                                                            .background(pollutant.color)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                }
+                                                Column {
+                                                    Text(pollutant.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    Text(pollutant.value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                                }
                                             }
                                         }
                                     }
@@ -1433,17 +1460,103 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
                                 listOfNotNull(
-                                    currentDay.pollen.tree to stringResource(R.string.trees),
-                                    currentDay.pollen.grass to stringResource(R.string.weed),
-                                    currentDay.pollen.weed to stringResource(R.string.grasses)
-                                ).forEach { (type, name) ->
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        EnvironmentalGauge(
-                                            value = (type?.level?.toFloat() ?: 0f) / 5f,
-                                            color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
-                                            modifier = Modifier.size(60.dp)
+                                    Triple(currentDay.pollen.tree, stringResource(R.string.trees), Icons.Rounded.Nature),
+                                    Triple(currentDay.pollen.grass, stringResource(R.string.weed), Icons.Rounded.LocalFlorist),
+                                    Triple(currentDay.pollen.weed, stringResource(R.string.grasses), Icons.Rounded.Grass)
+                                ).forEach { (type, name, icon) ->
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                                    ) {
+                                        Box {
+                                            EnvironmentalGauge(
+                                                value = (type?.level?.toFloat() ?: 0f) / 4f,
+                                                color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
+                                                modifier = Modifier.size(80.dp)
+                                            )
+                                            Text(
+                                                text = name,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier
+                                                    .align(Alignment.Center)
+                                                    .offset(y = 6.dp)
+                                            )
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .align(Alignment.Center)
+                                                    .offset(y = (-11).dp),
+                                                tint = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Text(
+                                            text = "${type?.level ?: 0}/4",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        Text(name, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+                                        // Display a short description (ex: Low, Moderate, etc.)
+                                        Text(
+                                            text = getPollenShortDescFromLevel(type?.level ?: 0),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            // Specific plants components (types) and their levels/descriptions
+                            if (currentDay.pollen.plants.isNotEmpty()) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    currentDay.pollen.plants.forEach { plant ->
+                                        val color = if(!isSystemInDarkTheme())
+                                            plant.color.copy(red = plant.color.red * 0.5f, green = plant.color.green * 0.5f, blue = plant.color.blue * 0.5f)
+                                        else plant.color
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = plant.color.copy(alpha = 0.1f),
+                                            border = BorderStroke(1.dp, plant.color.copy(alpha = 0.3f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    ResponsiveText(
+                                                        text = plant.name,
+                                                        modifier = Modifier.weight(1f),
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = color,
+                                                        maxLines = 1
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = "${plant.level}/4",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = color,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                                if (!plant.description.isNullOrEmpty() && plant.description != "null") {
+                                                    Text(
+                                                        text = plant.description,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.padding(top = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

@@ -73,7 +73,9 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
@@ -81,6 +83,7 @@ import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.utilClasses.AirQualityUI
 import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilsActivities.WindUnitSetting
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Locale
@@ -238,7 +241,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
     }
     if (hourlyForecast is WeatherDataState.Error) {
         Text(
-            text = (hourlyForecast as WeatherDataState.Error).message
+            text = hourlyForecast.message
         )
         return
     }
@@ -304,7 +307,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
                     scrollState = scrollState
                 )
 
-                ChosenVar.APPARENT_TEMPERATURE -> if ((hourlyForecast as WeatherDataState.SuccessHourly).data.first().apparentTemperature != null)
+                ChosenVar.APPARENT_TEMPERATURE -> if (hourlyForecast.data.first().apparentTemperature != null)
                     GenericGraph(
                         viewModel,
                         tempUnit,
@@ -342,11 +345,11 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 ChosenVar.entries.forEach { buttonVariable ->
-                    if (buttonVariable == ChosenVar.APPARENT_TEMPERATURE && (hourlyForecast as WeatherDataState.SuccessHourly).data.first().apparentTemperature == null)
+                    if (buttonVariable == ChosenVar.APPARENT_TEMPERATURE && hourlyForecast.data.first().apparentTemperature == null)
                         return@forEach
                     val isSelected = variable == buttonVariable
 
-                    if (buttonVariable == ChosenVar.PRECIPITATION && (hourlyForecast as WeatherDataState.SuccessHourly).data.mapNotNull { it.precipitationData.precipitation }.maxOrNull() == 0.0)
+                    if (buttonVariable == ChosenVar.PRECIPITATION && hourlyForecast.data.mapNotNull { it.precipitationData.precipitation }.maxOrNull() == 0.0)
                         return@forEach
 
                     OutlinedButton(
@@ -357,10 +360,10 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
                     ) {
                         Text(
                             when (buttonVariable) {
-                                ChosenVar.TEMPERATURE -> stringResource(R.string.temperature_unit)
-                                ChosenVar.APPARENT_TEMPERATURE -> stringResource(R.string.a_temperature_unit)
+                                ChosenVar.TEMPERATURE -> stringResource(R.string.temperature_unit) + " " + UnitConverter.getSymbolWithDegree(tempUnit)
+                                ChosenVar.APPARENT_TEMPERATURE -> stringResource(R.string.a_temperature_unit) + " " + UnitConverter.getSymbolWithDegree(tempUnit)
                                 ChosenVar.PRECIPITATION -> stringResource(R.string.precipitation_unit)
-                                ChosenVar.WIND -> stringResource(R.string.wind_speed_unit)
+                                ChosenVar.WIND -> stringResource(R.string.wind_speed_unit) + if (windUnit == WindUnit.MPH) " mph" else if (windUnit == WindUnit.KPH) " kph" else ""
                             },
                             style = MaterialTheme.typography.labelSmall
                         )
@@ -725,6 +728,10 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
                                 context.startActivity(intent)
                             }
                     ) {
+                        Text(
+                            text = stringResource(R.string.temperature),
+                            style = MaterialTheme.typography.labelMedium
+                        )
                         if (hourlyForecast is WeatherDataState.SuccessHourly) {
                             AdvancedGraph(
                                 hourlyForecast,
@@ -942,7 +949,7 @@ fun PollenCard(
                     ) {
                         Box {
                             EnvironmentalGauge(
-                                value = (type?.level?.toFloat() ?: 0f) / 5f,
+                                value = (type?.level?.toFloat() ?: 0f) / 4f,
                                 color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
                                 modifier = Modifier.size(80.dp)
                             )
@@ -1031,6 +1038,65 @@ fun AdditionalInfos(viewModel: WeatherViewModel, context: Context) {
             Icon(Icons.Rounded.Map, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.open_satellite_map))
+        }
+    }
+}
+
+@Composable
+fun RainAlertCard(hourlyForecast: WeatherDataState) {
+    if (hourlyForecast !is WeatherDataState.SuccessHourly) return
+
+    val now = LocalDateTime.now()
+    val next12Hours = hourlyForecast.data.filter { 
+        it.time.isAfter(now) && it.time.isBefore(now.plusHours(12)) 
+    }
+
+    val firstRain = next12Hours.firstOrNull { (it.precipitationData.precipitation ?: 0.0) > 0.1 }
+
+    if (firstRain != null) {
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+        val rainTime = firstRain.time.format(formatter)
+
+        BentoCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Rounded.WaterDrop,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.rain_expected),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = stringResource(R.string.rain_at_format, rainTime),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
         }
     }
 }

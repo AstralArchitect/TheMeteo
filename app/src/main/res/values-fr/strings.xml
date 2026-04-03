@@ -37,7 +37,7 @@
     <string name="chose_model">Choisissez le modèle pour les prévisions.</string>
     <string name="precipitation">Précipitations (mm)</string>
     <string name="hourly_forecast">Prévisions heure par heure</string>
-    <string name="a_temperature_unit">Temp. ress. °C</string>
+    <string name="a_temperature_unit">Temp. ress.</string>
     <string name="precipitation_unit">Précip. mm/h</string>
     <string name="daily_forecast">Prévision par Jour</string>
     <string name="_15_minutely_precipitation_forecast">Prévision de Précipitation</string>
@@ -93,6 +93,9 @@
     <string name="herbes">Herbes</string>
     <string name="trees">Arbres</string>
     <string name="weed">Herbacées</string>
+    <string name="pollen_components">Plantes en saison (composants)</string>
+    <string name="rain_expected">Précipitations prévues</string>
+    <string name="rain_at_format">Prévues à %s</string>
     <string name="wind_unit_title">Unité de vitesse du vent</string>
     <string name="wind_unit_desc">Choisissez entre Kilomètres par heure et Miles par heure.</string>
     <string name="kph">km/h</string>
@@ -175,9 +178,9 @@
     <string name="ensemble_warning_message">Le mode ensemble fournit des informations plus détaillées mais consomme plus de données et de batterie. Il peut également être plus complexe à interpréter car il montre l\'éventail des possibles (ruban d\'incertitude).</string>
     <string name="ensemble_warning_confirm">J\'ai compris</string>
     <string name="ensemble_warning_cancel">Annuler</string>
-    <string name="remerciement_1">Un grand merci à Google Maps, Open-Meteo, RainViewer, EUMETSAT, Axellum et Makin-Things pour leurs travaux exceptionnels et la mise à disposition de ces ressources précieuses, sans qui cette application n\'aurait pas pu voir le jour.</string>
+    <string name="remerciement_1">Un grand merci à Google Maps, Open-Meteo, RainViewer, EUMETSAT et Basmilius pour leurs travaux exceptionnels et la mise à disposition de ces ressources précieuses, sans qui cette application n\'aurait pas pu voir le jour.</string>
     <string name="no_precipitations">Pas de précipitations prévues</string>
-    <string name="remerciement_2">Et une grande gratitude envers le travail exceptionnel de la communauté Open Source. Un immense merci à Open-Meteo, Axellum, Makin-Things ainsi qu\'à l\'ensemble des contributeurs du projet Home Assistant (HACF) pour le partage de leurs ressources et de leur savoir-faire.</string>
+    <string name="remerciement_2">Et une grande gratitude envers le travail exceptionnel de la communauté Open Source. Un immense merci à Open-Meteo et Basmilius pour le partage de leurs ressources et de leur savoir-faire.</string>
     <string name="credits_sources_legal_mentions">Sources, Crédits &amp; Mentions Légales</string>
     <string name="temperature_unit_title">Unité de Température</string>
     <string name="temperature_unit_desc">Choisissez entre Celsius, Farenheit et Kelvin.</string>

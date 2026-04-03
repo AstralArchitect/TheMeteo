@@ -131,6 +131,10 @@ data class ModelDataCache(
     var pollenInfo: PollenResponse? = null,
     @Serializable(with = LocalDateTimeSerializer::class)
     var lastAirQualityFetch: LocalDateTime = LocalDateTime.MIN,
+    @Serializable
+    var vigilanceInfo: VigilanceInfos? = null,
+    @Serializable(with = LocalDateTimeSerializer::class)
+    var lastVigilanceFetch: LocalDateTime = LocalDateTime.MIN,
 
     )
 
@@ -705,15 +709,25 @@ class WeatherCache(
             cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentModel) { ModelDataCache() } 
         }
 
-        if (modelCache.airQualityInfo != null && Duration.between(modelCache.lastAirQualityFetch, now).toMinutes() < 30) {
+        // Emit cache immediately if available, regardless of expiration
+        if (modelCache.airQualityInfo != null) {
             emit(WeatherDataState.SuccessAirQuality(Triple(modelCache.airQualityInfo!!, modelCache.airQualityForecast, modelCache.pollenInfo)))
-            return@flow
+            
+            // If it's fresh enough (< 30 minutes), we stop here
+            if (Duration.between(modelCache.lastAirQualityFetch, now).toMinutes() < 30) {
+                return@flow
+            }
+        } else {
+            // No cache at all, show loading
+            emit(WeatherDataState.Loading)
         }
 
-        emit(WeatherDataState.Loading)
         val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null) {
-            emit(WeatherDataState.Error("GPS position unavailable for air quality check."))
+            // If we already emitted cache, don't override it with an error
+            if (modelCache.airQualityInfo == null) {
+                emit(WeatherDataState.Error("GPS position unavailable for air quality check."))
+            }
             return@flow
         }
 
@@ -726,34 +740,68 @@ class WeatherCache(
             val airQualityForecastResponse = airQualityForecastDeferred.await()
             val pollenResponse = pollenDeferred.await()
 
-            if (airQualityResponse != null) {
+            if (airQualityResponse != null || airQualityForecastResponse != null || pollenResponse != null) {
                 cacheMutex.withLock {
-                    modelCache.airQualityInfo = airQualityResponse
-                    modelCache.airQualityForecast = airQualityForecastResponse
-                    modelCache.pollenInfo = pollenResponse
-                    modelCache.lastAirQualityFetch = now
+                    if (airQualityResponse != null) modelCache.airQualityInfo = airQualityResponse
+                    if (airQualityForecastResponse != null) modelCache.airQualityForecast = airQualityForecastResponse
+                    if (pollenResponse != null) modelCache.pollenInfo = pollenResponse
+                    
+                    // On ne met à jour la date de rafraîchissement globale que si l'AQI principal est récupéré
+                    if (airQualityResponse != null) {
+                        modelCache.lastAirQualityFetch = now
+                    }
                 }
-                emit(WeatherDataState.SuccessAirQuality(Triple(airQualityResponse, airQualityForecastResponse, pollenResponse)))
-            } else if (modelCache.airQualityInfo != null) {
-                emit(WeatherDataState.SuccessAirQuality(Triple(modelCache.airQualityInfo!!, modelCache.airQualityForecast, modelCache.pollenInfo)))
-            } else {
+                
+                // Return what we have (even if it's a mix of fresh and old data)
+                val finalAir = airQualityResponse ?: modelCache.airQualityInfo
+                if (finalAir != null) {
+                    emit(WeatherDataState.SuccessAirQuality(Triple(finalAir, airQualityForecastResponse ?: modelCache.airQualityForecast, pollenResponse ?: modelCache.pollenInfo)))
+                } else if (modelCache.airQualityInfo == null) {
+                    emit(WeatherDataState.Error("Failed to fetch primary air quality data."))
+                }
+            } else if (modelCache.airQualityInfo == null) {
                 emit(WeatherDataState.Error("Failed to fetch air quality data."))
             }
         }
     }
 
     fun getLocalVigilance(): Flow<WeatherDataState> = flow {
-        emit(WeatherDataState.Loading)
-        val coords = resolveCoordinates(selectedLocation.value)
+        val currentLocationIdentifier = selectedLocation.value
+        val currentModel = userSettings.value.model
+        val now = LocalDateTime.now()
+
+        val modelCache = cacheMutex.withLock {
+            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentModel) { ModelDataCache() }
+        }
+
+        // Emit cache immediately if available
+        if (modelCache.vigilanceInfo != null) {
+            emit(WeatherDataState.SuccessVigilance(modelCache.vigilanceInfo!!))
+            
+            // If it's fresh enough (< 1 hour), we stop here
+            if (Duration.between(modelCache.lastVigilanceFetch, now).toHours() < 1) {
+                return@flow
+            }
+        } else {
+            emit(WeatherDataState.Loading)
+        }
+
+        val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null) {
-            emit(WeatherDataState.Error("GPS position unavailable for vigilance alerts."))
+            if (modelCache.vigilanceInfo == null) {
+                emit(WeatherDataState.Error("GPS position unavailable for vigilance alerts."))
+            }
             return@flow
         }
 
-        val vigilance = weatherService.getVigilanceForLocation(coords.latitude, coords.longitude)
-        if (vigilance != null) {
-            emit(WeatherDataState.SuccessVigilance(vigilance))
-        } else {
+        val freshVigilance = weatherService.getVigilanceForLocation(coords.latitude, coords.longitude)
+        if (freshVigilance != null) {
+            cacheMutex.withLock {
+                modelCache.vigilanceInfo = freshVigilance
+                modelCache.lastVigilanceFetch = now
+            }
+            emit(WeatherDataState.SuccessVigilance(freshVigilance))
+        } else if (modelCache.vigilanceInfo == null) {
             emit(WeatherDataState.Error("Météo-France vigilance data unavailable."))
         }
     }

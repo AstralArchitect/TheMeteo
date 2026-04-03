@@ -195,21 +195,15 @@ fun CreditScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
 
             ClickableLink(
-                prefix = "• Pack d'icônes (Projet Axellum) : ",
-                linkText = "Lovelace Icones Weather Card",
-                url = "https://github.com/Axellum/lovelace-icones-weather-card/tree/Meteo-France"
-            )
-
-            ClickableLink(
-                prefix = "• Icône Brouillard (fog.svg) : ",
-                linkText = "Makin-Things (weather-icons)",
-                url = "https://github.com/Makin-Things/weather-icons/"
+                prefix = "• Pack d'icônes (Metecons by Basmilius) : ",
+                linkText = "Meteocons",
+                url = "https://github.com/basmilius/weather-icons"
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Note : Les icônes et les images radar ont pu être modifiés par AstralArchitect pour s'adapter au design de l'application.",
+                text = "Note : Les icônes ont pu être modifiés par AstralArchitect pour s'adapter au design de l'application.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
@@ -319,13 +313,9 @@ fun ClickableLink(prefix: String, linkText: String, url: String) {
 const val MIT_LICENSE_CONTENT = """
 Sauf mention contraire, les ressources graphiques de cette application sont distribuées sous licence MIT.
 
-[1] Ressources issues du projet d'Axellum :
-Copyright (c) 2019 Bram Kragten
-Copyright (c) 2020 Nicolas Bourasseau
-Copyright (c) 2020 HACF Home Assistant Communauté Francophone
+MIT License
 
-[2] Ressources Makin-Things :
-Copyright (c) 2019 Custom cards for Home Assistant
+Copyright (c) 2020-2024 Bas Milius
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 

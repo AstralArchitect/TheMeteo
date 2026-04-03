@@ -34,6 +34,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
@@ -258,6 +259,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     AirQualityRequest(
                         location = AirQualityLocation(latitude, longitude),
                         extraComputations = listOf(
+                            "LOCAL_AQI",
                             "HEALTH_RECOMMENDATIONS",
                             "DOMINANT_POLLUTANT_CONCENTRATION",
                             "POLLUTANT_CONCENTRATION"
@@ -299,6 +301,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     AirQualityRequest(
                         location = AirQualityLocation(latitude, longitude),
                         extraComputations = listOf(
+                            "LOCAL_AQI",
                             "HEALTH_RECOMMENDATIONS",
                             "DOMINANT_POLLUTANT_CONCENTRATION",
                             "POLLUTANT_CONCENTRATION"
@@ -520,7 +523,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     // Si la liste est vide, la boucle continue et réduit la précision
                 }
             } catch (e: Exception) {
-            if (e is CancellationException) throw e
+                if (e is CancellationException) throw e
                 Log.e("WeatherService", "Erreur Geocoding à la précision $precision : ${e.message}")
                 telemetryManager?.logException(e)
                 // En cas d'erreur réseau, on peut choisir d'arrêter ou de continuer
@@ -963,7 +966,8 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     suspend fun getPolicyUpdateInfo(): PolicyUpdateInfo? {
         return try {
-            client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").body<PolicyUpdateInfo>()
+            val responseText = client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").bodyAsText()
+            jsonParser.decodeFromString<PolicyUpdateInfo>(responseText)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("WeatherService", "Error fetching policy updates: ${e.message}")

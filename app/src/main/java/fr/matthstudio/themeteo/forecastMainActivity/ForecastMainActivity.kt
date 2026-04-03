@@ -31,6 +31,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -574,10 +577,15 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                             userSettings.roundToInt
                                         )
                                     }",
-                                    style = MaterialTheme.typography.titleMedium
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White.copy(alpha = 0.9f)
                                 )
                             }
                         }
+                    }
+
+                    item {
+                        RainAlertCard(hourlyForecast)
                     }
 
                     items(tempOrder, key = { it.name }) { cardType ->
@@ -738,7 +746,7 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         actualReading.temperature?.let {
             WeatherDetailItem(
                 Icons.Rounded.Thermostat,
-                stringResource(R.string.temperature),
+                stringResource(R.string.a_temperature_unit),
                 UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
             )
         },
@@ -771,11 +779,11 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
             val subValue = buildString {
                 actualReading.precipitationData.precipitationProbability?.let { append("Prob: $it% ") }
                 actualReading.precipitationData.rain?.takeIf { it > 0 }?.let {
-                    if (isNotEmpty() && !endsWith(" ")) append("| ")
+                    if (isNotEmpty() && !endsWith(" ")) append("\n")
                     append("Rain: ${it.toSmartString()} mm ")
                 }
                 actualReading.precipitationData.snowfall?.takeIf { it > 0 }?.let {
-                    if (isNotEmpty() && !endsWith(" ")) append("| ")
+                    if (isNotEmpty() && !endsWith(" ")) append("\n")
                     append("Snow: ${it.toSmartString()} cm")
                 }
             }.trim()
@@ -810,7 +818,7 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         actualReading.skyInfo.cloudcoverTotal?.let { cct ->
             // If low cloud cover is available, all levels are too
             val subValue = if (actualReading.skyInfo.cloudcoverLow != null) {
-                "Low: ${actualReading.skyInfo.cloudcoverLow.toSmartString()}% | Mid: ${actualReading.skyInfo.cloudcoverMid?.toSmartString()}% | High: ${actualReading.skyInfo.cloudcoverHigh?.toSmartString()}%"
+                "Low: ${actualReading.skyInfo.cloudcoverLow.toSmartString()}%\nMid: ${actualReading.skyInfo.cloudcoverMid?.toSmartString()}%\nHigh: ${actualReading.skyInfo.cloudcoverHigh?.toSmartString()}%"
             } else null
             WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${cct.toSmartString()}%", subValue)
         },
@@ -873,17 +881,15 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
 
-                        LazyColumn(
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(bottom = 16.dp)
                         ) {
                             items(details) { detail ->
-                                DetailRow(detail)
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(
-                                        alpha = 0.5f
-                                    )
-                                )
+                                WeatherDetailCard(detail)
                             }
                         }
 
@@ -1216,32 +1222,54 @@ fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit)
 }
 
 @Composable
-fun DetailRow(item: WeatherDetailItem) {
-    Row(
+fun WeatherDetailCard(item: WeatherDetailItem) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(110.dp)
     ) {
-        Icon(
-            item.icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(item.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        item.icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        item.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    item.value,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
             item.subValue?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                    maxLines = 3,
+                    lineHeight = 14.sp
+                )
             }
         }
-        Text(
-            item.value,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold
-        )
     }
 }
 
