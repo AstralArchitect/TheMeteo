@@ -1,8 +1,13 @@
 package fr.matthstudio.themeteo.data
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import fr.matthstudio.themeteo.R
+
 data class WeatherModel(
     val apiName: String,
-    val settingName: String,
+    val settingNameResId: Int? = null,
+    val settingNameRaw: String? = null,
     val sourceName: String,
     val isGlobal: Boolean,
     val minLat: Double = -90.0,
@@ -18,54 +23,59 @@ data class WeatherModel(
     }
 }
 
+@Composable
+fun WeatherModel.getDisplayName(): String {
+    return settingNameResId?.let { stringResource(it) } ?: settingNameRaw ?: apiName
+}
+
 object WeatherModelRegistry {
     val models = listOf(
         // --- Modèles Déterministes ---
-        WeatherModel("best_match", "Meilleur modèle par défaut", "Open-Meteo", true, predictionDays = 15),
-        WeatherModel("meteofrance_seamless", "Météo France Seamless", "Météo France", true, predictionDays = 3),
-        WeatherModel("meteofrance_arpege_world", "Météo France ARPEGE World", "ARPEGE", true, predictionDays = 4),
-        WeatherModel("meteofrance_arpege_europe", "Météo France ARPEGE Europe", "ARPEGE", false, 32.0, 70.0, -20.0, 40.0, 4),
-        WeatherModel("meteofrance_arome_france", "Météo France AROME", "AROME", false, 38.0, 55.0, -8.0, 12.0, 2),
-        WeatherModel("meteofrance_arome_france_hd", "Météo France AROME HD", "AROME HD", false, 38.0, 55.0, -8.0, 12.0, 2),
-        WeatherModel("knmi_harmonie_arome_europe", "KNMI Harmonie Arome Europe", "Harmonie Arome", false, 45.0, 60.0, -10.0, 20.0, 2),
-        WeatherModel("knmi_harmonie_arome_netherlands", "KNMI Harmonie Arome Netherlands", "Harmonie Arome", false, 50.0, 54.0, 3.0, 8.0, 2),
-        WeatherModel("dmi_harmonie_arome_europe", "DMI Harmonie Arome Europe", "Harmonie Arome", false, 40.0, 75.0, -20.0, 50.0, 2),
-        WeatherModel("ukmo_seamless", "UK Met Office Seamless", "UK Met Office", true, predictionDays = 5),
-        WeatherModel("ukmo_global_deterministic_10km", "UK Met Office Global 10km", "UK Met Office", true, predictionDays = 5),
-        WeatherModel("ukmo_uk_deterministic_2km", "UK Met Office UK 2km", "UK Met Office", false, 49.0, 61.0, -11.0, 2.0, 2),
-        WeatherModel("meteoswiss_icon_seamless", "MeteoSwiss ICON Seamless", "MeteoSwiss", false, 45.0, 48.0, 5.0, 11.0, 3),
-        WeatherModel("meteoswiss_icon_ch1", "MeteoSwiss ICON CH1", "MeteoSwiss", false, 45.0, 48.0, 5.0, 11.0, 3),
-        WeatherModel("meteoswiss_icon_ch2", "MeteoSwiss ICON CH2", "MeteoSwiss", false, 45.0, 48.0, 5.0, 11.0, 3),
-        WeatherModel("icon_seamless", "ICON Seamless", "Deutscher Wetterdienst", true, predictionDays = 7),
-        WeatherModel("icon_d2", "DWD ICON D2", "Deutscher Wetterdienst", false, 44.0, 56.0, 2.0, 16.0, 2),
-        WeatherModel("icon_eu", "DWD ICON EU", "Deutscher Wetterdienst", false, 34.0, 70.0, -25.0, 40.0, 3),
-        WeatherModel("icon_global", "ICON Global", "Deutscher Wetterdienst", true, predictionDays = 7),
-        WeatherModel("kma_gdps", "KMA GDPS", "KMA", true, predictionDays = 10),
-        WeatherModel("kma_ldps", "KMA LDPS", "KMA", false, 32.0, 40.0, 124.0, 132.0, 3),
-        WeatherModel("bom_access_global", "BOM ACCESS Global", "BOM", true, predictionDays = 10),
-        WeatherModel("cma_grapes_global", "CMA GRAPES Global", "CMA", true, predictionDays = 10),
-        WeatherModel("ecmwf_aifs025_single", "ECMWF AIFS 0.25° Single", "ECMWF AIFS", true, predictionDays = 14),
-        WeatherModel("ecmwf_ifs025", "ECMWF IFS 0.25°", "ECMWF IFS", true, predictionDays = 14),
-        WeatherModel("ecmwf_ifs", "ECMWF IFS HRES 9km", "ECMWF IFS", true, predictionDays = 14),
-        WeatherModel("gfs_seamless", "NCEP GFS Seamless", "GFS", true, predictionDays = 15),
-        WeatherModel("gfs_global", "NCEP GFS Global 0.11°/0.25°", "GFS", true, predictionDays = 15),
-        WeatherModel("ncep_aigfs025", "NCEP AIGFS 0.25°", "AIGFS", true, predictionDays = 14),
-        WeatherModel("ncep_hgefs025_ensemble_mean", "NCEP HGEFS 0.25° Ensemble Mean", "NCEP", true, predictionDays = 16),
-        WeatherModel("gfs_graphcast025", "NCEP GFS GraphCast", "GFS", true, predictionDays = 15),
-        WeatherModel("gem_seamless", "GEM Seamless", "GEM", true, predictionDays = 9),
-        WeatherModel("gem_global", "GEM Global", "GEM", true, predictionDays = 9),
-        WeatherModel("gem_regional", "GEM Regional", "GEM", false, 40.0, 60.0, -140.0, -50.0, 4),
-        WeatherModel("jma_gms", "JMA GSM", "JMA", true, predictionDays = 10),
-        WeatherModel("jma_msm", "JMA MSM", "JMA", false, 20.0, 50.0, 120.0, 150.0, 3),
-        WeatherModel("jma_seamless", "JMA Seamless", "JMA", true, predictionDays = 10),
+        WeatherModel("best_match", settingNameResId = R.string.meilleur_mod_le_par_d_faut, sourceName = "Open-Meteo", isGlobal = true, predictionDays = 15),
+        WeatherModel("meteofrance_seamless", settingNameRaw = "Météo France Seamless", sourceName = "Météo France", isGlobal = true, predictionDays = 3),
+        WeatherModel("meteofrance_arpege_world", settingNameRaw = "Météo France ARPEGE World", sourceName = "ARPEGE", isGlobal = true, predictionDays = 4),
+        WeatherModel("meteofrance_arpege_europe", settingNameRaw = "Météo France ARPEGE Europe", sourceName = "ARPEGE", isGlobal = false, minLat = 32.0, maxLat = 70.0, minLon = -20.0, maxLon = 40.0, predictionDays = 4),
+        WeatherModel("meteofrance_arome_france", settingNameRaw = "Météo France AROME", sourceName = "AROME", isGlobal = false, minLat = 38.0, maxLat = 55.0, minLon = -8.0, maxLon = 12.0, predictionDays = 2),
+        WeatherModel("meteofrance_arome_france_hd", settingNameRaw = "Météo France AROME HD", sourceName = "AROME HD", isGlobal = false, minLat = 38.0, maxLat = 55.0, minLon = -8.0, maxLon = 12.0, predictionDays = 2),
+        WeatherModel("knmi_harmonie_arome_europe", settingNameRaw = "KNMI Harmonie Arome Europe", sourceName = "Harmonie Arome", isGlobal = false, minLat = 45.0, maxLat = 60.0, minLon = -10.0, maxLon = 20.0, predictionDays = 2),
+        WeatherModel("knmi_harmonie_arome_netherlands", settingNameRaw = "KNMI Harmonie Arome Netherlands", sourceName = "Harmonie Arome", isGlobal = false, minLat = 50.0, maxLat = 54.0, minLon = 3.0, maxLon = 8.0, predictionDays = 2),
+        WeatherModel("dmi_harmonie_arome_europe", settingNameRaw = "DMI Harmonie Arome Europe", sourceName = "Harmonie Arome", isGlobal = false, minLat = 40.0, maxLat = 75.0, minLon = -20.0, maxLon = 50.0, predictionDays = 2),
+        WeatherModel("ukmo_seamless", settingNameRaw = "UK Met Office Seamless", sourceName = "UK Met Office", isGlobal = true, predictionDays = 5),
+        WeatherModel("ukmo_global_deterministic_10km", settingNameRaw = "UK Met Office Global 10km", sourceName = "UK Met Office", isGlobal = true, predictionDays = 5),
+        WeatherModel("ukmo_uk_deterministic_2km", settingNameRaw = "UK Met Office UK 2km", sourceName = "UK Met Office", isGlobal = false, minLat = 49.0, maxLat = 61.0, minLon = -11.0, maxLon = 2.0, predictionDays = 2),
+        WeatherModel("meteoswiss_icon_seamless", settingNameRaw = "MeteoSwiss ICON Seamless", sourceName = "MeteoSwiss", isGlobal = false, minLat = 45.0, maxLat = 48.0, minLon = 5.0, maxLon = 11.0, predictionDays = 3),
+        WeatherModel("meteoswiss_icon_ch1", settingNameRaw = "MeteoSwiss ICON CH1", sourceName = "MeteoSwiss", isGlobal = false, minLat = 45.0, maxLat = 48.0, minLon = 5.0, maxLon = 11.0, predictionDays = 3),
+        WeatherModel("meteoswiss_icon_ch2", settingNameRaw = "MeteoSwiss ICON CH2", sourceName = "MeteoSwiss", isGlobal = false, minLat = 45.0, maxLat = 48.0, minLon = 5.0, maxLon = 11.0, predictionDays = 3),
+        WeatherModel("icon_seamless", settingNameRaw = "ICON Seamless", sourceName = "Deutscher Wetterdienst", isGlobal = true, predictionDays = 7),
+        WeatherModel("icon_d2", settingNameRaw = "DWD ICON D2", sourceName = "Deutscher Wetterdienst", isGlobal = false, minLat = 44.0, maxLat = 56.0, minLon = 2.0, maxLon = 16.0, predictionDays = 2),
+        WeatherModel("icon_eu", settingNameRaw = "DWD ICON EU", sourceName = "Deutscher Wetterdienst", isGlobal = false, minLat = 34.0, maxLat = 70.0, minLon = -25.0, maxLon = 40.0, predictionDays = 3),
+        WeatherModel("icon_global", settingNameRaw = "ICON Global", sourceName = "Deutscher Wetterdienst", isGlobal = true, predictionDays = 7),
+        WeatherModel("kma_gdps", settingNameRaw = "KMA GDPS", sourceName = "KMA", isGlobal = true, predictionDays = 10),
+        WeatherModel("kma_ldps", settingNameRaw = "KMA LDPS", sourceName = "KMA", isGlobal = false, minLat = 32.0, maxLat = 40.0, minLon = 124.0, maxLon = 132.0, predictionDays = 3),
+        WeatherModel("bom_access_global", settingNameRaw = "BOM ACCESS Global", sourceName = "BOM", isGlobal = true, predictionDays = 10),
+        WeatherModel("cma_grapes_global", settingNameRaw = "CMA GRAPES Global", sourceName = "CMA", isGlobal = true, predictionDays = 10),
+        WeatherModel("ecmwf_aifs025_single", settingNameRaw = "ECMWF AIFS 0.25° Single", sourceName = "ECMWF AIFS", isGlobal = true, predictionDays = 14),
+        WeatherModel("ecmwf_ifs025", settingNameRaw = "ECMWF IFS 0.25°", sourceName = "ECMWF IFS", isGlobal = true, predictionDays = 14),
+        WeatherModel("ecmwf_ifs", settingNameRaw = "ECMWF IFS HRES 9km", sourceName = "ECMWF IFS", isGlobal = true, predictionDays = 14),
+        WeatherModel("gfs_seamless", settingNameRaw = "NCEP GFS Seamless", sourceName = "GFS", isGlobal = true, predictionDays = 15),
+        WeatherModel("gfs_global", settingNameRaw = "NCEP GFS Global 0.11°/0.25°", sourceName = "GFS", isGlobal = true, predictionDays = 15),
+        WeatherModel("ncep_aigfs025", settingNameRaw = "NCEP AIGFS 0.25°", sourceName = "AIGFS", isGlobal = true, predictionDays = 14),
+        WeatherModel("ncep_hgefs025_ensemble_mean", settingNameRaw = "NCEP HGEFS 0.25° Ensemble Mean", sourceName = "NCEP", isGlobal = true, predictionDays = 16),
+        WeatherModel("gfs_graphcast025", settingNameRaw = "NCEP GFS GraphCast", sourceName = "GFS", isGlobal = true, predictionDays = 15),
+        WeatherModel("gem_seamless", settingNameRaw = "GEM Seamless", sourceName = "GEM", isGlobal = true, predictionDays = 9),
+        WeatherModel("gem_global", settingNameRaw = "GEM Global", sourceName = "GEM", isGlobal = true, predictionDays = 9),
+        WeatherModel("gem_regional", settingNameRaw = "GEM Regional", sourceName = "GEM", isGlobal = false, minLat = 40.0, maxLat = 60.0, minLon = -140.0, maxLon = -50.0, predictionDays = 4),
+        WeatherModel("jma_gms", settingNameRaw = "JMA GSM", sourceName = "JMA", isGlobal = true, predictionDays = 10),
+        WeatherModel("jma_msm", settingNameRaw = "JMA MSM", sourceName = "JMA", isGlobal = false, minLat = 20.0, maxLat = 50.0, minLon = 120.0, maxLon = 150.0, predictionDays = 3),
+        WeatherModel("jma_seamless", settingNameRaw = "JMA Seamless", sourceName = "JMA", isGlobal = true, predictionDays = 10),
 
         // --- Modèles d'Ensemble ---
-        WeatherModel("ecmwf_ifs025_ensemble", "ECMWF IFS Ensemble 0.25°", "ECMWF IFS Ensemble", true, predictionDays = 14, isEnsemble = true),
-        WeatherModel("ecmwf_aifs025_ensemble", "ECMWF AIFS 0.25° Ensemble", "ECMWF AIFS Ensemble", true, predictionDays = 14, isEnsemble = true),
-        WeatherModel("ncep_gefs_seamless", "GFS Ensemble Seamless", "NCEP GFS Ensemble", true, predictionDays = 34, isEnsemble = true),
-        WeatherModel("icon_seamless_eps", "ICON Ensemble Seamless", "DWD ICON Ensemble", true, predictionDays = 6, isEnsemble = true),
-        WeatherModel("gem_global_ensemble", "GEM Ensemble Seamless", "GEM Ensemble", true, predictionDays = 34, isEnsemble = true),
-        WeatherModel("ukmo_global_ensemble_20km", "UKMO Ensemble Seamless", "UKMO Ensemble", true, predictionDays = 7, isEnsemble = true),
+        WeatherModel("ecmwf_ifs025_ensemble", settingNameRaw = "ECMWF IFS Ensemble 0.25°", sourceName = "ECMWF IFS Ensemble", isGlobal = true, predictionDays = 14, isEnsemble = true),
+        WeatherModel("ecmwf_aifs025_ensemble", settingNameRaw = "ECMWF AIFS 0.25° Ensemble", sourceName = "ECMWF AIFS Ensemble", isGlobal = true, predictionDays = 14, isEnsemble = true),
+        WeatherModel("ncep_gefs_seamless", settingNameRaw = "GFS Ensemble Seamless", sourceName = "NCEP GFS Ensemble", isGlobal = true, predictionDays = 34, isEnsemble = true),
+        WeatherModel("icon_seamless_eps", settingNameRaw = "ICON Ensemble Seamless", sourceName = "DWD ICON Ensemble", isGlobal = true, predictionDays = 6, isEnsemble = true),
+        WeatherModel("gem_global_ensemble", settingNameRaw = "GEM Ensemble Seamless", sourceName = "GEM Ensemble", isGlobal = true, predictionDays = 34, isEnsemble = true),
+        WeatherModel("ukmo_global_ensemble_20km", settingNameRaw = "UKMO Ensemble Seamless", sourceName = "UKMO Ensemble", isGlobal = true, predictionDays = 7, isEnsemble = true),
     )
 
     fun getModel(apiName: String, isEnsemble: Boolean = false) = 

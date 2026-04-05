@@ -108,6 +108,15 @@
     <string name="uv_index_format">Indice UV : %d</string>
     <string name="pollen_index_format">Indice : %d</string>
     <string name="major_pollutant_format">Polluant majeur : %s</string>
+    <string name="sun_event_format" translatable="false">%1$s : %2$s</string>
+    <string name="sun_event_day_format" translatable="false">%1$s (%2$s) : %3$s</string>
+    <string name="sun_moon_details">Détails Soleil &amp; Lune</string>
+    <string name="sun_path">Trajectoire du Soleil</string>
+    <string name="solar_noon">Midi Solaire</string>
+    <string name="moon_phase">Phase de la Lune</string>
+    <string name="moonrise">Lever de Lune</string>
+    <string name="moonset">Coucher de Lune</string>
+    <string name="illumination">Illumination : %1$s</string>
 
     <!-- Weather Sentence Building -->
     <string name="sky_sunny">Ciel ensoleillé</string>
@@ -165,8 +174,8 @@
     <string name="animated_icons_title">Icônes animées</string>
     <string name="animated_icons_desc">Animer les icônes météo, désactivé lorsque l\'économiseur de batterie est activé</string>
     <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
-    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du \"Meilleur Modèle\"</string>
-    <string name="meilleur_mod_le_par_d_faut">Meilleur Modèle (par défaut)</string>
+    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du modèle \"Auto\"</string>
+    <string name="meilleur_mod_le_par_d_faut">Auto (par défaut)</string>
     <string name="major_polluant">Polluant Majeur: %1$s</string>
     <string name="gusts">Rafales</string>
     <string name="forecast_type_title">Type de prévision</string>

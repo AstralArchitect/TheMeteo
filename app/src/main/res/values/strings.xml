@@ -127,6 +127,13 @@
     <string name="major_pollutant_format">Major pollutant: %s</string>
     <string name="precipitation_detail_format" translatable="false">Prob: %2$d%% | Rain: %3$.1f mm</string>
     <string name="sun_event_format" translatable="false">%1$s: %2$s</string>
+    <string name="sun_moon_details">Sun &amp; Moon Details</string>
+    <string name="sun_path">Sun Path</string>
+    <string name="solar_noon">Solar Noon</string>
+    <string name="moon_phase">Moon Phase</string>
+    <string name="moonrise">Moonrise</string>
+    <string name="moonset">Moonset</string>
+    <string name="illumination">Illumination: %1$s</string>
     <string name="sun_event_day_format" translatable="false">%1$s (%2$s): %3$s</string>
     
     <!-- Weather Sentence Building -->
@@ -187,8 +194,8 @@
     <string name="animated_icons_title">Animated Icons</string>
     <string name="animated_icons_desc">Animate the weather icon, this setting will be disabled when battery saver is on</string>
     <string name="fill_missing_vars_title">Fill Missing Variables</string>
-    <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the \'Best Match\' model</string>
-    <string name="meilleur_mod_le_par_d_faut">Best Match (default)</string>
+    <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the \'Auto\' model</string>
+    <string name="meilleur_mod_le_par_d_faut">Auto (default)</string>
     <string name="major_polluant">Major Polluant: %1$s</string>
     <string name="gusts">Gusts</string>
     <string name="forecast_type_title">Forecast Type</string>

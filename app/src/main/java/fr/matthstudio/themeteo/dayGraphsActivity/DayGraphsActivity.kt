@@ -930,7 +930,7 @@ fun WindVectors(forecast: WeatherDataState, windUnit: WindUnit = WindUnit.KPH, s
                                 // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
                                 .width(41.5.dp)
                                 .rotate(
-                                    allVarsReading.wind.windDirection?.toFloat()?.minus(180) ?: 0f
+                                    allVarsReading.wind.windDirection?.toFloat()?.plus(90f) ?: 0f
                                 )
                         )
                     }

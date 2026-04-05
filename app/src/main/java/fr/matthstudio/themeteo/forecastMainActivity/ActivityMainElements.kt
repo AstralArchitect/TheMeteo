@@ -377,7 +377,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
 // --- Sun & Details ---
 // Main Component
 @Composable
-fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowDetails: () -> Unit) {
+fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDetails: () -> Unit, onShowDetails: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val dailyForecast by viewModel.dailyForecast.collectAsState()
         if (dailyForecast !is WeatherDataState.SuccessDaily)
@@ -484,7 +484,8 @@ fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowDetails: 
                 modifier = Modifier.weight(1f),
                 event1 = displayEvent1,
                 event2 = displayEvent2,
-                text
+                text,
+                onClick = onShowSunMoonDetails
             )
         }
 
@@ -498,13 +499,13 @@ fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowDetails: 
 
 // Sun Card
 @Composable
-fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunEvent?, text: String) {
+fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunEvent?, text: String, onClick: () -> Unit) {
     // Helper function to format the time string required (HH:mm)
     fun LocalDateTime.formatTime(): String {
         return String.format(Locale.getDefault(), "%02d:%02d", this.hour, this.minute)
     }
 
-    BentoCard(modifier = modifier.height(140.dp)) {
+    BentoCard(modifier = modifier.height(140.dp), onClick = onClick) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
@@ -768,7 +769,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
                                         .size(18.dp)
                                         .rotate(
                                             dayReading.maxWind.windDirection?.toFloat()
-                                                ?.minus(180) ?: 0f
+                                                ?.plus(90f) ?: 0f
                                         ),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -1102,9 +1103,9 @@ fun RainAlertCard(hourlyForecast: WeatherDataState) {
 }
 
 @Composable
-fun BentoCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun BentoCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     Surface(
-        modifier = modifier,
+        modifier = if (onClick != null) modifier.clickable { onClick() } else modifier,
         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
         shape = RoundedCornerShape(28.dp),
         tonalElevation = 12.dp,

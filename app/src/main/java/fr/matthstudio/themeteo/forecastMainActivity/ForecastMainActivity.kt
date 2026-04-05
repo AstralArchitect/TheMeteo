@@ -1,5 +1,6 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -98,7 +99,17 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.window.Dialog
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.PI
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import fr.matthstudio.themeteo.data.BentoCardType
@@ -119,6 +130,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 data class WeatherDetailItem(
@@ -176,6 +189,7 @@ fun BentoCardContent(
     hourlyForecast: WeatherDataState,
     context: android.content.Context,
     isLauncherActivity: Boolean,
+    onShowSunMoonDetails: () -> Unit,
     onShowDetails: () -> Unit,
     onShowAirQuality: () -> Unit,
     onShowVigilance: () -> Unit
@@ -183,7 +197,7 @@ fun BentoCardContent(
     when (cardType) {
         BentoCardType.VIGILANCE -> VigilanceCard(viewModel, onCardClick = onShowVigilance)
         BentoCardType.HOURLY_FORECAST -> HourlyForecastCard(hourlyForecast, context = context, viewModel = viewModel)
-        BentoCardType.SUN_DETAILS -> SunAndDetails(viewModel, context, onShowDetails = onShowDetails)
+        BentoCardType.SUN_DETAILS -> SunAndDetails(viewModel, context, onShowSunMoonDetails = onShowSunMoonDetails, onShowDetails = onShowDetails)
         BentoCardType.DAILY_FORECAST -> if (isLauncherActivity) DailyForecastCard(viewModel, context)
         BentoCardType.AIR_QUALITY -> {
             val environmentalData by viewModel.environmentalData.collectAsState()
@@ -258,6 +272,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     var showDetailsDialog by remember { mutableStateOf(false) }
     var showAirQualityDialog by remember { mutableStateOf(false) }
     var showVigilanceDialog by remember { mutableStateOf(false) }
+    var showSunMoonDialog by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true
@@ -670,6 +685,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 hourlyForecast,
                                 context,
                                 isLauncherActivity,
+                                { showSunMoonDialog = true },
                                 { showDetailsDialog = true },
                                 { showAirQualityDialog = true },
                                 { showVigilanceDialog = true }
@@ -696,12 +712,349 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                     }
                 }
 
+                if (showSunMoonDialog) {
+                    SunMoonDetailsDialog(viewModel, onDismiss = { showSunMoonDialog = false })
+                }
+
                 val shouldShowPolicyUpdateDialog by viewModel.shouldShowPolicyUpdateDialog.collectAsState()
                 if (shouldShowPolicyUpdateDialog) {
                     PolicyUpdateDialog(
                         onAccept = { viewModel.acceptPolicyUpdates() }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
+    val dailyForecast by viewModel.dailyForecast.collectAsState()
+    val context = LocalContext.current
+    
+    // Placeholder Moon Data (To be implemented in backend later)
+    val moonPhase = "Waxing Gibbous"
+    val illumination = "85%"
+    val moonrise = "14:22"
+    val moonset = "04:15"
+
+    // Animation state
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    
+    fun animateAndDismiss() {
+        visibleState.targetState = false
+        onDismiss()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable { animateAndDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedVisibility(
+            visibleState = visibleState,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .clickable(enabled = false) { },
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        "Sun Details",
+                        //stringResource(R.string.sun_moon_details),
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    Column(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
+                        // Sun Section
+                        Column {
+                            Text(stringResource(R.string.sun_path), style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(8.dp))
+                            SunPathVisualization(viewModel)
+                        }
+
+                        // TODO: A FAIRE DANS LA PROCHAINE VERSION
+                        //HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        
+                        // Moon Section
+                        //MoonDetailsSection(moonPhase, illumination, moonrise, moonset)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    TextButton(
+                        onClick = { animateAndDismiss() },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(stringResource(R.string.close))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SunPathVisualization(viewModel: WeatherViewModel) {
+    val dailyForecast by viewModel.dailyForecast.collectAsState()
+    val hourlyForecast by viewModel.hourlyForecast.collectAsState()
+    val context = LocalContext.current
+    val data = (dailyForecast as? WeatherDataState.SuccessDaily)?.data ?: return
+    
+    // Use the time from the first hourly reading for better location synchronization
+    val currentReadingTime = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.time 
+        ?: LocalDateTime.now()
+    
+    val today = data.getOrNull(0)
+    val tomorrow = data.getOrNull(1)
+
+    val sr0 = today?.sunrise?.toEventLocalDateTime(context.applicationContext)?.let { it.hour * 60f + it.minute } ?: (6f * 60f)
+    val ss0 = today?.sunset?.toEventLocalDateTime(context.applicationContext)?.let { it.hour * 60f + it.minute } ?: (18f * 60f)
+    
+    // Condition: ss < sr
+    val isShifted = ss0 < sr0
+
+    val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
+        // Logique Shifting : centré sur le midi solaire
+        val ss1 = tomorrow.sunset.toEventLocalDateTime(context.applicationContext)?.let { it.hour * 60f + it.minute } ?: ss0
+        val ss1Shifted = ss1 + 1440f
+        val noon = (sr0 + ss1Shifted) / 2f
+        listOf(sr0, ss1Shifted, noon - 720f, noon + 720f)
+    } else {
+        // Logique Standard : 00:00 à 24:00
+        val ss0Fixed = if (ss0 < sr0) ss0 + 1440f else ss0
+        listOf(sr0, ss0Fixed, 0f, 1440f)
+    }
+
+    val noonMins = (srUsed + ssUsed) / 2f
+    
+    var sunMins = currentReadingTime.hour * 60f + currentReadingTime.minute
+    // Normalize sunMins into [windowStart, windowEnd]
+    while (sunMins < windowStart) sunMins += 1440f
+    while (sunMins > windowEnd) sunMins -= 1440f
+    val sunProgress = (sunMins - windowStart) / 1440f
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        val widthDp = maxWidth
+        
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 2.dp.toPx()
+            val horizonY = size.height / 2
+
+            // Curve crosses horizon at sunrise/sunset relative to noon
+            val crossingCos = cos(2.0 * PI * (srUsed - noonMins) / 1440.0).toFloat()
+            
+            // Normalize scale so day peak is at top and night trough at bottom
+            val scaleY = (size.height / 2 - 25.dp.toPx()) / (1f + abs(crossingCos))
+
+            // Draw Sine Path (24h cycle centered or standard)
+            val path = Path()
+            val segments = 150
+            for (i in 0..segments) {
+                val tMins = windowStart + (i.toFloat() / segments) * 1440f
+                val x = (i.toFloat() / segments) * size.width
+                val yOffset = cos(2.0 * PI * (tMins - noonMins) / 1440.0).toFloat() - crossingCos
+                val y = horizonY - yOffset * scaleY
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            
+            drawPath(
+                path = path,
+                color = Color.Gray.copy(alpha = 0.3f),
+                style = Stroke(
+                    width = strokeWidth,
+                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                )
+            )
+            
+            // Horizon line
+            drawLine(
+                color = Color.Gray.copy(alpha = 0.5f),
+                start = Offset(0f, horizonY),
+                end = Offset(size.width, horizonY),
+                strokeWidth = 1.dp.toPx()
+            )
+
+            // Current sun position on the curve
+            val currentYOffset = cos(2.0 * PI * (sunMins - noonMins) / 1440.0).toFloat() - crossingCos
+            val sunY = horizonY - currentYOffset * scaleY
+            
+            val isDay = currentYOffset > 0
+            val sunColor = if (isDay) Color(0xFFFFD700) else Color(0xFFB0C4DE)
+            
+            drawCircle(
+                color = sunColor,
+                radius = 8.dp.toPx(),
+                center = Offset(sunProgress * size.width, sunY)
+            )
+            
+            if (isDay) {
+                drawCircle(
+                    color = sunColor.copy(alpha = 0.3f),
+                    radius = 12.dp.toPx(),
+                    center = Offset(sunProgress * size.width, sunY)
+                )
+            }
+        }
+        
+        // Time markers
+        Box(modifier = Modifier.fillMaxSize()) {
+            val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+            // Sunrise label
+            val srX = ((srUsed - windowStart) / 1440f) * widthDp.value
+            if (srX in 0f..widthDp.value) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = srX.dp, y = (-24).dp)
+                        .graphicsLayer { translationX = -size.width / 2 }
+                ) {
+                    Text(
+                        text = stringResource(R.string.sunrise),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        fontSize = 10.sp
+                    )
+                    val srTime = today?.sunrise?.toEventLocalDateTime(context.applicationContext) ?: LocalDateTime.now()
+                    Text(
+                        text = srTime.format(formatter),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Sunset label
+            val ssX = ((ssUsed - windowStart) / 1440f) * widthDp.value
+            if (ssX in 0f..widthDp.value) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = ssX.dp, y = (-24).dp)
+                        .graphicsLayer { translationX = -size.width / 2 }
+                ) {
+                    Text(
+                        text = stringResource(R.string.sunset),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        fontSize = 10.sp
+                    )
+                    val ssTime = (if (isShifted) tomorrow else today)?.sunset?.toEventLocalDateTime(context.applicationContext) ?: LocalDateTime.now()
+                    Text(
+                        text = ssTime.format(formatter),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Absolute markers (Dynamic based on window)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                fun formatMins(mins: Float): String {
+                    val m = (mins % 1440 + 1440) % 1440
+                    val h = (m / 60).toInt()
+                    val mm = (m % 60).toInt()
+                    return String.format(Locale.getDefault(), "%02d:%02d", h, mm)
+                }
+                Text(formatMins(windowStart), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                Text(formatMins((windowStart + windowEnd) / 2f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                Text(formatMins(windowEnd), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            }
+
+            // Solar Noon Marker at Zenith (Standard mode only)
+            if (!isShifted) {
+                val noonX = (noonMins / 1440f) * widthDp.value
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = noonX.dp, y = 8.dp) // Placed near the top
+                        .graphicsLayer { translationX = -size.width / 2 }
+                ) {
+                    Text(
+                        text = (noonMins % 1440).let { m -> 
+                            val h = (m / 60).toInt()
+                            val mm = (m % 60).toInt()
+                            String.format(Locale.getDefault(), "%02d:%02d", h, mm)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        //color = MaterialTheme.colorScheme.primary,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MoonDetailsSection(phase: String, illumination: String, rise: String, set: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.moon_phase), style = MaterialTheme.typography.titleMedium)
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(phase, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.illumination, illumination), style = MaterialTheme.typography.bodyMedium)
+            }
+            
+            // Placeholder for Moon Icon
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = CircleShape,
+                color = Color.Gray.copy(alpha = 0.2f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("🌙", fontSize = 24.sp)
+                }
+            }
+        }
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.moonrise), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(rise, style = MaterialTheme.typography.bodyLarge)
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.moonset), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(set, style = MaterialTheme.typography.bodyLarge)
             }
         }
     }
@@ -746,14 +1099,14 @@ fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         actualReading.temperature?.let {
             WeatherDetailItem(
                 Icons.Rounded.Thermostat,
-                stringResource(R.string.a_temperature_unit),
+                stringResource(R.string.temperature),
                 UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
             )
         },
         actualReading.apparentTemperature?.let {
             WeatherDetailItem(
                 Icons.Rounded.DeviceThermostat,
-                stringResource(R.string.apparent_temperature),
+                stringResource(R.string.a_temperature_unit),
                 UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
             )
         },

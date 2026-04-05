@@ -37,6 +37,7 @@ import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.GpsCoordinates
+import fr.matthstudio.themeteo.data.getDisplayName
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.launch
 
@@ -391,8 +392,9 @@ fun ModelSelectionSetting(
             expanded = expanded,
             onExpandedChange = { expanded = !expanded }
         ) {
+            val selectedModel = availableModels.firstOrNull { it.apiName == currentModel }
             OutlinedTextField(
-                value = availableModels.firstOrNull { it.apiName == currentModel }?.settingName ?: currentModel,
+                value = selectedModel?.getDisplayName() ?: currentModel,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Selected Model") },
@@ -407,7 +409,7 @@ fun ModelSelectionSetting(
             ) {
                 availableModels.forEach { model ->
                     DropdownMenuItem(
-                        text = { Text(model.settingName) },
+                        text = { Text(model.getDisplayName()) },
                         onClick = {
                             onModelSelected(model.apiName)
                             expanded = false
