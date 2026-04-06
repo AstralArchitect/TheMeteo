@@ -88,6 +88,11 @@
     <string name="goes_to_current_weather_page">Page Météo Actuelle</string>
     <string name="app_focus">Affichage par défaut</string>
     <string name="curent_weather">Actuel</string>
+    <string name="compass_view">Vue Boussole</string>
+    <string name="compass_north">Nord</string>
+    <string name="moon">Lune</string>
+    <string name="enable_rotation">Utiliser la boussole</string>
+    <string name="rotation_not_available">Capteur boussole non disponible sur cet appareil</string>
     <string name="daily_forecast_setting">Journalier</string>
     <string name="no_current_risks">Aucun risque actuellement</string>
     <string name="herbes">Herbes</string>
@@ -114,6 +119,14 @@
     <string name="sun_path">Trajectoire du Soleil</string>
     <string name="solar_noon">Midi Solaire</string>
     <string name="moon_phase">Phase de la Lune</string>
+    <string name="moon_phase_new_moon">Nouvelle Lune</string>
+    <string name="moon_phase_waxing_crescent">Premier Croissant</string>
+    <string name="moon_phase_first_quarter">Premier Quartier</string>
+    <string name="moon_phase_waxing_gibbous">Lune Gibbeuse Croissante</string>
+    <string name="moon_phase_full_moon">Pleine Lune</string>
+    <string name="moon_phase_waning_gibbous">Lune Gibbeuse Décroissante</string>
+    <string name="moon_phase_last_quarter">Dernier Quartier</string>
+    <string name="moon_phase_waning_crescent">Dernier Croissant</string>
     <string name="moonrise">Lever de Lune</string>
     <string name="moonset">Coucher de Lune</string>
     <string name="illumination">Illumination : %1$s</string>

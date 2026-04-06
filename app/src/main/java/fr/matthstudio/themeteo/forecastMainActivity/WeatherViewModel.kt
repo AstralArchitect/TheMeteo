@@ -31,6 +31,12 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 import fr.matthstudio.themeteo.utilClasses.EnvironmentalUIModel
+import fr.matthstudio.themeteo.utilClasses.FullSunCalculator
+import fr.matthstudio.themeteo.utilClasses.DailySunData
+import fr.matthstudio.themeteo.utilClasses.FullSunData
+import fr.matthstudio.themeteo.utilClasses.MoonCalculator
+import fr.matthstudio.themeteo.utilClasses.MoonData
+import fr.matthstudio.themeteo.utilClasses.DailyMoonEvents
 import fr.matthstudio.themeteo.utilClasses.mapToEnvironmentalUI
 import kotlinx.coroutines.flow.map
 
@@ -39,7 +45,7 @@ import kotlinx.coroutines.flow.map
  * Il expose les états de l'application de manière simple et réactive pour que l'UI puisse les afficher.
  * Il gère également la logique de recherche de villes.
  */
-@OptIn(FlowPreview::class) // Nécessaire pour l'opérateur debounce
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class) // Nécessaire pour l'opérateur debounce et flatMapLatest
 class WeatherViewModel(
     private val weatherCache: WeatherCache,
     private val telemetryManager: TelemetryManager
@@ -50,15 +56,79 @@ class WeatherViewModel(
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
 
     /**
+     * Expose la localisation actuellement sélectionnée depuis le WeatherCache.
+     */
+    val selectedLocation: StateFlow<LocationIdentifier> = weatherCache.selectedLocation
+
+    /**
+     * Un flux qui émet toutes les secondes pour les mises à jour en temps réel.
+     */
+    private val ticker = kotlinx.coroutines.flow.flow {
+        while (true) {
+            emit(Unit)
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    /**
+     * Données solaires calculées localement, mises à jour chaque seconde.
+     */
+    val sunData: StateFlow<FullSunData?> = combine(selectedLocation, ticker) { location, _ ->
+        val coords = when (location) {
+            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
+            is LocationIdentifier.CurrentUserLocation -> weatherCache.currentGpsPosition.value
+        }
+
+        coords?.let {
+            FullSunCalculator(it.latitude, it.longitude).getCompleteSunData()
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        null
+    )
+
+    private var lastMoonLocation: LocationIdentifier? = null
+    private var lastMoonDay: LocalDate? = null
+    private var cachedDailyMoonEvents: DailyMoonEvents? = null
+
+    /**
+     * Données lunaires calculées localement, mises à jour chaque seconde.
+     * Mise en cache des événements journaliers pour éviter les calculs lourds en boucle.
+     */
+    val moonData: StateFlow<MoonData?> = combine(selectedLocation, ticker) { location, _ ->
+        val coords = when (location) {
+            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
+            is LocationIdentifier.CurrentUserLocation -> weatherCache.currentGpsPosition.value
+        }
+
+        coords?.let {
+            val calc = MoonCalculator(it.latitude, it.longitude)
+            val now = LocalDateTime.now()
+            val today = now.toLocalDate()
+
+            if (lastMoonLocation != location || lastMoonDay != today || cachedDailyMoonEvents == null) {
+                cachedDailyMoonEvents = calc.getDailyEvents(today)
+                lastMoonLocation = location
+                lastMoonDay = today
+            }
+
+            MoonData(
+                dailyEvents = cachedDailyMoonEvents!!,
+                currentPosition = calc.getMoonPosition(now)
+            )
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        null
+    )
+
+    /**
      * Expose les paramètres utilisateur (modèle, arrondi, etc.) directement depuis le WeatherCache.
      * L'UI se mettra à jour automatiquement si les paramètres changent dans le DataStore.
      */
     val userSettings: StateFlow<UserSettings> = weatherCache.userSettings
-
-    /**
-     * Expose la localisation actuellement sélectionnée depuis le WeatherCache.
-     */
-    val selectedLocation: StateFlow<LocationIdentifier> = weatherCache.selectedLocation
 
     /**
      * Expose les positions enregistrées par l'utilisateur depuis le WeatherCache.

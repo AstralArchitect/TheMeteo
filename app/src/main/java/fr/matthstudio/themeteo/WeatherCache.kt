@@ -161,6 +161,7 @@ class WeatherCache(
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
     val selectedLocation: StateFlow<LocationIdentifier> = _selectedLocation.asStateFlow()
+
     val savedLocations: StateFlow<List<SavedLocation>> = userLocationsRepository.savedLocations
         .stateIn(
             scope = applicationScope,
@@ -179,6 +180,18 @@ class WeatherCache(
     val isLocationPermissionGranted: StateFlow<Boolean> = _isLocationPermissionGranted.asStateFlow()
     
     init {
+        // ... (Battery Saver monitor)
+        
+        // Initialiser la localisation sélectionnée avec la valeur par défaut sauvegardée
+        applicationScope.launch {
+            userSettingsRepository.defaultLocation.collect { defaultLoc ->
+                // On ne met à jour que si c'est l'initialisation ou si on est déjà sur une position par défaut
+                if (_selectedLocation.value == LocationIdentifier.CurrentUserLocation || _selectedLocation.value == defaultLoc) {
+                    _selectedLocation.value = defaultLoc ?: LocationIdentifier.CurrentUserLocation
+                }
+            }
+        }
+
         // Monitor Battery Saver
         val filter = IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         val receiver = object : BroadcastReceiver() {
@@ -403,7 +416,9 @@ class WeatherCache(
 
         if (needsFetch) {
             if (coords == null) {
-                emit(WeatherDataState.Error("GPS position not available. Please ensure location permissions are granted."))
+                if (primaryData.isNullOrEmpty()) {
+                    emit(WeatherDataState.Error("GPS position not available. Please ensure location permissions are granted."))
+                }
                 return@flow
             }
 
@@ -413,7 +428,7 @@ class WeatherCache(
                     updateCache(currentLocationIdentifier, effectiveModel, freshData, isDataObsolete || isFirstDayStale)
                     primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
                     if (primaryData != null) emit(WeatherDataState.SuccessHourly(primaryData))
-                } else {
+                } else if (primaryData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Failed to fetch ensemble forecast from $effectiveModel"))
                 }
             } else {
@@ -435,7 +450,7 @@ class WeatherCache(
                     } else {
                         emit(WeatherDataState.Error("Weather data unavailable after fetch."))
                     }
-                } else {
+                } else if (primaryData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Network error: Unable to reach weather service."))
                 }
             }
@@ -532,7 +547,9 @@ class WeatherCache(
 
         if (needsFetch) {
             if (coords == null) {
-                emit(WeatherDataState.Error("GPS position not available."))
+                if (primaryData.isNullOrEmpty()) {
+                    emit(WeatherDataState.Error("GPS position not available."))
+                }
                 return@flow
             }
 
@@ -542,7 +559,7 @@ class WeatherCache(
                     updateCache(currentLocationIdentifier, effectiveModel, freshData, isDataObsolete || isFirstDayStale)
                     primaryData = getDailyFromCache(primaryCache, date, endDate)
                     if (primaryData != null) emit(WeatherDataState.SuccessDaily(primaryData))
-                } else {
+                } else if (primaryData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Failed to fetch daily ensemble forecast."))
                 }
             } else {
@@ -564,7 +581,7 @@ class WeatherCache(
                     } else {
                         emit(WeatherDataState.Error("Daily weather data unavailable after fetch."))
                     }
-                } else {
+                } else if (primaryData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Network error during daily forecast fetch."))
                 }
             }
@@ -644,9 +661,13 @@ class WeatherCache(
 
     private fun getHourlyFromCache(modelCache: ModelDataCache, startTime: LocalDateTime, endTime: LocalDateTime): List<AllHourlyVarsReading>? {
         if (modelCache.dailyBlocks.isEmpty()) return null
+        // Ensure all time are hours
+        val startTime = startTime.withNano(0).withSecond(0).withMinute(0)
+        val endTime = endTime.withNano(0).withSecond(0).withMinute(0)
         val requiredDays = modelCache.dailyBlocks.subMap(startTime.toLocalDate(), true, endTime.toLocalDate(), true)
         if (requiredDays.isEmpty() || requiredDays.firstKey() > startTime.toLocalDate() || requiredDays.lastKey() < endTime.toLocalDate()) return null
-        return requiredDays.values.flatMap { it.first }.filter { !it.time.isBefore(startTime) && it.time.isBefore(endTime) }
+        val returnValue = requiredDays.values.flatMap { it.first }.filter { !it.time.isBefore(startTime) && it.time.isBefore(endTime) }
+        return returnValue
     }
 
     private fun getDailyFromCache(modelCache: ModelDataCache, startDate: LocalDate, endDate: LocalDate): List<DailyReading>? {

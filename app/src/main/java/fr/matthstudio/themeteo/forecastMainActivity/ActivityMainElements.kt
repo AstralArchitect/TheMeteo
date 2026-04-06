@@ -379,11 +379,11 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
 @Composable
 fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDetails: () -> Unit, onShowDetails: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        val dailyForecast by viewModel.dailyForecast.collectAsState()
-        if (dailyForecast !is WeatherDataState.SuccessDaily)
+        val sunData by viewModel.sunData.collectAsState()
+        if (sunData == null)
             return
 
-        val data = (dailyForecast as WeatherDataState.SuccessDaily).data
+        val data = sunData!!.dailyData
         if (data.isEmpty())
             return
 
@@ -394,43 +394,37 @@ fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDe
 
         val allEvents = mutableListOf<NextSunEvent>()
 
-        // Today's events (Data index 0)
-        val todayReading = data[0]
-        todayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.let { dt ->
-            allEvents.add(
-                NextSunEvent(
-                    stringResource(R.string.sunrise),
-                    dt,
-                    stringResource(R.string.today)
-                )
+        // Today's events (Data index 1 for FullSunCalculator)
+        val todayReading = data.getOrNull(1) ?: return
+        allEvents.add(
+            NextSunEvent(
+                stringResource(R.string.sunrise),
+                todayReading.sunrise,
+                stringResource(R.string.today)
             )
-        }
-        todayReading.sunset.toEventLocalDateTime(context.applicationContext)?.let { dt ->
-            allEvents.add(
-                NextSunEvent(
-                    stringResource(R.string.sunset),
-                    dt,
-                    stringResource(R.string.today)
-                )
+        )
+        allEvents.add(
+            NextSunEvent(
+                stringResource(R.string.sunset),
+                todayReading.sunset,
+                stringResource(R.string.today)
             )
-        }
+        )
 
-        // Tomorrow's events (Data index 1, if available)
-        val tomorrowReading = data.getOrNull(1)
-        tomorrowReading?.sunrise?.toEventLocalDateTime(context.applicationContext)?.let { dt ->
+        // Tomorrow's events (Data index 2)
+        val tomorrowReading = data.getOrNull(2)
+        tomorrowReading?.let {
             allEvents.add(
                 NextSunEvent(
                     stringResource(R.string.sunrise),
-                    dt,
+                    it.sunrise,
                     stringResource(R.string.tomorrow)
                 )
             )
-        }
-        tomorrowReading?.sunset?.toEventLocalDateTime(context.applicationContext)?.let { dt ->
             allEvents.add(
                 NextSunEvent(
                     stringResource(R.string.sunset),
-                    dt,
+                    it.sunset,
                     stringResource(R.string.tomorrow)
                 )
             )
@@ -450,19 +444,21 @@ fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDe
 
         if (isSunOk) {
             when (futureEvents[0].type) {
-                stringResource(R.string.sunrise) if tomorrowReading != null -> {
-                    val duration = Duration.between(
-                        todayReading.sunset.toEventLocalDateTime(context.applicationContext),
-                        tomorrowReading.sunrise.toEventLocalDateTime(context.applicationContext)
-                    )
-                    text =
-                        "${stringResource(R.string.night)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
+                stringResource(R.string.sunrise) -> {
+                    if (tomorrowReading != null) {
+                        val duration = Duration.between(
+                            todayReading.sunset,
+                            tomorrowReading.sunrise
+                        )
+                        text =
+                            "${stringResource(R.string.night)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"
+                    }
                 }
 
                 stringResource(R.string.sunset) -> {
                     val duration = Duration.between(
-                        todayReading.sunrise.toEventLocalDateTime(context.applicationContext),
-                        todayReading.sunset.toEventLocalDateTime(context.applicationContext)
+                        todayReading.sunrise,
+                        todayReading.sunset
                     )
                     text =
                         "${stringResource(R.string.day)} : ${duration.toHours()}h ${duration.toMinutes() % 60}min"

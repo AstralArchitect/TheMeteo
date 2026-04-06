@@ -41,14 +41,35 @@ class LocationProvider(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): GpsCoordinates? = suspendCancellableCoroutine { continuation ->
+        if (!checkLocationPermission()) {
+            continuation.resume(null)
+            return@suspendCancellableCoroutine
+        }
+
         val cancellationTokenSource = CancellationTokenSource()
+        
+        // Try to get fresh location
         fusedLocationClient.getCurrentLocation(
             Priority.PRIORITY_HIGH_ACCURACY,
             cancellationTokenSource.token
         ).addOnSuccessListener { location ->
-            continuation.resume(location?.let { GpsCoordinates(it.latitude, it.longitude) })
+            if (location != null) {
+                continuation.resume(GpsCoordinates(location.latitude, location.longitude))
+            } else {
+                // Fallback to last location if fresh one is null
+                fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
+                    continuation.resume(lastLoc?.let { GpsCoordinates(it.latitude, it.longitude) })
+                }.addOnFailureListener {
+                    continuation.resume(null)
+                }
+            }
         }.addOnFailureListener {
-            continuation.resume(null)
+            // Fallback to last location if fresh request fails
+            fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
+                continuation.resume(lastLoc?.let { GpsCoordinates(it.latitude, it.longitude) })
+            }.addOnFailureListener {
+                continuation.resume(null)
+            }
         }
 
         continuation.invokeOnCancellation {

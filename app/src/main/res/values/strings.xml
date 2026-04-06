@@ -98,6 +98,11 @@
     <string name="goes_to_current_weather_page">Goes to Current Weather Page</string>
     <string name="app_focus">App Focus</string>
     <string name="curent_weather">Current Weather</string>
+    <string name="compass_view">Compass View</string>
+    <string name="compass_north">North</string>
+    <string name="moon">Moon</string>
+    <string name="enable_rotation">Use Device Compass</string>
+    <string name="rotation_not_available">Compass sensor not available on this device</string>
     <string name="temperature_unit_title">Temperature Unit</string>
     <string name="temperature_unit_desc">Choose between Celsius, Fahrenheit and Kelvin.</string>
     <string name="celsius" translatable="false">Celsius</string>
@@ -131,6 +136,14 @@
     <string name="sun_path">Sun Path</string>
     <string name="solar_noon">Solar Noon</string>
     <string name="moon_phase">Moon Phase</string>
+    <string name="moon_phase_new_moon">New Moon</string>
+    <string name="moon_phase_waxing_crescent">Waxing Crescent</string>
+    <string name="moon_phase_first_quarter">First Quarter</string>
+    <string name="moon_phase_waxing_gibbous">Waxing Gibbous</string>
+    <string name="moon_phase_full_moon">Full Moon</string>
+    <string name="moon_phase_waning_gibbous">Waning Gibbous</string>
+    <string name="moon_phase_last_quarter">Last Quarter</string>
+    <string name="moon_phase_waning_crescent">Waning Crescent</string>
     <string name="moonrise">Moonrise</string>
     <string name="moonset">Moonset</string>
     <string name="illumination">Illumination: %1$s</string>
