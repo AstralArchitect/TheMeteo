@@ -2,7 +2,9 @@ package fr.matthstudio.themeteo.utilsActivities
 
 
 import android.content.Intent
+import android.location.Location
 import android.os.Bundle
+import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -39,8 +41,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import fr.matthstudio.themeteo.BuildConfig
+import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
 import kotlinx.coroutines.flow.first
@@ -59,6 +64,19 @@ class LauncherActivity : ComponentActivity() {
         lifecycleScope.launch {
             val isGcuAccepted = userSettings.gcuAccepted.first()
             if (!isGcuAccepted) {
+                // Si c'est la première fois que l'utilisateur ouvre l'application, alors on met la position à Paris et on met Paris par défaut temporairement
+                // On ajoute d'abord la loc, puis on met la position à Paris
+                val location = LocationIdentifier.Saved(
+                    SavedLocation(
+                        "Paris",
+                        48.8566,
+                        2.3,
+                        "France"
+                    )
+                )
+                (application as TheMeteo).weatherCache.addLocation(location.location)
+                (application as TheMeteo).weatherCache.setCurrentLocation(location)
+                userSettings.updateDefaultLocation(location)
                 setContent {
                     GcuDialog(
                         onAccept = {
@@ -78,7 +96,7 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun checkFirebaseConsent(userSettings: fr.matthstudio.themeteo.data.UserSettingsRepository) {
+    private suspend fun checkFirebaseConsent(userSettings: UserSettingsRepository) {
         if (BuildConfig.FIREBASE_ENABLED) {
             val consent = userSettings.firebaseConsent.first()
             if (consent == "PENDING") {
@@ -241,9 +259,9 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
                                         super.onPageFinished(view, url)
                                         isLoading = false
                                         // If content is small and doesn't scroll, it might already be at bottom
-                                        if (!canScrollVertically(1)) {
+                                        /*if (!canScrollVertically(1)) {
                                             hasScrolledToBottom = true
-                                        }
+                                        }*/
                                     }
 
                                     override fun onReceivedError(

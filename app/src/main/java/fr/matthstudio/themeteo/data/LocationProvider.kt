@@ -39,6 +39,14 @@ class LocationProvider(private val context: Context) {
                 ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun getPriority(): Int {
+        return if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            Priority.PRIORITY_HIGH_ACCURACY
+        } else {
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        }
+    }
+
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): GpsCoordinates? = suspendCancellableCoroutine { continuation ->
         if (!checkLocationPermission()) {
@@ -48,9 +56,9 @@ class LocationProvider(private val context: Context) {
 
         val cancellationTokenSource = CancellationTokenSource()
         
-        // Try to get fresh location
+        // Use dynamic priority based on granted permission
         fusedLocationClient.getCurrentLocation(
-            Priority.PRIORITY_HIGH_ACCURACY,
+            getPriority(),
             cancellationTokenSource.token
         ).addOnSuccessListener { location ->
             if (location != null) {
@@ -84,7 +92,7 @@ class LocationProvider(private val context: Context) {
      */
     @SuppressLint("MissingPermission") // La permission est vérifiée dans l'UI avant l'appel
     val locationFlow: Flow<GpsCoordinates> = callbackFlow {
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000L)
+        val locationRequest = LocationRequest.Builder(getPriority(), 10000L)
             .setWaitForAccurateLocation(false)
             .setMinUpdateIntervalMillis(5000L)
             .setMaxUpdateDelayMillis(15000L)

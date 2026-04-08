@@ -1024,7 +1024,7 @@ fun SunPathVisualization(viewModel: WeatherViewModel) {
                     fun formatSecs(secs: Float): String {
                         val s = (secs % totalSecondsDay + totalSecondsDay) % totalSecondsDay
                         val m = (s / 60).toInt()
-                        val h = (m / 60).toInt()
+                        val h = (m / 60)
                         val mm = (s % 60).toInt()
                         return String.format(Locale.getDefault(), "%02d:%02d", h, mm)
                     }
@@ -1325,7 +1325,7 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
                 // Current Moon Position
                 drawAzimuthPointer(
                     center, radius * cos(moonPos.elevation.toDouble() * (PI / 180.0)).toFloat(), moonPos.azimuth,
-                    color = Color(0xFFB0C4DE),
+                    color = if (moonPos.elevation >= 0 ) Color(0xFFB0C4DE) else Color(0x00B0C4DE),
                     iconRadius = 6.dp.toPx()
                 )
             }
@@ -1590,7 +1590,7 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
     AlertDialog(
         onDismissRequest = { /* Empêcher la fermeture sans acceptation si nécessaire, ou onAccept() */ },
         title = { Text(text = stringResource(R.string.policy_update_title)) },
-        text = { Text(text = stringResource(R.string.policy_update_message)) },
+        text = { Text(text = stringResource(R.string.policy_update_message)); Text(text = "https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html - https://astralarchitect.github.io/TheMeteo-privacy-policy/policy.html") },
         confirmButton = {
             Button(onClick = onAccept) {
                 Text(text = stringResource(R.string.accept))
@@ -1800,6 +1800,9 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     // On récupère l'alerte avec le niveau le plus élevé pour l'affichage principal
     val mainAlert = vigilanceData.alerts.maxBy { it.maxColorId }
     val isMinified = vigilanceData.maxColorId < 3
+
+    // Si l'alerte a un niveau strictement inférieur 2 (jaune) on n'affiche pas, car c'est vigilance verte (pas d'alerte).
+    if (mainAlert.maxColorId < 2) return
 
     // On récupère les heures de début et de fin (première et dernière étape > Vert)
     val activeSteps = mainAlert.steps.filter { it.colorId > 1 }

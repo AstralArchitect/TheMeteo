@@ -61,7 +61,9 @@ class MoonCalculator(val lat: Double, val lon: Double, val zoneId: ZoneId = Zone
         return millis / 86400000.0
     }
 
-    private fun getMoonCoords(d: Double): Triple<Double, Double, Double> {
+    private data class MoonInternalCoords(val ra: Double, val dec: Double, val distance: Double, val l: Double, val b: Double)
+
+    private fun getMoonCoords(d: Double): MoonInternalCoords {
         val L = (218.316 + 13.176396 * d) * degToRad
         val M = (134.963 + 13.064993 * d) * degToRad
         val F = (93.272 + 13.229350 * d) * degToRad
@@ -73,7 +75,7 @@ class MoonCalculator(val lat: Double, val lon: Double, val zoneId: ZoneId = Zone
         val ra = atan2(sin(l) * cos(23.44 * degToRad) - tan(b) * sin(23.44 * degToRad), cos(l))
         val dec = asin(sin(b) * cos(23.44 * degToRad) + cos(b) * sin(23.44 * degToRad) * sin(l))
 
-        return Triple(ra, dec, dt)
+        return MoonInternalCoords(ra, dec, dt, l, b)
     }
 
     fun getMoonPosition(dateTime: LocalDateTime): MoonPosition {
@@ -99,20 +101,24 @@ class MoonCalculator(val lat: Double, val lon: Double, val zoneId: ZoneId = Zone
         // On calcule la phase lunaire pour le milieu de la journée
         val dateTime = date.atTime(12, 0)
         val d = getDaysSinceJ2000(dateTime)
-        val (ra, dec, _) = getMoonCoords(d)
+        val moonCoords = getMoonCoords(d)
         
         val M = (356.0470 + 0.9856002585 * d) * degToRad
-        val L = (280.460 + 0.9856474 * d + 1.915 * sin(M) + 0.020 * sin(2 * M)) * degToRad
+        val L_sun = (280.460 + 0.9856474 * d + 1.915 * sin(M) + 0.020 * sin(2 * M)) * degToRad
         
-        val phi = acos((sin(L) * sin(ra) + cos(L) * cos(ra) * cos(dec)).coerceIn(-1.0, 1.0))
-        val fraction = (1 + cos(phi)) / 2
+        // Elongation: Moon Longitude - Sun Longitude
+        val elongation = moonCoords.l - L_sun
+        
+        // Fraction illuminated: (1 - cos(elongation)) / 2 if we approximate phase angle
+        // A more accurate formula for phase angle i: cos(i) = cos(b)*cos(l - L_sun)
+        // elongation here is l-L_sun, but we also have b
+        val cosPhi = cos(moonCoords.b) * cos(elongation)
+        val fraction = (1 - cosPhi) / 2
 
         val synodicMonth = 29.53058867
-        var age = ((L - ra) * radToDeg / 360.0) * synodicMonth
-        if (age < 0) age += synodicMonth
-        
-        // Normalisation de l'âge de 0 à 29.53
-        age = age % synodicMonth
+        var age = (elongation * radToDeg / 360.0) * synodicMonth
+        while (age < 0) age += synodicMonth
+        age %= synodicMonth
 
         val type = when {
             age < 1.84 -> PhaseType.NEW_MOON
