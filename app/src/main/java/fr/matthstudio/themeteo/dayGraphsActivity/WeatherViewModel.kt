@@ -6,10 +6,13 @@ import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
+import fr.matthstudio.themeteo.data.ForecastType
+import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDateTime
 
@@ -22,6 +25,7 @@ import java.time.LocalDateTime
 class WeatherViewModel(
     weatherCache: WeatherCache,
     startDateTime: LocalDateTime,
+    fullPeriod: Boolean,
     telemetryManager: TelemetryManager
 ) : ViewModel() {
 
@@ -36,10 +40,21 @@ class WeatherViewModel(
     val userSettings: StateFlow<UserSettings> = weatherCache.userSettings
 
     /**
-     * Forecast pour 24 heures à partir de l'heure actuelle
+     * Forecast pour 24 heures à partir de l'heure actuelle, ou pour toute la durée du modèle.
      */
-    val hourlyForecast = weatherCache.get(startDateTime, 24)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val hourlyForecast = userSettings.flatMapLatest { settings ->
+        val durationHours = if (fullPeriod) {
+            val model = WeatherModelRegistry.getModel(
+                settings.model,
+                settings.forecastType == ForecastType.ENSEMBLE
+            )
+            model.predictionDays * 24L
+        } else {
+            24L
+        }
+        weatherCache.get(startDateTime, durationHours.toInt())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
 
     // --- 2. NETTOYAGE ---
     /**

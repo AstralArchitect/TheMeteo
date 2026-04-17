@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,7 +74,6 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
@@ -83,9 +83,11 @@ import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.utilClasses.AirQualityUI
 import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
-import fr.matthstudio.themeteo.utilsActivities.WindUnitSetting
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -976,6 +978,220 @@ fun PollenCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
+    val context = LocalContext.current
+    val vigilanceState by viewModel.weatherVigilanceInfo.collectAsState()
+
+    if (vigilanceState !is WeatherDataState.SuccessVigilance) return
+    val vigilanceData = (vigilanceState as WeatherDataState.SuccessVigilance).data
+
+    // Si aucune alerte (> vert), on n'affiche pas la carte
+    if (vigilanceData.alerts.isEmpty()) return
+
+    // On récupère l'alerte avec le niveau le plus élevé pour l'affichage principal
+    val mainAlert = vigilanceData.alerts.maxBy { it.maxColorId }
+    val isMinified = vigilanceData.maxColorId < 3
+
+    // Si l'alerte a un niveau strictement inférieur 2 (jaune) on n'affiche pas, car c'est vigilance verte (pas d'alerte).
+    if (mainAlert.maxColorId < 2) return
+
+    // On récupère les heures de début et de fin (première et dernière étape > Vert)
+    val activeSteps = mainAlert.steps.filter { it.colorId > 1 }
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    val now = LocalDate.now()
+
+    val startDateTime = activeSteps.firstOrNull()?.beginTime?.let {
+        try { OffsetDateTime.parse(it) } catch (e: Exception) { null }
+    }
+    val endDateTime = activeSteps.lastOrNull()?.endTime?.let {
+        try { OffsetDateTime.parse(it) } catch (e: Exception) { null }
+    }
+
+    val startTimeStr = startDateTime?.format(formatter)
+    val endTimeStr = endDateTime?.format(formatter)
+
+    val showDate = startDateTime?.toLocalDate() != LocalDate.now() || endDateTime?.toLocalDate() != LocalDate.now()
+
+    val startLabel = if (showDate && startDateTime != null) {
+        val label = if (startDateTime.toLocalDate() == now) stringResource(R.string.today_lower) else stringResource(
+            R.string.tomorrow_lower
+        )
+        " ($label)"
+    } else ""
+
+    val endLabel = if (showDate && endDateTime != null) {
+        val label = if (endDateTime.toLocalDate() == now) stringResource(R.string.today_lower) else stringResource(R.string.tomorrow_lower)
+        " ($label)"
+    } else ""
+
+    // Formatage du préfixe d'alerte
+
+    val alertPrefix : String = when (vigilanceData.maxColorId) {
+        2 -> stringResource(R.string.weather_alert)
+        3 -> stringResource(R.string.weather_warning)
+        4 -> stringResource(R.string.severe_weather_warning)
+        else -> ""
+    }
+
+    val isDark = isSystemInDarkTheme()
+    // Mapping des couleurs et des noms Météo-France vers Compose
+    val alertColor = when (vigilanceData.maxColorId) {
+        1 -> Color(0xFF4CAF50) // Vert
+        2 -> Color(0xFFFFEB3B) // Jaune
+        3 -> Color(0xFFFF9800) // Orange
+        4 -> Color(0xFFF44336) // Rouge
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+
+    val alertValue = when (vigilanceData.maxColorId) {
+        1 -> "Vert"
+        2 -> "Jaune"
+        3 -> "Orange"
+        4 -> "Rouge"
+        else -> null
+    }
+
+    val contentColor = if (!isDark) when (vigilanceData.maxColorId) {
+        2 -> Color(0xFF422B00) // Jaune (Marron foncé)
+        3 -> Color(0xFFE65100) // Orange foncé
+        4 -> Color(0xFFB71C1C) // Rouge foncé
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    } else alertColor
+
+    BentoCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (isMinified) 64.dp else 130.dp)
+            .padding(vertical = 4.dp)
+            .clickable { onCardClick() }
+    ) {
+        if (isMinified) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(alertColor.copy(alpha = 0.2f))
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = getPhenomenonIcon(mainAlert.phenomenonId),
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "$alertPrefix : ${stringResource(mapPhenomenonIdToName(mainAlert.phenomenonId)).uppercase()}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = contentColor,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(alertColor.copy(alpha = 0.2f))
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = getPhenomenonIcon(mainAlert.phenomenonId),
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(40.dp)
+                )
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column {
+                    Text(
+                        text = "$alertPrefix : ${stringResource(mapPhenomenonIdToName(mainAlert.phenomenonId)).uppercase()}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = contentColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (startTimeStr != null && endTimeStr != null) {
+                            stringResource(
+                                R.string.vigilance_level_time_format,
+                                mainAlert.maxColorId,
+                                alertValue ?: "",
+                                "$startTimeStr$startLabel",
+                                "$endTimeStr$endLabel"
+                            )
+                        } else {
+                            stringResource(R.string.vigilance_level_ongoing_format, mainAlert.maxColorId)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = contentColor.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeatherDetailCard(item: WeatherDetailItem) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(110.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        item.icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        item.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    item.value,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+            item.subValue?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                    maxLines = 3,
+                    lineHeight = 14.sp
+                )
             }
         }
     }

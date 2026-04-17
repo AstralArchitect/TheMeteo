@@ -77,6 +77,7 @@ import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.times
 import fr.matthstudio.themeteo.UserSettings
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -102,6 +103,8 @@ class DayGraphsActivity : ComponentActivity() {
             intent.getSerializableExtra("START_DATE_TIME") as? LocalDateTime
         }
 
+        val fullPeriod = intent.getBooleanExtra("FULL_PERIOD", false)
+
         if (startDateTime == null)
         {
             Log.e("DayGraphsActivity", "start date time is null. Defaulting to now.")
@@ -111,7 +114,7 @@ class DayGraphsActivity : ComponentActivity() {
 
         // Instancier le viewModel
         val app = (this.application as TheMeteo)
-        weatherViewModel = WeatherViewModel(app.weatherCache, startDateTime, app.container.telemetryManager)
+        weatherViewModel = WeatherViewModel(app.weatherCache, startDateTime, fullPeriod, app.container.telemetryManager)
 
         enableEdgeToEdge()
         setContent {
@@ -127,7 +130,7 @@ class DayGraphsActivity : ComponentActivity() {
                             .windowInsetsPadding(WindowInsets.safeDrawing),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        GraphsScreen(weatherViewModel, startDateTime)
+                        GraphsScreen(weatherViewModel, startDateTime, fullPeriod)
                     }
                 }
             }
@@ -136,7 +139,7 @@ class DayGraphsActivity : ComponentActivity() {
 }
 
 @Composable
-fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
+fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, fullPeriod: Boolean = false) {
 
     val forecast by viewModel.hourlyForecast.collectAsState()
     val scrollState = rememberScrollState()
@@ -148,16 +151,22 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
     val showPrecipitationDetailsGraphs = remember { mutableStateOf(false) }
     val showUvDetailsGraphs = remember { mutableStateOf(false) }
 
-    // Auto-scroll to 6 AM if starting at 00h
+    // Auto-scroll to 6 AM if starting at 00h and if full-period disabled
     val hasScrolled = remember { mutableStateOf(false) }
     val density = LocalDensity.current
+    val contentWidth = if (forecast is WeatherDataState.SuccessHourly) {
+        (forecast as WeatherDataState.SuccessHourly).data.size * 42.dp
+    } else {
+        1000.dp
+    }
+
     LaunchedEffect(forecast) {
-        if (forecast is WeatherDataState.SuccessHourly && !hasScrolled.value) {
+        if (forecast is WeatherDataState.SuccessHourly && !hasScrolled.value && !fullPeriod) {
             val data = (forecast as WeatherDataState.SuccessHourly).data
             if (data.isNotEmpty() && data.first().time.hour == 0) {
                 val index6h = data.indexOfFirst { it.time.hour == 6 }
                 if (index6h != -1) {
-                    val contentWidthPx = with(density) { 1000.dp.toPx() }
+                    val contentWidthPx = with(density) { contentWidth.toPx() }
                     val xPadding = 40f // Matching GenericGraphGlobal's xPadding
                     val xStep = (contentWidthPx - 2 * xPadding) / (data.size - 1)
                     val scrollOffset = xPadding + index6h * xStep - (xStep / 2)
@@ -180,7 +189,9 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
             // Header with transparent background
             Box(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = if (startDateTime.hour == 0)
+                    text = if (fullPeriod)
+                        stringResource(R.string.full_period_forecast)
+                    else if (startDateTime.hour == 0)
                         stringResource(R.string.forecast_for_the, startDateTime.format(DateTimeFormatter.ofPattern("dd MMMM yyyy")))
                     else
                         stringResource(R.string.next_24h_forecast),
@@ -194,7 +205,12 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
             if ((forecast as? WeatherDataState.SuccessHourly)?.data?.isNotEmpty() ?: false) {
                 // Icons graph with transparent background
                 if ((forecast as? WeatherDataState.SuccessHourly)?.data?.first()?.wmo != null) {
-                    WeatherIconGraph(viewModel, scrollState = scrollState)
+                    WeatherIconGraph(
+                        viewModel,
+                        scrollState = scrollState,
+                        contentWidth = contentWidth,
+                        modifier = Modifier.padding(top = 40.dp)
+                    )
                 }
             }
 
@@ -217,9 +233,11 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime) {
                     Box(modifier = Modifier
                         .matchParentSize()
                         .horizontalScroll(scrollState)
+                        .padding(top = 40.dp) // Room for day labels
                     ) {
                         BackgroundGrid(
-                            itemCount = (forecast as WeatherDataState.SuccessHourly).data.size
+                            forecast = forecast,
+                            contentWidth = contentWidth
                         )
                     }
                 }
@@ -504,27 +522,69 @@ enum class GraphType {
 
 @Composable
 fun BackgroundGrid(
-    itemCount: Int,
-    contentWidth: Dp = 1000.dp
+    forecast: WeatherDataState,
+    contentWidth: Dp = 1000.dp,
+    modifier: Modifier = Modifier
 ) {
+    if (forecast !is WeatherDataState.SuccessHourly) return
+    val data = forecast.data
+    val itemCount = data.size
     val xPadding = 40f
+    val textColor = MaterialTheme.colorScheme.onBackground
     
     Canvas(
-        modifier = Modifier
+        modifier = modifier
             .width(contentWidth)
             .fillMaxHeight()
     ) {
         val xStep = (size.width - 2 * xPadding) / (itemCount - 1)
         val gridColor = Color.Gray.copy(alpha = 0.3f)
+        val daySeparatorColor = Color.Gray.copy(alpha = 0.7f)
 
-        (0 until itemCount - 1).forEach { i ->
-            val drawX = xPadding + (i * xStep) + xStep / 2
-            drawLine(
-                color = gridColor,
-                start = Offset(drawX, 0f),
-                end = Offset(drawX, size.height),
-                strokeWidth = 2f
-            )
+        data.forEachIndexed { i, hourData ->
+            val drawX = xPadding + (i * xStep)
+            
+            // Draw regular hour grid lines (between points)
+            if (i < itemCount - 1) {
+                val midX = drawX + xStep / 2
+                drawLine(
+                    color = gridColor,
+                    start = Offset(midX, 0f),
+                    end = Offset(midX, size.height),
+                    strokeWidth = 2f
+                )
+            }
+
+            // Draw day separators at midnight (between 23h and 00h)
+            if (hourData.time.hour == 0 && i > 0) {
+                val separatorX = drawX - xStep / 2
+                drawLine(
+                    color = daySeparatorColor,
+                    start = Offset(separatorX, 0f),
+                    end = Offset(separatorX, size.height),
+                    strokeWidth = 4f
+                )
+            }
+
+            // Day Label
+            if (i == 0 || hourData.time.hour == 0) {
+                val dayLabel = hourData.time.format(DateTimeFormatter.ofPattern("EEE d MMM"))
+                drawContext.canvas.nativeCanvas.drawText(
+                    dayLabel,
+                    drawX + 10f,
+                    40f,
+                    Paint().apply {
+                        textAlign = Paint.Align.LEFT
+                        textSize = 35f
+                        color = AndroidColor.rgb(
+                            (textColor.red * 255).toInt(),
+                            (textColor.green * 255).toInt(),
+                            (textColor.blue * 255).toInt()
+                        )
+                        isFakeBoldText = true
+                    }
+                )
+            }
         }
     }
 }
@@ -546,6 +606,12 @@ fun GenericGraph(
     )
         roundToInt = false
 
+    val contentWidth = if (fullForecast is WeatherDataState.SuccessHourly) {
+        (fullForecast as WeatherDataState.SuccessHourly).data.size * 42.dp
+    } else {
+        1000.dp
+    }
+
     GenericGraphGlobal(
         fullForecast,
         roundToInt,
@@ -554,7 +620,8 @@ fun GenericGraph(
         graphType,
         graphColor,
         valueRange,
-        scrollState
+        scrollState,
+        contentWidth = contentWidth
     )
 }
 
@@ -575,7 +642,7 @@ fun GenericGraphGlobal(
 ) {
     Box(
         modifier = Modifier
-            .width(1000.dp)
+            .width(contentWidth)
             .horizontalScroll(scrollState),
     ) {
         var forecast: List<Number>
@@ -891,16 +958,16 @@ fun GenericGraphGlobal(
     }
     // Si le graphique de vent a été choisi, alors afficher le vecteur de direction du vent
     if (graphType == GraphType.WIND_SPEED) {
-        WindVectors(fullForecast, windUnit, scrollState)
+        WindVectors(fullForecast, windUnit, scrollState, contentWidth)
     }
 }
 
 @Composable
-fun WindVectors(forecast: WeatherDataState, windUnit: WindUnit = WindUnit.KPH, scrollState: ScrollState = rememberScrollState()) {
+fun WindVectors(forecast: WeatherDataState, windUnit: WindUnit = WindUnit.KPH, scrollState: ScrollState = rememberScrollState(), contentWidth: Dp = 1000.dp) {
     // Draw the icon
     Box(
         modifier = Modifier
-            .width(1000.dp)
+            .width(contentWidth)
             .horizontalScroll(scrollState), // ScrollState partagé
     ) {
         if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty())
@@ -947,21 +1014,19 @@ fun WeatherIconGraphGlobal(
     userSettings: UserSettings,
     isBatterySaverActive: Boolean,
     contentWidth: Dp,
-    showPairsOnly: Boolean
+    showPairsOnly: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
     val hourlyData = (forecast as? WeatherDataState.SuccessHourly)?.data
 
-    var numIcons = hourlyData?.size ?: 0
-    if (showPairsOnly)
-        numIcons /= 2
-
     val iconsSize = 40.dp
-    val density = androidx.compose.ui.platform.LocalDensity.current
+    val density = LocalDensity.current
     val xPaddingPx = 40f
+    val daySeparatorColor = Color.Gray.copy(alpha = 0.7f)
     
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(scrollState),
     ) {
@@ -1030,7 +1095,8 @@ fun WeatherIconGraphGlobal(
 fun WeatherIconGraph(
     viewModel: WeatherViewModel,
     scrollState: ScrollState = rememberScrollState(),
-    contentWidth: Dp = 1000.dp
+    contentWidth: Dp = 1000.dp,
+    modifier: Modifier = Modifier
 ) {
     // Get the forecast
     val forecast by viewModel.hourlyForecast.collectAsState()
@@ -1043,6 +1109,7 @@ fun WeatherIconGraph(
         userSettings,
         isBatterySaverActive,
         contentWidth,
-        false
+        false,
+        modifier = modifier
     )
 }

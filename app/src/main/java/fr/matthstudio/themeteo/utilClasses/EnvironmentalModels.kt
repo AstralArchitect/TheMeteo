@@ -22,7 +22,10 @@ data class AirQualityUI(
     val color: Color,
     val recommendation: String?,
     val pollutants: List<PollutantUI>,
-    val healthAdvice: List<HealthAdviceUI>
+    val healthAdvice: List<HealthAdviceUI>,
+    val minAqi: Int = 0,
+    val maxAqi: Int = 0,
+    val avgAqi: Int = 0
 )
 
 data class PollutantUI(
@@ -110,7 +113,7 @@ data class PollenPlantUI(
     val level: Int,
     val description: String?,
     val color: Color,
-    val type: String? // "GRASS", "TREE", "WEED"
+    val type: String? // "TREE", "GRASS", "WEED"
 )
 
 data class PollenTypeUI(
@@ -132,12 +135,16 @@ fun formatPollutantUnit(unit: String?): String {
     }
 }
 
-fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastResponse?, pollen: PollenResponse?): EnvironmentalUIModel {
+fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastResponse?, pollen: PollenResponse?, useEurAqi: Boolean = true): EnvironmentalUIModel {
     
     // Fonction utilitaire pour mapper l'AQI
-    fun mapAqi(info: AirQualityInfo): AirQualityUI {
+    fun mapAqi(info: AirQualityInfo, min: Int = 0, max: Int = 0, avg: Int = 0): AirQualityUI {
         // Prioriser l'indice européen (eur_aqi) ou l'indice universel (uaqi)
-        val mainIndex = info.indexes.firstOrNull()
+        val mainIndex = if (useEurAqi) {
+            info.indexes.find { it.code == "fra_atmo" } ?: info.indexes.firstOrNull()
+        } else {
+            info.indexes.firstOrNull()
+        }
             
         val pollutants = info.pollutants?.map { 
             PollutantUI(
@@ -162,7 +169,10 @@ fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastRe
             color = mainIndex?.color?.let { Color(it.red ?: 0.5f, it.green ?: 0.5f, it.blue ?: 0.5f) } ?: Color.Gray,
             recommendation = info.healthRecommendations?.generalPopulation,
             pollutants = pollutants,
-            healthAdvice = healthAdvice
+            healthAdvice = healthAdvice,
+            minAqi = min,
+            maxAqi = max,
+            avgAqi = avg
         )
     }
 
@@ -226,21 +236,45 @@ fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastRe
         val dayAqiInfo = if (index == 0 && aqi != null) {
             aqi
         } else {
+            // On prend la valeur moyenne ou maximale pour le résumé du jour
             aqiByDay[dateLabel]?.maxByOrNull { it.indexes.firstOrNull()?.aqi ?: 0 }
         }
 
+        val dayAqiValues = aqiByDay[dateLabel]?.map { info ->
+             if (useEurAqi) {
+                info.indexes.find { it.code == "eur_aqi" }?.aqi ?: info.indexes.firstOrNull()?.aqi ?: 0
+            } else {
+                info.indexes.firstOrNull()?.aqi ?: 0
+            }
+        } ?: emptyList()
+
+        val min = dayAqiValues.minOrNull() ?: 0
+        val max = dayAqiValues.maxOrNull() ?: 0
+        val avg = if (dayAqiValues.isNotEmpty()) dayAqiValues.average().toInt() else 0
+
+        val currentDayAqi = if (dayAqiInfo != null) {
+            if (useEurAqi) {
+                dayAqiInfo.indexes.find { it.code == "eur_aqi" }?.aqi ?: dayAqiInfo.indexes.firstOrNull()?.aqi ?: 0
+            } else {
+                dayAqiInfo.indexes.firstOrNull()?.aqi ?: 0
+            }
+        } else 0
+
         EnvironmentalDayUI(
             dateLabel = dateLabel,
-            airQuality = if (dayAqiInfo != null) mapAqi(dayAqiInfo) else AirQualityUI(
+            airQuality = if (dayAqiInfo != null) mapAqi(dayAqiInfo, min, max, avg) else AirQualityUI(
                 value = 0,
                 label = "N/A",
                 color = Color.Gray,
                 recommendation = null,
                 pollutants = emptyList(),
                 healthAdvice = emptyList(),
+                minAqi = min,
+                maxAqi = max,
+                avgAqi = avg
             ),
             pollen = mapPollenDay(dailyPollen),
-            globalColor = if (dayAqiInfo != null && (dayAqiInfo.indexes.firstOrNull()?.aqi ?: 0) > (dailyPollen.pollenTypeInfo?.maxOfOrNull { it.indexInfo?.value ?: 0 } ?: 0) * 20) {
+            globalColor = if (dayAqiInfo != null && currentDayAqi > (dailyPollen.pollenTypeInfo?.maxOfOrNull { it.indexInfo?.value ?: 0 } ?: 0) * 20) {
                 mapAqi(dayAqiInfo).color
             } else {
                 mapPollenDay(dailyPollen).color

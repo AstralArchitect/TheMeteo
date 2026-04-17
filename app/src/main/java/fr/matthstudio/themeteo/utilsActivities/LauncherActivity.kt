@@ -2,9 +2,7 @@ package fr.matthstudio.themeteo.utilsActivities
 
 
 import android.content.Intent
-import android.location.Location
 import android.os.Bundle
-import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity

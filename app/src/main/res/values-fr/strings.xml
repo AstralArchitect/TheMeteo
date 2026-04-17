@@ -86,6 +86,7 @@
     <string name="rainy">Pluvieux</string>
     <string name="currently">Maintenant</string>
     <string name="goes_to_current_weather_page">Page Météo Actuelle</string>
+    <string name="full_period_forecast">Prévision sur toute la période</string>
     <string name="app_focus">Affichage par défaut</string>
     <string name="curent_weather">Actuel</string>
     <string name="compass_view">Vue Boussole</string>
@@ -93,6 +94,15 @@
     <string name="moon">Lune</string>
     <string name="enable_rotation">Utiliser la boussole</string>
     <string name="rotation_not_available">Capteur boussole non disponible sur cet appareil</string>
+    <string name="aqi_index_title">Indice de Qualité de l\'Air (AQI)</string>
+    <string name="aqi_index_desc">Choisissez entre l\'indice européen (standard en Europe) ou l\'indice universel (standardisé par Google).</string>
+    <string name="european_index">Européen</string>
+    <string name="universal_index">Universel</string>
+
+    <string name="min">Min</string>
+    <string name="max">Max</string>
+    <string name="avg">Moy</string>
+
     <string name="daily_forecast_setting">Journalier</string>
     <string name="no_current_risks">Aucun risque actuellement</string>
     <string name="herbes">Herbes</string>

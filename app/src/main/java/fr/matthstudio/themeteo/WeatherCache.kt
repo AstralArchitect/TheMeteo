@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Parcelable
 import android.os.PowerManager
+import android.util.Log
 import androidx.glance.appwidget.updateAll
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
@@ -88,7 +89,8 @@ data class UserSettings(
     val gcuAccepted: Boolean,
     val lastGcuUpdate: String?,
     val lastPrivacyPolicyUpdate: String?,
-    val hasOpenedAppOnce: Boolean
+    val hasOpenedAppOnce: Boolean,
+    val useEurAqi: Boolean
 )
 
 /**
@@ -156,7 +158,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, 50, 1, "PENDING", false, null, null, false))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, 50, 1, "PENDING", false, null, null, false, true))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -219,7 +221,8 @@ class WeatherCache(
                 userSettingsRepository.gcuAccepted,
                 userSettingsRepository.lastGcuUpdate,
                 userSettingsRepository.lastPrivacyPolicyUpdate,
-                userSettingsRepository.hasOpenedAppOnce
+                userSettingsRepository.hasOpenedAppOnce,
+                userSettingsRepository.useEurAqi
             ) { values ->
                 val model = values[0] as String?
                 val round = values[1] as Boolean
@@ -237,6 +240,7 @@ class WeatherCache(
                 val lastGcu = values[13] as String?
                 val lastPrivacy = values[14] as String?
                 val hasOpened = values[15] as Boolean
+                val useEurAqi = values[16] as Boolean
                         
                 UserSettings(
                     model ?: "best_match",
@@ -254,7 +258,8 @@ class WeatherCache(
                     gcu,
                     lastGcu,
                     lastPrivacy,
-                    hasOpened
+                    hasOpened,
+                    useEurAqi
                 )
             }.collect { settings ->
                 _userSettings.value = settings
@@ -378,45 +383,83 @@ class WeatherCache(
             endTime = maxAllowedDate.atTime(23, 59)
         }
 
-        val primaryCache = cacheMutex.withLock { 
-            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-                 .getOrPut(effectiveModel) { ModelDataCache() } 
-        }
-
-        // 1. Cache retrieval
-        var primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
-        var fallbackData: List<AllHourlyVarsReading>? = null
-        if (currentSettings.enableModelFallback && effectiveModel != "best_match" && !isEnsembleMode) {
-            val fallbackCache = cacheMutex.withLock { 
-                cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-                     .getOrPut("best_match") { ModelDataCache() } 
+        // --- 1. Construction de la chaîne de modèles ---
+        val modelChain = mutableListOf<String>()
+        modelChain.add(effectiveModel)
+        
+        if (currentSettings.enableModelFallback && !isEnsembleMode) {
+            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
+            while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
+                modelChain.add(currentM.secondaryModelApiName!!)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
             }
-            fallbackData = getHourlyFromCache(fallbackCache, startTime, endTime)
+            // Sécurité : s'assurer que best_match est à la fin si pas déjà présent
+            if (!modelChain.contains("best_match")) {
+                modelChain.add("best_match")
+            }
+            if (modelChain.size > 3) Log.w("WeatherCache", "Model chain is too long: $modelChain")
         }
 
-        if (!primaryData.isNullOrEmpty()) {
-            emit(WeatherDataState.SuccessHourly(if (fallbackData != null) mergeHourly(primaryData, fallbackData) else primaryData))
+        // --- 2. Récupération depuis le cache et fusion ---
+        val cachedDataByModel = mutableMapOf<String, List<AllHourlyVarsReading>>()
+        for (model in modelChain) {
+            val modelCache = cacheMutex.withLock { 
+                cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                     .getOrPut(model) { ModelDataCache() } 
+            }
+            val data = getHourlyFromCache(modelCache, startTime, endTime)
+            if (data != null) cachedDataByModel[model] = data
+        }
+
+        var mergedData: List<AllHourlyVarsReading>? = null
+        if (cachedDataByModel.containsKey(effectiveModel)) {
+            mergedData = cachedDataByModel[effectiveModel]
+            // Fusionner avec les modèles secondaires dans l'ordre de la chaîne
+            for (i in 1 until modelChain.size) {
+                val secondaryModel = modelChain[i]
+                val secondaryData = cachedDataByModel[secondaryModel]
+                if (mergedData != null && secondaryData != null) {
+                    mergedData = mergeHourly(mergedData, secondaryData)
+                }
+            }
+        }
+
+        if (!mergedData.isNullOrEmpty()) {
+            emit(WeatherDataState.SuccessHourly(mergedData))
         } else {
             emit(WeatherDataState.Loading)
         }
 
-        // 2. Fetch necessity
-        val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
-        val isAnyHourlyMissing = checkHourlyMissing(primaryCache, startTime.toLocalDate(), endTime.toLocalDate())
-        
-        var isFallbackMissing = false
-        if (currentSettings.enableModelFallback && effectiveModel != "best_match" && !isEnsembleMode) {
-            val fallbackCache = cacheMutex.withLock { cache[currentLocationIdentifier]?.get("best_match") ?: ModelDataCache() }
-            isFallbackMissing = checkHourlyMissing(fallbackCache, startTime.toLocalDate(), endTime.toLocalDate())
+        // --- 3. Vérification du besoin de mise à jour (Fetch) ---
+        var needsFetch = false
+        val primaryCache = cacheMutex.withLock { 
+            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                 .getOrPut(effectiveModel) { ModelDataCache() } 
         }
-
+        
+        val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
         val firstDayLoaded = primaryCache.dailyBlocks.firstKeyOrNull()
         val isFirstDayStale = firstDayLoaded != null && firstDayLoaded != LocalDate.now()
-        val needsFetch = isDataObsolete || isAnyHourlyMissing || isFallbackMissing || isFirstDayStale
+        
+        if (isDataObsolete || isFirstDayStale) {
+            needsFetch = true
+        } else {
+            // Vérifier si des données sont manquantes dans l'un des modèles de la chaîne
+            for (model in modelChain) {
+                val modelCache = cacheMutex.withLock { 
+                    cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                         .getOrPut(model) { ModelDataCache() } 
+                }
+                if (checkHourlyMissing(modelCache, startTime.toLocalDate(), endTime.toLocalDate())) {
+                    needsFetch = true
+                    break
+                }
+            }
+        }
 
         if (needsFetch) {
             if (coords == null) {
-                if (primaryData.isNullOrEmpty()) {
+                if (mergedData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("GPS position not available. Please ensure location permissions are granted."))
                 }
                 return@flow
@@ -426,31 +469,43 @@ class WeatherCache(
                 val freshData = weatherService.getEnsembleForecast(coords.latitude, coords.longitude, effectiveModel, startTime.toLocalDate(), endTime.toLocalDate())
                 if (freshData != null) {
                     updateCache(currentLocationIdentifier, effectiveModel, freshData, isDataObsolete || isFirstDayStale)
-                    primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
+                    val primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
                     if (primaryData != null) emit(WeatherDataState.SuccessHourly(primaryData))
-                } else if (primaryData.isNullOrEmpty()) {
+                } else if (mergedData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Failed to fetch ensemble forecast from $effectiveModel"))
                 }
             } else {
-                val modelsToFetch = mutableListOf(effectiveModel)
-                if (currentSettings.enableModelFallback && effectiveModel != "best_match") modelsToFetch.add("best_match")
-
-                val freshDataMap = weatherService.getForecast(coords.latitude, coords.longitude, modelsToFetch, startTime.toLocalDate(), endTime.toLocalDate())
+                val freshDataMap = weatherService.getForecast(coords.latitude, coords.longitude, modelChain, startTime.toLocalDate(), endDate = endTime.toLocalDate())
                 if (freshDataMap != null) {
                     freshDataMap.forEach { (modelName, freshData) ->
                         updateCache(currentLocationIdentifier, modelName, freshData, isDataObsolete || isFirstDayStale)
                     }
-                    primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
-                    if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
-                        val fbCache = cacheMutex.withLock { cache[currentLocationIdentifier]?.get("best_match") ?: ModelDataCache() }
-                        fallbackData = getHourlyFromCache(fbCache, startTime, endTime)
+                    
+                    // Re-récupérer et fusionner après le fetch
+                    val finalDataByModel = mutableMapOf<String, List<AllHourlyVarsReading>>()
+                    for (model in modelChain) {
+                        val mCache = cacheMutex.withLock { 
+                            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                                 .getOrPut(model) { ModelDataCache() } 
+                        }
+                        getHourlyFromCache(mCache, startTime, endTime)?.let { finalDataByModel[model] = it }
                     }
-                    if (!primaryData.isNullOrEmpty()) {
-                        emit(WeatherDataState.SuccessHourly(if (fallbackData != null) mergeHourly(primaryData, fallbackData) else primaryData))
+                    
+                    var finalMerged = finalDataByModel[effectiveModel]
+                    for (i in 1 until modelChain.size) {
+                        val secondaryModel = modelChain[i]
+                        val secondaryData = finalDataByModel[secondaryModel]
+                        if (finalMerged != null && secondaryData != null) {
+                            finalMerged = mergeHourly(finalMerged, secondaryData)
+                        }
+                    }
+
+                    if (!finalMerged.isNullOrEmpty()) {
+                        emit(WeatherDataState.SuccessHourly(finalMerged))
                     } else {
                         emit(WeatherDataState.Error("Weather data unavailable after fetch."))
                     }
-                } else if (primaryData.isNullOrEmpty()) {
+                } else if (mergedData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Network error: Unable to reach weather service."))
                 }
             }
@@ -511,43 +566,79 @@ class WeatherCache(
         var endDate = date.plusDays(days)
         if (endDate.isAfter(maxAllowedDate)) endDate = maxAllowedDate
 
-        val primaryCache = cacheMutex.withLock { 
-            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-                 .getOrPut(effectiveModel) { ModelDataCache() } 
-        }
-
-        var primaryData = getDailyFromCache(primaryCache, date, endDate)
-        var fallbackData: List<DailyReading>? = null
-        if (currentSettings.enableModelFallback && effectiveModel != "best_match" && !isEnsembleMode) {
-            val fallbackCache = cacheMutex.withLock { 
-                cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-                     .getOrPut("best_match") { ModelDataCache() } 
+        // --- 1. Construction de la chaîne de modèles ---
+        val modelChain = mutableListOf<String>()
+        modelChain.add(effectiveModel)
+        
+        if (currentSettings.enableModelFallback && !isEnsembleMode) {
+            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
+            while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
+                modelChain.add(currentM.secondaryModelApiName!!)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
             }
-            fallbackData = getDailyFromCache(fallbackCache, date, endDate)
+            if (!modelChain.contains("best_match")) {
+                modelChain.add("best_match")
+            }
         }
 
-        if (!primaryData.isNullOrEmpty()) {
-            emit(WeatherDataState.SuccessDaily(if (fallbackData != null) mergeDaily(primaryData, fallbackData) else primaryData))
+        // --- 2. Récupération depuis le cache et fusion ---
+        val cachedDataByModel = mutableMapOf<String, List<DailyReading>>()
+        for (model in modelChain) {
+            val modelCache = cacheMutex.withLock { 
+                cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                     .getOrPut(model) { ModelDataCache() } 
+            }
+            val data = getDailyFromCache(modelCache, date, endDate)
+            if (data != null) cachedDataByModel[model] = data
+        }
+
+        var mergedData: List<DailyReading>? = null
+        if (cachedDataByModel.containsKey(effectiveModel)) {
+            mergedData = cachedDataByModel[effectiveModel]
+            for (i in 1 until modelChain.size) {
+                val secondaryModel = modelChain[i]
+                val secondaryData = cachedDataByModel[secondaryModel]
+                if (mergedData != null && secondaryData != null) {
+                    mergedData = mergeDaily(mergedData, secondaryData)
+                }
+            }
+        }
+
+        if (!mergedData.isNullOrEmpty()) {
+            emit(WeatherDataState.SuccessDaily(mergedData))
         } else {
             emit(WeatherDataState.Loading)
         }
 
+        // --- 3. Vérification du besoin de mise à jour (Fetch) ---
+        var needsFetch = false
+        val primaryCache = cacheMutex.withLock { 
+            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                 .getOrPut(effectiveModel) { ModelDataCache() } 
+        }
+        
         val firstDayLoaded = primaryCache.dailyBlocks.firstKeyOrNull()
         val isFirstDayStale = firstDayLoaded != null && firstDayLoaded != LocalDate.now()
         val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
-        val isAnyDailyMissing = checkDailyMissing(primaryCache, date, endDate)
         
-        var isFallbackMissing = false
-        if (currentSettings.enableModelFallback && effectiveModel != "best_match" && !isEnsembleMode) {
-            val fallbackCache = cacheMutex.withLock { cache[currentLocationIdentifier]?.get("best_match") ?: ModelDataCache() }
-            isFallbackMissing = checkDailyMissing(fallbackCache, date, endDate)
+        if (isDataObsolete || isFirstDayStale) {
+            needsFetch = true
+        } else {
+            for (model in modelChain) {
+                val modelCache = cacheMutex.withLock { 
+                    cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                         .getOrPut(model) { ModelDataCache() } 
+                }
+                if (checkDailyMissing(modelCache, date, endDate)) {
+                    needsFetch = true
+                    break
+                }
+            }
         }
-
-        val needsFetch = isDataObsolete || isAnyDailyMissing || isFallbackMissing || isFirstDayStale
 
         if (needsFetch) {
             if (coords == null) {
-                if (primaryData.isNullOrEmpty()) {
+                if (mergedData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("GPS position not available."))
                 }
                 return@flow
@@ -557,31 +648,42 @@ class WeatherCache(
                 val freshData = weatherService.getEnsembleForecast(coords.latitude, coords.longitude, effectiveModel, date, endDate)
                 if (freshData != null) {
                     updateCache(currentLocationIdentifier, effectiveModel, freshData, isDataObsolete || isFirstDayStale)
-                    primaryData = getDailyFromCache(primaryCache, date, endDate)
+                    val primaryData = getDailyFromCache(primaryCache, date, endDate)
                     if (primaryData != null) emit(WeatherDataState.SuccessDaily(primaryData))
-                } else if (primaryData.isNullOrEmpty()) {
+                } else if (mergedData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Failed to fetch daily ensemble forecast."))
                 }
             } else {
-                val modelsToFetch = mutableListOf(effectiveModel)
-                if (currentSettings.enableModelFallback && effectiveModel != "best_match") modelsToFetch.add("best_match")
-
-                val freshDataMap = weatherService.getForecast(coords.latitude, coords.longitude, modelsToFetch, date, endDate)
+                val freshDataMap = weatherService.getForecast(coords.latitude, coords.longitude, modelChain, date, endDate)
                 if (freshDataMap != null) {
                     freshDataMap.forEach { (modelName, freshData) ->
                         updateCache(currentLocationIdentifier, modelName, freshData, isDataObsolete || isFirstDayStale)
                     }
-                    primaryData = getDailyFromCache(primaryCache, date, endDate)
-                    if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
-                        val fbCache = cacheMutex.withLock { cache[currentLocationIdentifier]?.get("best_match") ?: ModelDataCache() }
-                        fallbackData = getDailyFromCache(fbCache, date, endDate)
+                    
+                    val finalDataByModel = mutableMapOf<String, List<DailyReading>>()
+                    for (model in modelChain) {
+                        val mCache = cacheMutex.withLock { 
+                            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                                 .getOrPut(model) { ModelDataCache() } 
+                        }
+                        getDailyFromCache(mCache, date, endDate)?.let { finalDataByModel[model] = it }
                     }
-                    if (!primaryData.isNullOrEmpty()) {
-                        emit(WeatherDataState.SuccessDaily(if (fallbackData != null) mergeDaily(primaryData, fallbackData) else primaryData))
+                    
+                    var finalMerged = finalDataByModel[effectiveModel]
+                    for (i in 1 until modelChain.size) {
+                        val secondaryModel = modelChain[i]
+                        val secondaryData = finalDataByModel[secondaryModel]
+                        if (finalMerged != null && secondaryData != null) {
+                            finalMerged = mergeDaily(finalMerged, secondaryData)
+                        }
+                    }
+
+                    if (!finalMerged.isNullOrEmpty()) {
+                        emit(WeatherDataState.SuccessDaily(finalMerged))
                     } else {
                         emit(WeatherDataState.Error("Daily weather data unavailable after fetch."))
                     }
-                } else if (primaryData.isNullOrEmpty()) {
+                } else if (mergedData.isNullOrEmpty()) {
                     emit(WeatherDataState.Error("Network error during daily forecast fetch."))
                 }
             }

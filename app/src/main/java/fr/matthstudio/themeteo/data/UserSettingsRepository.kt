@@ -50,9 +50,17 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val WIDGET_TRANSPARENCY = intPreferencesKey("widget_transparency")
         val WIDGET_TEXT_SIZE = intPreferencesKey("widget_text_size")
         val BENTO_CARDS_ORDER = stringPreferencesKey("bento_cards_order")
+        val USE_EUR_AQI = booleanPreferencesKey("use_eur_aqi")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour l'utilisation de l'indice européen (EUR_AQI) ou l'indice universel (UAQI).
+     */
+    val useEurAqi: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.USE_EUR_AQI] ?: true
+    }
 
     /**
      * Flow pour la transparence du widget (0-100).
@@ -339,6 +347,15 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateWidgetTextSize(sizeIndex: Int) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.WIDGET_TEXT_SIZE] = sizeIndex
+        }
+    }
+
+    /**
+     * Met à jour l'utilisation de l'indice européen.
+     */
+    suspend fun updateUseEurAqi(useEurAqi: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.USE_EUR_AQI] = useEurAqi
         }
     }
 

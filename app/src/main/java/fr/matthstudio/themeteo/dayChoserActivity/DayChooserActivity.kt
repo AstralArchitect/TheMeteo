@@ -78,6 +78,8 @@ import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -321,6 +323,50 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                            }
+                        }
+                    }
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                                    alpha = 0.6f
+                                )
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .clickable {
+                                        val intent = Intent(
+                                            context,
+                                            DayGraphsActivity::class.java
+                                        ).apply {
+                                            putExtra("START_DATE_TIME", LocalDate.now().atStartOfDay())
+                                            putExtra("SELECTED_LOCATION", weatherViewModel.selectedLocation.value)
+                                            putExtra("FULL_PERIOD", true)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                    .padding(8.dp)
+                                    .fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AccessTime,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .padding(4.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+
+                                Text(
+                                    text = stringResource(R.string.full_period_forecast),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
                             }
                         }
                     }

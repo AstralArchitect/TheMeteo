@@ -250,9 +250,12 @@ class WeatherViewModel(
     /**
      * Données environnementales formatées pour l'UI.
      */
-    val environmentalData: StateFlow<EnvironmentalUIModel?> = airQualityResponse.map { state ->
+    val environmentalData: StateFlow<EnvironmentalUIModel?> = combine(
+        airQualityResponse,
+        userSettings
+    ) { state, settings ->
         if (state is WeatherDataState.SuccessAirQuality) {
-            mapToEnvironmentalUI(state.data.first, state.data.second, state.data.third)
+            mapToEnvironmentalUI(state.data.first, state.data.second, state.data.third, settings.useEurAqi)
         } else {
             null
         }

@@ -1,6 +1,8 @@
 package fr.matthstudio.themeteo.widget
 
 import android.content.Context
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -109,7 +111,7 @@ class WeatherWidget : GlanceAppWidget() {
                 Text(
                     text = locationName,
                     style = TextStyle(
-                        color = GlanceTheme.colors.onSurface,
+                        color = ColorProvider(if (transparency < 75) lightColorScheme().onSurface else lightColorScheme().surface),
                         fontSize = (baseTextSize.value - 2).sp,
                         fontWeight = FontWeight.Medium
                     ),
@@ -152,7 +154,7 @@ class WeatherWidget : GlanceAppWidget() {
                                     Text(
                                         text = temp,
                                         style = TextStyle(
-                                            color = GlanceTheme.colors.onSurface,
+                                            color = ColorProvider(if (transparency < 75) lightColorScheme().onSurface else lightColorScheme().surface),
                                             fontSize = bigTextSize,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -170,7 +172,7 @@ class WeatherWidget : GlanceAppWidget() {
                                         Text(
                                             text = wind,
                                             style = TextStyle(
-                                                color = GlanceTheme.colors.onSurfaceVariant,
+                                                color = ColorProvider(if (transparency < 75) lightColorScheme().onSurfaceVariant else lightColorScheme().surfaceVariant),
                                                 fontSize = baseTextSize
                                             )
                                         )

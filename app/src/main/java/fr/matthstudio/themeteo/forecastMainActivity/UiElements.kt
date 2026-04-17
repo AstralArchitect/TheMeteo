@@ -1,24 +1,33 @@
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
+import android.view.Surface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -38,6 +47,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
@@ -48,17 +58,17 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.ExploreOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Flood
-import androidx.compose.material.icons.rounded.Grain
-import androidx.compose.material.icons.rounded.Grass
-import androidx.compose.material.icons.rounded.LocalFlorist
-import androidx.compose.material.icons.rounded.Nature
 import androidx.compose.material.icons.rounded.SevereCold
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Tsunami
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Water
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,12 +81,14 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -93,8 +105,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -108,6 +122,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -133,13 +148,24 @@ import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
 import fr.matthstudio.themeteo.dayGraphsActivity.WeatherIconGraphGlobal
+import fr.matthstudio.themeteo.utilClasses.PhaseType
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import kotlinx.coroutines.launch
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sign
+import kotlin.math.sin
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -1265,339 +1291,6 @@ fun WeatherIconGraph(
 }
 
 @Composable
-fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
-    val environmentalData by viewModel.environmentalData.collectAsState()
-    val data = environmentalData ?: return
-    
-    // État du jour sélectionné
-    var selectedDayIndex by remember { mutableIntStateOf(0) }
-    val currentDay = data.days.getOrNull(selectedDayIndex) ?: data.days.first()
-
-    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f))
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        AnimatedVisibility(
-            visibleState = visibleState,
-            enter = fadeIn() + scaleIn(initialScale = 0.9f),
-            exit = fadeOut() + scaleOut(targetScale = 0.9f)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.9f)
-                    .clickable(enabled = false) { },
-                shape = RoundedCornerShape(32.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        text = stringResource(R.string.environmental_details),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-
-                    // NAVIGATION PAR JOURS (TRENDS)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        data.days.forEachIndexed { index, day ->
-                            val isSelected = index == selectedDayIndex
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedDayIndex = index },
-                                shape = RoundedCornerShape(16.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = if (index == 0) stringResource(R.string.today) else day.dateLabel,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    // Point de couleur représentant le jour
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(day.globalColor)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(24.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // SECTION 1 : QUALITÉ DE L'AIR
-                        item {
-                            EnvironmentalSectionHeader(
-                                title = stringResource(R.string.air_quality),
-                                icon = Icons.Rounded.Air,
-                                color = currentDay.airQuality.color ?: MaterialTheme.colorScheme.outline
-                            )
-                            
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            val air = currentDay.airQuality
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(air.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Text("${air.value} AQI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(8.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(air.color.copy(alpha = 0.2f))
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth(
-                                                (air.value.toFloat() / 100f).coerceIn(
-                                                    0f,
-                                                    1f
-                                                )
-                                            )
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(air.color)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Polluants
-                        currentDay.airQuality.let { air ->
-                            item {
-                                Text(stringResource(R.string.air_components), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    air.pollutants.forEach { pollutant ->
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (pollutant.color != Color.Gray) pollutant.color.copy(alpha = 0.5f)
-                                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                            )
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                if (pollutant.color != Color.Gray) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(8.dp)
-                                                            .clip(CircleShape)
-                                                            .background(pollutant.color)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                }
-                                                Column {
-                                                    Text(pollutant.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                    Text(pollutant.value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // SECTION 2 : POLLEN (Toujours dispo via prévisions)
-                        item {
-                            EnvironmentalSectionHeader(
-                                title = stringResource(R.string.pollen_risks),
-                                icon = Icons.Rounded.Grain,
-                                color = currentDay.pollen.color
-                            )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly
-                            ) {
-                                listOfNotNull(
-                                    Triple(currentDay.pollen.tree, stringResource(R.string.trees), Icons.Rounded.Nature),
-                                    Triple(currentDay.pollen.grass, stringResource(R.string.weed), Icons.Rounded.LocalFlorist),
-                                    Triple(currentDay.pollen.weed, stringResource(R.string.grasses), Icons.Rounded.Grass)
-                                ).forEach { (type, name, icon) ->
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(1.dp)
-                                    ) {
-                                        Box {
-                                            EnvironmentalGauge(
-                                                value = (type?.level?.toFloat() ?: 0f) / 4f,
-                                                color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
-                                                modifier = Modifier.size(80.dp)
-                                            )
-                                            Text(
-                                                text = name,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                modifier = Modifier
-                                                    .align(Alignment.Center)
-                                                    .offset(y = 6.dp)
-                                            )
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = null,
-                                                modifier = Modifier
-                                                    .align(Alignment.Center)
-                                                    .offset(y = (-11).dp),
-                                                tint = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                        Text(
-                                            text = "${type?.level ?: 0}/4",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        // Display a short description (ex: Low, Moderate, etc.)
-                                        Text(
-                                            text = getPollenShortDescFromLevel(type?.level ?: 0),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                            
-                            // Specific plants components (types) and their levels/descriptions
-                            if (currentDay.pollen.plants.isNotEmpty()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    currentDay.pollen.plants.forEach { plant ->
-                                        val color = if(!isSystemInDarkTheme())
-                                            plant.color.copy(red = plant.color.red * 0.5f, green = plant.color.green * 0.5f, blue = plant.color.blue * 0.5f)
-                                        else plant.color
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = plant.color.copy(alpha = 0.1f),
-                                            border = BorderStroke(1.dp, plant.color.copy(alpha = 0.3f))
-                                        ) {
-                                            Column(modifier = Modifier.padding(12.dp)) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    ResponsiveText(
-                                                        text = plant.name,
-                                                        modifier = Modifier.weight(1f),
-                                                        style = MaterialTheme.typography.labelMedium,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = color,
-                                                        maxLines = 1
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = "${plant.level}/4",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = color,
-                                                        maxLines = 1,
-                                                        softWrap = false
-                                                    )
-                                                }
-                                                if (!plant.description.isNullOrEmpty() && plant.description != "null") {
-                                                    Text(
-                                                        text = plant.description,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurface,
-                                                        modifier = Modifier.padding(top = 4.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // SECTION 3 : CONSEILS SANTÉ (Basés sur l'air ou pollen du jour)
-                        /*item {
-                            EnvironmentalSectionHeader(
-                                title = stringResource(R.string.health_advice),
-                                icon = Icons.Rounded.HealthAndSafety,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            
-                            Spacer(modifier = Modifier.height(12.dp))
-                            
-                            val adviceList = currentDay.airQuality.healthAdvice ?: emptyList()
-                            if (adviceList.isNotEmpty()) {
-                                adviceList.forEach { advice ->
-                                    HealthAdviceCard(advice.title, advice.advice)
-                                }
-                            } else {
-                                HealthAdviceCard("Information", "Continuez à surveiller les indices pour adapter vos activités.")
-                            }
-                        }*/
-                        
-                        item {
-                            Text(
-                                text = "Powered by Google Maps Platform",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.fillMaxWidth(),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(stringResource(R.string.close))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun HealthAdviceCard(title: String, advice: String) {
     Column(
         modifier = Modifier
@@ -1618,6 +1311,919 @@ fun EnvironmentalSectionHeader(title: String, icon: ImageVector, color: Color) {
         Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.width(12.dp))
         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun SunPathVisualization(viewModel: WeatherViewModel) {
+    val sunData by viewModel.sunData.collectAsState()
+    if (sunData == null) return
+    val data = sunData!!
+
+    val context = LocalContext.current
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    val now = LocalDateTime.now()
+    val totalSecondsDay = 24 * 3600f
+    val currentSeconds = now.hour * 3600f + now.minute * 60f + now.second
+
+    // hier = dailyData[0], aujourd'hui = dailyData[1], demain = dailyData[2]
+    val yesterday = data.dailyData.getOrNull(0)
+    val today = data.dailyData.getOrNull(1)
+    val tomorrow = data.dailyData.getOrNull(2)
+
+    val sr0 = today?.sunrise?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (6f * 3600f)
+    val ss0 = today?.sunset?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (18f * 3600f)
+
+    val isShifted = ss0 < sr0
+
+    val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
+        // Logique Shifting : centré sur le midi solaire
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
+        val ss1Shifted = ss1 + totalSecondsDay
+        val noon = (sr0 + ss1Shifted) / 2f
+        listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
+    } else {
+        // Logique Standard : 00:00 à 24:00
+        val ss0Fixed = if (ss0 < sr0) ss0 + totalSecondsDay else ss0
+        listOf(sr0, ss0Fixed, 0f, totalSecondsDay)
+    }
+
+    val noonSecs = (srUsed + ssUsed) / 2f
+
+    var sunSecs = currentSeconds
+    // Normalize currentSeconds into [windowStart, windowEnd]
+    while (sunSecs < windowStart) sunSecs += totalSecondsDay
+    while (sunSecs > windowEnd) sunSecs -= totalSecondsDay
+    val sunProgress = (sunSecs - windowStart) / totalSecondsDay
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+            .padding(16.dp)
+    ) {
+        // --- ENTÊTE : Durée du jour et Zenith ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                if (today != null && tomorrow != null && yesterday != null) {
+                    if (sunSecs > srUsed && sunSecs < ssUsed) {
+                        Text(
+                            text = stringResource(R.string.day_duration_no_value),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = String.format(
+                                Locale.getDefault(),
+                                "%dh %dmin",
+                                today.dayLength.toHours(), today.dayLength.toMinutes() % 60
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else if (sunSecs > ssUsed) {
+                        val nightLength = Duration.between(tomorrow.sunrise, today.sunset.plusHours(24))
+                        Text(
+                            text = "Night Duration",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Text(
+                            text = String.format(
+                                Locale.getDefault(),
+                                "%dh %dmin",
+                                nightLength.toHours(), nightLength.seconds % 60
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "Zenith",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = String.format(Locale.getDefault(), "%.1f°", today?.zenithElevation ?: 0.0),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // --- VISUALISATION PRINCIPALE (Canvas) ---
+        BoxWithConstraints (
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+        ) {
+            val widthDp = maxWidth
+
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokeWidth = 2.dp.toPx()
+                val horizonY = size.height / 2
+
+                // Curve crosses horizon at sunrise/sunset relative to noon
+                val crossingCos = cos(2.0 * PI * (srUsed - noonSecs) / totalSecondsDay).toFloat()
+
+                // Normalize scale so day peak is at top and night trough at bottom
+                val scaleY = (size.height / 2 - 25.dp.toPx()) / (1f + abs(crossingCos))
+
+                // Draw Sine Path (24h cycle centered or standard)
+                val path = Path()
+                val segments = 150
+                for (i in 0..segments) {
+                    val tSecs = windowStart + (i.toFloat() / segments) * totalSecondsDay
+                    val x = (i.toFloat() / segments) * size.width
+                    val yOffset =
+                        cos(2.0 * PI * (tSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+                    val y = horizonY - yOffset * scaleY
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+
+                drawPath(
+                    path = path,
+                    color = Color.Gray.copy(alpha = 0.3f),
+                    style = Stroke(
+                        width = strokeWidth,
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                            floatArrayOf(10f, 10f),
+                            0f
+                        )
+                    )
+                )
+
+                // Horizon line
+                drawLine(
+                    color = Color.Gray.copy(alpha = 0.5f),
+                    start = Offset(0f, horizonY),
+                    end = Offset(size.width, horizonY),
+                    strokeWidth = 1.dp.toPx()
+                )
+
+                // Current sun position on the curve
+                val currentYOffset =
+                    cos(2.0 * PI * (sunSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+                val sunY = horizonY - currentYOffset * scaleY
+
+                val isDay = currentYOffset > 0
+                val sunColor = if (isDay) Color(0xFFFFD700) else Color(0xFFB0C4DE)
+
+                drawCircle(
+                    color = sunColor,
+                    radius = 8.dp.toPx(),
+                    center = Offset(sunProgress * size.width, sunY)
+                )
+
+                if (isDay) {
+                    drawCircle(
+                        color = sunColor.copy(alpha = 0.3f),
+                        radius = 12.dp.toPx(),
+                        center = Offset(sunProgress * size.width, sunY)
+                    )
+                }
+            }
+
+            // Time markers
+            Box(modifier = Modifier.fillMaxSize()) {
+                val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+                // Absolute markers (Dynamic based on window)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    fun formatSecs(secs: Float): String {
+                        val s = (secs % totalSecondsDay + totalSecondsDay) % totalSecondsDay
+                        val m = (s / 60).toInt()
+                        val h = (m / 60)
+                        val mm = (s % 60).toInt()
+                        return String.format(Locale.getDefault(), "%02d:%02d", h, mm)
+                    }
+                    Text(formatSecs(windowStart), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text(formatSecs((windowStart + windowEnd) / 2f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text(formatSecs(windowEnd), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                }
+
+                // Solar Noon Marker at Zenith (Standard mode only)
+                if (!isShifted) {
+                    val noonX = (noonSecs / totalSecondsDay) * widthDp.value
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = noonX.dp, y = 8.dp) // Placed near the top
+                            .graphicsLayer { translationX = -size.width / 2 }
+                    ) {
+                        Text(
+                            text = (noonSecs % totalSecondsDay).let { s ->
+                                val m = (s / 60).toInt()
+                                val h = (m / 60)
+                                val mm = m % 60
+                                String.format(Locale.getDefault(), "%02d:%02d", h, mm)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            //color = MaterialTheme.colorScheme.primary,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- PIED DE PAGE : Heures et Azimut précis ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(horizontalAlignment = Alignment.Start) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.WbSunny, null, Modifier.size(16.dp), tint = Color(0xFFFFB300))
+                    Spacer(Modifier.width(4.dp))
+                    Text(today?.sunrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                }
+                Text(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunriseAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = String.format(Locale.getDefault(), "ELEV: %.4f°", data.currentPosition.elevation),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = String.format(Locale.getDefault(), "AZIMUTH: %.4f°", data.currentPosition.azimuth),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(today?.sunset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Rounded.WbTwilight, null, Modifier.size(16.dp), tint = Color(0xFFFF7043))
+                }
+                Text(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunsetAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+        }
+
+        // --- SECTION HEURES DORÉES ---
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFFFB300).copy(alpha = 0.1f))
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Heure Dorée Matin", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
+                Text("${data.dailyData[1].goldenHourMorning.first.format(formatter)} - ${data.dailyData[1].goldenHourMorning.second.format(formatter)}", style = MaterialTheme.typography.bodySmall)
+            }
+            VerticalDivider(modifier = Modifier.height(30.dp), thickness = 1.dp, color = Color(0xFFFFB300).copy(alpha = 0.3f))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Heure Dorée Soir", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
+                Text("${data.dailyData[1].goldenHourEvening.first.format(formatter)} - ${data.dailyData[1].goldenHourEvening.second.format(formatter)}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SunMoonCompass(viewModel: WeatherViewModel) {
+    val sunData by viewModel.sunData.collectAsState()
+    val moonData by viewModel.moonData.collectAsState()
+    val context = LocalContext.current
+
+    if (sunData == null || moonData == null) return
+
+    val sunToday = sunData!!.dailyData.getOrNull(1) ?: return
+    val moonPos = moonData!!.currentPosition
+    val sunPos = sunData!!.currentPosition
+
+    // Sensor-based rotation state
+    var isRotationEnabled by remember { mutableStateOf(false) }
+    var currentHeading by remember { mutableFloatStateOf(0f) }
+
+    // Sensor Logic
+    DisposableEffect(isRotationEnabled) {
+        if (!isRotationEnabled) return@DisposableEffect onDispose {}
+
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val rotVec = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val magnet = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+
+        var smoothedAz = 0f
+        val alpha = 0.15f
+        val rMat = FloatArray(9)
+        val iMat = FloatArray(9)
+        val orient = FloatArray(3)
+        val accelVals = FloatArray(3)
+        val magnetVals = FloatArray(3)
+        var haveAccel = false
+        var haveMag = false
+
+        val listener = object : SensorEventListener {
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+            override fun onSensorChanged(event: SensorEvent) {
+                when (event.sensor.type) {
+                    Sensor.TYPE_ROTATION_VECTOR -> {
+                        val R = FloatArray(9)
+                        val ori = FloatArray(3)
+                        SensorManager.getRotationMatrixFromVector(R, event.values)
+                        SensorManager.getOrientation(R, ori)
+                        updateAzimuth(Math.toDegrees(ori[0].toDouble()).toFloat())
+                    }
+                    Sensor.TYPE_ACCELEROMETER -> {
+                        for (i in event.values.indices) accelVals[i] += alpha * (event.values[i] - accelVals[i])
+                        haveAccel = true
+                        maybeUpdateFallback()
+                    }
+                    Sensor.TYPE_MAGNETIC_FIELD -> {
+                        for (i in event.values.indices) magnetVals[i] += alpha * (event.values[i] - magnetVals[i])
+                        haveMag = true
+                        maybeUpdateFallback()
+                    }
+                }
+            }
+
+            private fun maybeUpdateFallback() {
+                if (haveAccel && haveMag) {
+                    if (SensorManager.getRotationMatrix(rMat, iMat, accelVals, magnetVals)) {
+                        SensorManager.getOrientation(rMat, orient)
+                        updateAzimuth(Math.toDegrees(orient[0].toDouble()).toFloat())
+                    }
+                }
+            }
+
+            private fun updateAzimuth(rawDeg: Float) {
+                var deg = (rawDeg + 360f) % 360f
+
+                // Add display rotation
+                val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        context.display?.rotation ?: Surface.ROTATION_0
+                    } catch (e: Exception) {
+                        Surface.ROTATION_0
+                    }
+                } else {
+                    Surface.ROTATION_0
+                }
+
+                val rotationDegrees = when (rotation) {
+                    Surface.ROTATION_0 -> 0f
+                    Surface.ROTATION_90 -> 90f
+                    Surface.ROTATION_180 -> 180f
+                    Surface.ROTATION_270 -> 270f
+                    else -> 0f
+                }
+                deg = (deg + rotationDegrees + 360f) % 360f
+
+                var diff = deg - smoothedAz
+                if (abs(diff) > 180f) diff -= 360f * sign(diff)
+                smoothedAz = (smoothedAz + alpha * diff + 360f) % 360f
+                currentHeading = smoothedAz
+            }
+        }
+
+        if (rotVec != null) {
+            sensorManager.registerListener(listener, rotVec, SensorManager.SENSOR_DELAY_UI)
+        } else {
+            sensorManager.registerListener(listener, accel, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(listener, magnet, SensorManager.SENSOR_DELAY_UI)
+        }
+
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(Modifier.width(48.dp))
+            Text(
+                text = stringResource(R.string.compass_view),
+                style = MaterialTheme.typography.titleMedium
+            )
+            IconButton(onClick = { isRotationEnabled = !isRotationEnabled }) {
+                Icon(
+                    if (isRotationEnabled) Icons.Rounded.Explore else Icons.Rounded.ExploreOff,
+                    contentDescription = stringResource(R.string.enable_rotation),
+                    tint = if (isRotationEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Box(
+            modifier = Modifier
+                .size(240.dp)
+                .graphicsLayer {
+                    if (isRotationEnabled) {
+                        rotationZ = -currentHeading
+                    }
+                }
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), CircleShape)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                val center = Offset(size.width / 2, size.height / 2)
+                val radius = size.width / 2
+
+                // Outer Circle
+                drawCircle(
+                    color = Color.Gray.copy(alpha = 0.1f),
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                // Markers for N, E, S, W
+                val markerLength = 10.dp.toPx()
+                for (angle in 0 until 360 step 90) {
+                    val rad = (angle - 90) * (PI / 180.0)
+                    val start = Offset(
+                        center.x + (radius - markerLength) * cos(rad).toFloat(),
+                        center.y + (radius - markerLength) * sin(rad).toFloat()
+                    )
+                    val end = Offset(
+                        center.x + radius * cos(rad).toFloat(),
+                        center.y + radius * sin(rad).toFloat()
+                    )
+                    drawLine(Color.Gray, start, end, strokeWidth = 2.dp.toPx())
+                }
+
+                // Sunrise Azimuth
+                drawAzimuthMarker(
+                    center, radius, sunToday.sunriseAzimuth,
+                    color = Color(0xFFFFB300),
+                    label = "Rise"
+                )
+
+                // Sunset Azimuth
+                drawAzimuthMarker(
+                    center, radius, sunToday.sunsetAzimuth,
+                    color = Color(0xFFFF7043),
+                    label = "Set"
+                )
+
+                // Current Sun Position
+                drawAzimuthPointer(
+                    center, radius * cos(sunPos.elevation * (PI / 180.0)).toFloat(), sunPos.azimuth,
+                    color = if (sunPos.elevation >= 0 ) Color(0xFFFFD700) else Color(0x00FFD700),
+                    iconRadius = 8.dp.toPx()
+                )
+
+                // Current Moon Position
+                drawAzimuthPointer(
+                    center, radius * cos(moonPos.elevation.toDouble() * (PI / 180.0)).toFloat(), moonPos.azimuth,
+                    color = if (moonPos.elevation >= 0 ) Color(0xFFB0C4DE) else Color(0x00B0C4DE),
+                    iconRadius = 6.dp.toPx()
+                )
+            }
+
+            // Central text for North
+            Text(
+                "N",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Red,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+            Text(
+                "S",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Gray,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+            Text(
+                "E",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Gray,
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)
+            )
+            Text(
+                "W",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Gray,
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Legend
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LegendItem(Color(0xFFFFB300), stringResource(R.string.sunrise))
+            LegendItem(Color(0xFFFF7043), stringResource(R.string.sunset))
+            LegendItem(Color(0xFFFFD700), stringResource(R.string.sun))
+            LegendItem(Color(0xFFB0C4DE), stringResource(R.string.moon))
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color, CircleShape)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAzimuthMarker(
+    center: Offset,
+    radius: Float,
+    azimuth: Double,
+    color: Color,
+    label: String
+) {
+    val rad = (azimuth - 90) * (PI / 180.0)
+    val pos = Offset(
+        center.x + radius * cos(rad).toFloat(),
+        center.y + radius * sin(rad).toFloat()
+    )
+
+    drawCircle(
+        color = color,
+        radius = 4.dp.toPx(),
+        center = pos
+    )
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAzimuthPointer(
+    center: Offset,
+    length: Float,
+    azimuth: Double,
+    color: Color,
+    iconRadius: Float
+) {
+    val rad = (azimuth - 90) * (PI / 180.0)
+    val pointerEnd = Offset(
+        center.x + length * cos(rad).toFloat(),
+        center.y + length * sin(rad).toFloat()
+    )
+
+    drawLine(
+        color = color,
+        start = center,
+        end = pointerEnd,
+        strokeWidth = 2.dp.toPx()
+    )
+
+    drawCircle(
+        color = color,
+        radius = iconRadius,
+        center = pointerEnd
+    )
+
+    // Add glow
+    drawCircle(
+        color = color.copy(alpha = 0.3f),
+        radius = iconRadius + 4.dp.toPx(),
+        center = pointerEnd
+    )
+}
+
+
+@Composable
+fun MoonDetailsSection(viewModel: WeatherViewModel) {
+    val moonData by viewModel.moonData.collectAsState()
+    if (moonData == null) return
+    val data = moonData!!
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    val phaseName = when (data.dailyEvents.phase.phaseType) {
+        PhaseType.NEW_MOON -> stringResource(R.string.moon_phase_new_moon)
+        PhaseType.WAXING_CRESCENT -> stringResource(R.string.moon_phase_waxing_crescent)
+        PhaseType.FIRST_QUARTER -> stringResource(R.string.moon_phase_first_quarter)
+        PhaseType.WAXING_GIBBOUS -> stringResource(R.string.moon_phase_waxing_gibbous)
+        PhaseType.FULL_MOON -> stringResource(R.string.moon_phase_full_moon)
+        PhaseType.WANING_GIBBOUS -> stringResource(R.string.moon_phase_waning_gibbous)
+        PhaseType.LAST_QUARTER -> stringResource(R.string.moon_phase_last_quarter)
+        PhaseType.WANING_CRESCENT -> stringResource(R.string.moon_phase_waning_crescent)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+            .padding(16.dp)
+    ) {
+        // --- En-tête : Phase et Illumination ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(stringResource(R.string.moon_phase), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(phaseName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.illumination, String.format(Locale.getDefault(), "%.1f%%", data.dailyEvents.phase.fractionIlluminated * 100)), style = MaterialTheme.typography.bodyMedium)
+            }
+
+            // Icone dynamique de la lune
+            Canvas(modifier = Modifier.size(48.dp)) {
+                val r = size.width / 2
+                val center = Offset(r, r)
+
+                // 1. Fond : Partie sombre de la lune
+                drawCircle(
+                    color = Color(0xFF2C3E50).copy(alpha = 0.4f),
+                    radius = r,
+                    center = center
+                )
+
+                val fraction = data.dailyEvents.phase.fractionIlluminated.toFloat()
+                val isWaxing = data.dailyEvents.phase.ageDays < 14.765
+
+                if (fraction > 0.01f) {
+                    val path = Path()
+                    val x = r * (1f - 2f * fraction)
+                    val limbSweep = if (isWaxing) 180f else -180f
+                    val terminatorSweep = -limbSweep
+
+                    // 2. Dessiner la partie illuminée
+                    path.moveTo(center.x, center.y - r)
+
+                    // Arc du bord extérieur (Limb)
+                    path.arcTo(
+                        rect = androidx.compose.ui.geometry.Rect(center.x - r, center.y - r, center.x + r, center.y + r),
+                        startAngleDegrees = -90f,
+                        sweepAngleDegrees = limbSweep,
+                        forceMoveTo = false
+                    )
+
+                    // Arc du terminateur (la ligne entre jour et nuit sur la lune)
+                    path.arcTo(
+                        rect = androidx.compose.ui.geometry.Rect(center.x - abs(x), center.y - r, center.x + abs(x), center.y + r),
+                        startAngleDegrees = 90f,
+                        sweepAngleDegrees = if (x > 0) terminatorSweep else limbSweep,
+                        forceMoveTo = false
+                    )
+
+                    path.close()
+
+                    drawPath(
+                        path = path,
+                        color = Color(0xFFF5F5F5) // Blanc cassé / Argent
+                    )
+
+                    // Petit effet de lueur
+                    drawCircle(
+                        color = Color(0xFFF5F5F5).copy(alpha = 0.1f),
+                        radius = r + 2.dp.toPx(),
+                        center = center
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // --- Infos de Position ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(horizontalAlignment = Alignment.Start) {
+                ResponsiveText(stringResource(R.string.moonrise), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(data.dailyEvents.moonrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                if (data.dailyEvents.moonriseAzimuth != null) {
+                    Text(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonriseAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = String.format(Locale.getDefault(), "ELEV: %.2f°", data.currentPosition.elevation),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFF5C6BC0), // Indigo pour la lune
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = String.format(Locale.getDefault(), "AZIMUTH: %.4f°", data.currentPosition.azimuth),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF7986CB)
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                ResponsiveText(stringResource(R.string.moonset), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(data.dailyEvents.moonset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                if (data.dailyEvents.moonsetAzimuth != null) {
+                    Text(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonsetAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = String.format(Locale.getDefault(), "Distance: %,d km", data.currentPosition.distanceKm.toInt()),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+    }
+}
+
+@Composable
+fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                    alpha = 0.6f
+                )
+            )
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedVisibility(
+            visibleState = visibleState,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.8f)
+                    .clickable(enabled = false) { },
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.vigilance_alerts_dept_code,
+                            vigilanceData.departmentCode
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(vigilanceData.alerts) { alert ->
+                            val alertColor = when (alert.maxColorId) {
+                                1 -> Color(0xFF4CAF50)
+                                2 -> Color(0xFFFFEB3B)
+                                3 -> Color(0xFFFF9800)
+                                4 -> Color(0xFFF44336)
+                                else -> MaterialTheme.colorScheme.outline
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        alertColor.copy(alpha = 0.1f),
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .padding(12.dp)
+                            ) {
+                                val isDark = isSystemInDarkTheme()
+                                val itemContentColor = if (!isDark) when (alert.maxColorId) {
+                                    2 -> Color(0xFF422B00) // Marron très foncé
+                                    3 -> Color(0xFFE65100) // Orange foncé
+                                    4 -> Color(0xFFB71C1C) // Rouge foncé
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                } else alertColor
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = getPhenomenonIcon(alert.phenomenonId),
+                                        contentDescription = null,
+                                        tint = itemContentColor,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = stringResource(mapPhenomenonIdToName(alert.phenomenonId)),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = itemContentColor
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                alert.steps.forEach { step ->
+                                    val start = OffsetDateTime.parse(step.beginTime)
+                                    val end = OffsetDateTime.parse(step.endTime)
+                                    val isToday = start.toLocalDate() == LocalDate.now()
+
+                                    val stepColor = when (step.colorId) {
+                                        1 -> Color(0xFF4CAF50)
+                                        2 -> Color(0xFFFFEB3B)
+                                        3 -> Color(0xFFFF9800)
+                                        4 -> Color(0xFFF44336)
+                                        else -> Color.Gray
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier
+                                            .size(10.dp)
+                                            .background(stepColor, CircleShape))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${start.format(formatter)} - ${end.format(formatter)} ${if (!isToday) "(${start.format(dayFormatter)})" else ""}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://vigilance.meteofrance.fr/fr".toUri())
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.official_website), style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.close))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

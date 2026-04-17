@@ -96,6 +96,7 @@
     <string name="clear">Clear</string>
     <string name="currently">Currently</string>
     <string name="goes_to_current_weather_page">Goes to Current Weather Page</string>
+    <string name="full_period_forecast">Full period forecast</string>
     <string name="app_focus">App Focus</string>
     <string name="curent_weather">Current Weather</string>
     <string name="compass_view">Compass View</string>
@@ -112,6 +113,16 @@
     <string name="wind_unit_desc">Choose between Kilometers per hour and Miles per hour.</string>
     <string name="kph">km/h</string>
     <string name="mph">mph</string>
+
+    <string name="aqi_index_title">Air Quality Index (AQI)</string>
+    <string name="aqi_index_desc">Choose between the European index (standard in Europe) or the Universal index (standardized by Google).</string>
+    <string name="european_index">European</string>
+    <string name="universal_index">Universal</string>
+
+    <string name="min">Min</string>
+    <string name="max">Max</string>
+    <string name="avg">Avg</string>
+
     <string name="daily_forecast_setting">Daily Forecast</string>
     <string name="no_current_risks">No current risks</string>
     <string name="herbes">Grasses</string>

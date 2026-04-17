@@ -209,6 +209,17 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            AirQualityIndexSetting(
+                useEurAqi = userSettings.useEurAqi,
+                onSettingChange = { useEurAqi ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateUseEurAqi(useEurAqi)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             WindUnitSetting(
                 currentUnit = userSettings.windUnit,
                 onUnitSelected = { newUnit ->
@@ -318,6 +329,54 @@ fun SettingsScreen(cache: WeatherCache) {
                 text = "Build Type: ${BuildConfig.BUILD_TYPE}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun AirQualityIndexSetting(
+    useEurAqi: Boolean,
+    onSettingChange: (Boolean) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val selectedIndex = if (useEurAqi) 0 else 1
+
+    Column {
+        Text(stringResource(R.string.aqi_index_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.aqi_index_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.european_index),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { onSettingChange(true) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.universal_index),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { onSettingChange(false) }
             )
         }
     }
