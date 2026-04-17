@@ -1,3 +1,7 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo.satImgs
 
 import android.content.Intent
