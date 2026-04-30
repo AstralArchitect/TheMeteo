@@ -4,6 +4,7 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.forecastMainActivity
 
+import android.annotation.SuppressLint
 import android.os.Build
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -206,7 +207,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(air.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Text("${air.value} AQI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    if (air.value != 0) Text("${air.value} AQI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 }
 
                                 if (air.minAqi > 0 || air.maxAqi > 0) {
@@ -242,11 +243,12 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxWidth(
+                                            .fillMaxWidth( if (air.value != 0)
                                                 (air.value.toFloat() / 100f).coerceIn(
                                                     0f,
                                                     1f
                                                 )
+                                                else 1f
                                             )
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(4.dp))
@@ -325,7 +327,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                     ) {
                                         Box {
                                             EnvironmentalGauge(
-                                                value = (type?.level?.toFloat() ?: 0f) / 4f,
+                                                value = (type?.level?.toFloat() ?: 0f) / 5f,
                                                 color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
                                                 modifier = Modifier.size(80.dp)
                                             )
@@ -347,7 +349,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                             )
                                         }
                                         Text(
-                                            text = "${type?.level ?: 0}/4",
+                                            text = "${type?.level ?: 0}/5",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
@@ -461,11 +463,9 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
     }
 }
 
+@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
-    val dailyForecast by viewModel.dailyForecast.collectAsState()
-    val context = LocalContext.current
-
     // Animation state
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
 
@@ -506,7 +506,6 @@ fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                 ) {
                     Text(
                         "Sun Details",
-                        //stringResource(R.string.sun_moon_details),
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )

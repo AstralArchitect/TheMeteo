@@ -13,7 +13,7 @@ TheMeteo arbore une identité visuelle unique : **Le Hardware Cloud**.
 - [1. Écran Principal (Météo Actuelle & Horaires)](#1-écran-principal-météo-actuelle--horaires)
 - [2. Sélecteur de Lieux & Intelligence Géographique](#2-sélecteur-de-lieux--intelligence-géographique)
 - [3. Prévisions Journalières (15 Jours)](#3-prévisions-journalières-15-jours)
-- [4. Graphiques Détaillés (24H)](#4-graphiques-détaillés-24h)
+- [4. Graphiques Détaillés (Période Complète)](#4-graphiques-détaillés-période-complète)
 - [5. Radar de Pluie](#5-radar-de-pluie)
 - [6. Images Satellites](#6-images-satellites)
 - [7. Mode Hors-Ligne & Cache Intelligent](#7-mode-hors-ligne--cache-intelligent)
@@ -29,12 +29,14 @@ L'écran principal s'adapte dynamiquement aux conditions actuelles pour vous don
 ### Fonctionnalités :
 - **Arrière-plan dynamique :** Le fond d'écran s'anime, se colore et se floute élégamment selon la météo et l'heure (jour/nuit).
 - **Informations principales :** Icône météo (animée), température actuelle géante et courte description générée intelligemment (ex: "Partiellement nuageux avec pluie légère").
-- **Alertes de Vigilance (Météo-France) :** Affichage des vigilances en cours (Vent violent, Pluie-Inondation, Orages, Neige-Verglas, etc.) pour les départements français. Un clic ouvre une boîte de dialogue avec le détail des horaires et le niveau de gravité.
+- **Alertes de Vigilance (Météo-France) :** Affichage des vigilances pertinentes en cours pour les départements français (les alertes mineures de niveau vert/faible sont filtrées pour plus de clarté). Un clic ouvre une boîte de dialogue avec le détail des horaires et le niveau de gravité.
 - **Prévisions horaires rapides :** 
   - Graphiques simplifiés interactifs pour la **Température**, la **Température ressentie**, les **Précipitations** (si > 0) et le **Vent**.
   - Bandeau déroulant des icônes météo heure par heure.
   - Clic sur la carte pour basculer vers les graphiques détaillés.
-- **Éphéméride (Soleil) :** Affiche l'heure du prochain lever ou coucher du soleil, ainsi que la durée calculée de la journée ou de la nuit.
+- **Éphéméride & Astronomie (Soleil et Lune) :** 
+  - Affiche l'heure du prochain lever ou coucher du soleil, la durée calculée de la journée, et la phase lunaire.
+  - **Dialogue détaillé interactif (clic) :** Accédez à une boussole interactive (`SunMoonCompass`) s'adaptant aux capteurs de votre appareil, ainsi qu'à une visualisation de la trajectoire solaire en onde sinusoïdale très précise, gérant même les zones polaires.
 - **Détails météo complets :** Un bouton "+" donne accès à un dialogue exhaustif listant :
   - Température et température ressentie.
   - Index UV (avec code couleur de Faible à Extrême).
@@ -47,8 +49,9 @@ L'écran principal s'adapte dynamiquement aux conditions actuelles pour vous don
   - Visibilité (en mètres ou km).
 - **Qualité de l'Air et Pollen :**
   - Aperçu de l'Index de Qualité de l'Air (AQI) avec code couleur et affichage du polluant majeur.
-  - Aperçu du risque pollinique actuel (Herbes, Arbres, Herbacées).
-  - **Dialogue détaillé (clic) :** Liste des concentrations de chaque polluant (O3, NO2, PM10, etc.), recommandations de santé adaptées, et prévisions polliniques détaillées pour les 3 prochains jours.
+  - **Personnalisation :** Choix entre les standards d'AQI Européen (FRA/EUR) ou Universel (Google) dans les paramètres.
+  - Aperçu du risque pollinique actuel.
+  - **Dialogue détaillé (clic) :** Liste des concentrations de chaque polluant avec les tendances journalières (Min/Max/Avg), recommandations de santé, et descriptions détaillées des plantes allergènes pour les 3 prochains jours.
 - **Mini-carte Radar :** Un aperçu de la carte des pluies avec un bouton pour l'ouvrir en plein écran.
 - **Accès Rapides (Bas de page) :** Affichage des coordonnées GPS, de la source de données, et d'un bouton direct pour ouvrir la carte Satellite.
 
@@ -60,10 +63,10 @@ Accessible en cliquant sur le nom de la ville actuelle en haut de l'écran princ
 
 ### Fonctionnalités :
 - **Gestion des Favoris :** Liste déroulante des villes sauvegardées affichant directement leur température et météo actuelles.
-- **Réorganisation :** Vous pouvez désormais changer l'ordre de vos villes favorites grâce aux flèches de déplacement (Monter/Descendre).
-- **Lieu par défaut :** Possibilité de marquer une ville avec une étoile (⭐) pour un chargement automatique au lancement.
-- **Adaptation Automatique du Modèle :** Si vous sélectionnez une ville hors de la zone de couverture de votre modèle actuel (ex: AROME en dehors de la France), TheMeteo bascule automatiquement sur le "Meilleur Modèle" mondial pour garantir la continuité du service.
-- **Position GPS (Dynamique) :** L'option "Position Actuelle" s'adapte selon vos autorisations de localisation.
+- **Réorganisation :** Vous pouvez changer l'ordre de vos villes favorites grâce aux flèches de déplacement.
+- **Lieu par défaut :** Au premier lancement, l'application initialise Paris par défaut. Vous pouvez marquer une autre ville avec une étoile (⭐) pour un chargement automatique.
+- **Adaptation Automatique du Modèle :** Si vous sélectionnez une ville hors de la zone de couverture de votre modèle actuel, TheMeteo bascule automatiquement sur le modèle "Auto" mondial.
+- **Position GPS (Dynamique) :** L'option "Position Actuelle" ajuste automatiquement sa précision (`HIGH_ACCURACY` ou `BALANCED`) selon vos autorisations (localisation exacte ou approximative), et dispose d'un système de repli sur la dernière position connue si le signal est perdu.
 - **Recherche & Carte :** Recherche mondiale par autocomplétion ou sélection manuelle précise sur Google Maps.
 
 ---
@@ -75,14 +78,15 @@ Une liste claire, lisible et ergonomique pour anticiper la météo à moyen term
 ### Fonctionnalités :
 - **Vue d'ensemble :** Affichage de la date complète, de l'icône météo générale (animée), des températures minimales et maximales, des précipitations totales (mm) et des rafales de vent max (km/h).
 - **Indicateurs de records :** Les températures les plus extrêmes de la quinzaine sont mises en évidence par un code couleur (Rouge pour le maximum absolu, Bleu pour le minimum absolu).
+- **Période Complète :** Une option "Full period forecast" permet de charger l'intégralité des données horaires sur 15 jours.
 - **Accès direct "Actuel" :** Une carte spéciale en haut de la liste permet de retourner rapidement à l'écran de la météo en cours (Main).
-- **Interactivité complète :** Chaque carte journalière est cliquable et ouvre instantanément les graphiques détaillés (24h) pour ce jour précis.
+- **Interactivité complète :** Chaque carte journalière est cliquable et ouvre instantanément les graphiques détaillés pour ce jour précis, avec un centrage automatique à 6h du matin.
 
 ---
 
-## 4. Graphiques Détaillés (24H)
+## 4. Graphiques Détaillés (Période Complète)
 <!-- [Insérer ici une capture d'écran de DayGraphsActivity montrant les différentes courbes] -->
-Pour les utilisateurs exigeants qui souhaitent analyser l'évolution heure par heure de n'importe quelle variable météorologique.
+Pour les utilisateurs exigeants qui souhaitent analyser l'évolution heure par heure de n'importe quelle variable météorologique, avec un défilement horizontal infini jusqu'à 15 jours de prévisions.
 
 ### Graphiques disponibles (affichés dynamiquement uniquement si des données pertinentes existent) :
 - **Température** (Jaune) et **Température Ressentie** (Orange)
@@ -132,8 +136,8 @@ Visualisez les images brutes en temps quasi-réel provenant des satellites EUMET
 ## 7. Mode Hors-Ligne & Cache Intelligent
 TheMeteo est conçue pour fonctionner de manière fluide, même dans les zones à faible couverture réseau.
 - **Chargement instantané :** Les dernières données consultées sont stockées localement et affichées instantanément dès l'ouverture d'un écran.
-- **Rafraîchissement intelligent :** L'application ne sollicite le réseau que si les données en cache datent de plus d'une heure ou si des plages horaires sont manquantes.
-- **Fusion de modèles (Fallback) :** Si votre modèle préféré ne propose pas une variable spécifique (ex: Visibilité), TheMeteo complète automatiquement votre fiche avec les données du modèle mondial de secours, vous offrant ainsi une expérience toujours exhaustive.
+- **Rafraîchissement intelligent :** L'application ne sollicite le réseau que si les données en cache datent de plus d'une heure ou si des plages horaires sont manquantes, et gère de manière robuste les pertes temporaires de signal GPS.
+- **Chaîne de Modèles de Secours (Model Chain Fallback) :** Si votre modèle préféré échoue ou ne propose pas une variable spécifique, TheMeteo complète automatiquement votre fiche en requêtant de façon transparente une cascade de modèles de secours mondiaux, offrant ainsi une expérience toujours ininterrompue et exhaustive.
 
 ---
 
@@ -159,7 +163,10 @@ Le "Modèle", c'est le cerveau qui traite les données.
 - **Désactivé :** Affiche la valeur exacte calculée par le modèle.
 
 ### Compléter les variables manquantes (Fallback)
-C'est une fonction de sécurité qui utilise le "Meilleur Modèle" mondial pour remplir les trous (variables manquantes) éventuels de votre modèle favori.
+C'est une fonction de sécurité qui utilise le système de modèles de secours pour remplir les trous (variables manquantes) éventuels de votre modèle favori.
+
+### Norme AQI (Qualité de l'Air)
+Vous permet de basculer entre la norme Européenne (FRA/EUR) et la norme Universelle (Google) pour l'affichage de l'indice de qualité de l'air.
 
 ### Icônes animées
 Permet d'activer les animations fluides. Désactivé automatiquement en mode "Économie de batterie".
@@ -170,14 +177,14 @@ Personnalisez ce que vous voyez en ouvrant l'application : **Actuel** ou **Journ
 ---
 
 ## 9. Guide des Modèles Météorologiques
-TheMeteo propose une sélection exhaustive de modèles issus des plus grands instituts météorologiques mondiaux.
+TheMeteo propose une sélection exhaustive de modèles issus des plus grands instituts météorologiques mondiaux. Les noms des modèles sont affichés de façon conviviale dans l'interface de l'application.
 
 ### Modèles Mondiaux (Global)
 *Disponibles pour n'importe quel point du globe.*
 
 | Modèle | Institut | Commentaire |
 | :--- | :--- | :--- |
-| **Meilleur Modèle** | Open-Meteo | **Recommandé par défaut.** Combine intelligemment les meilleures sources selon le lieu. |
+| **Auto** (ex-Meilleur Modèle) | Open-Meteo | **Recommandé par défaut.** Combine intelligemment les meilleures sources selon le lieu. |
 | **ECMWF IFS (9km)** | Centre Européen (CEPMMT) | Le modèle haute résolution de référence mondiale, réputé pour sa grande fiabilité. |
 | **ECMWF AIFS** | Centre Européen (CEPMMT) | Modèle expérimental basé sur l'Intelligence Artificielle. Très rapide et prometteur. |
 | **NCEP GFS** | NOAA (USA) | Le modèle américain historique. Mise à jour fréquente, très utilisé pour le long terme. |
@@ -211,6 +218,6 @@ TheMeteo propose une sélection exhaustive de modèles issus des plus grands ins
 
 ## ⚖️ Licences
 
-- **Code Source :** Distribué sous licence **GPL v3**. (Consultez le fichier LICENSE).
+- **Code Source :** Distribué sous licence **GPL v3**. (Consultez le fichier LICENSE). L'ensemble des fichiers sources intègre une notice de copyright unifiée : `Copyright (C) 2026 AstralArchitect`.
 - **Logo & Design :** Tous droits réservés à **AstralArchitect**.
 - **Crédits Tierces :** Icônes sous licence MIT et données via RainViewer/EUMETSAT.

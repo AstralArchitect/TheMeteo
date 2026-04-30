@@ -22,14 +22,14 @@ fun getBuildDate(): String {
 
 android {
     namespace = "fr.matthstudio.themeteo"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 43
-        versionName = "2.4.0"
+        versionCode = 45
+        versionName = "2.4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

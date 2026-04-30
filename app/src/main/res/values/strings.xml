@@ -269,4 +269,5 @@
     <string name="high">High</string>
     <string name="very_high">Very High</string>
     <string name="none">None</string>
+    <string name="extreme">Extreme</string>
 </resources>

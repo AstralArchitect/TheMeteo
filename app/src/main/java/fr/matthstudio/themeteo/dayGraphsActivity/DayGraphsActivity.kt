@@ -201,7 +201,6 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
                         stringResource(R.string.next_24h_forecast),
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier
-                        .padding(bottom = 16.dp)
                         .align(Alignment.Center)
                 )
             }
@@ -213,7 +212,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
                         viewModel,
                         scrollState = scrollState,
                         contentWidth = contentWidth,
-                        modifier = Modifier.padding(top = 40.dp)
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
@@ -237,7 +236,6 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
                     Box(modifier = Modifier
                         .matchParentSize()
                         .horizontalScroll(scrollState)
-                        .padding(top = 40.dp) // Room for day labels
                     ) {
                         BackgroundGrid(
                             forecast = forecast,
@@ -249,7 +247,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(verticalScrollState), // Pour que ça puisse défiler si le contenu est grand
+                        .verticalScroll(verticalScrollState)
+                        .padding(top = 10.dp),
                 ) {
                     // On affiche un indicateur de chargement pendant la récupération des données
                     if (forecast == WeatherDataState.Loading) {
@@ -568,10 +567,8 @@ fun BackgroundGrid(
                     end = Offset(separatorX, size.height),
                     strokeWidth = 4f
                 )
-            }
 
-            // Day Label
-            if (i == 0 || hourData.time.hour == 0) {
+                // day label
                 val dayLabel = hourData.time.format(DateTimeFormatter.ofPattern("EEE d MMM"))
                 drawContext.canvas.nativeCanvas.drawText(
                     dayLabel,

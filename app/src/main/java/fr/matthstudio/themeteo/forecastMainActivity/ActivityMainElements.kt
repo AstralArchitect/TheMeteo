@@ -872,14 +872,14 @@ fun AirQualityCard(
                 // Barre horizontale colorée (Jauge)
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.8f)
+                        .fillMaxWidth(if (data.value == 0) 1f else .8f)
                         .height(9.dp)
                         .clip(CircleShape)
                         .background(data.color.copy(alpha = 0.2f))
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth((data.value.toFloat() / 100f).coerceIn(0f, 1f))
+                            .fillMaxWidth(if (data.value != 0) (data.value.toFloat() / 100f).coerceIn(0f, 1f) else 1f)
                             .fillMaxHeight()
                             .clip(CircleShape)
                             .background(data.color)
@@ -887,24 +887,26 @@ fun AirQualityCard(
                 }
             }
 
-            // Groupe Droite : AQI en très grand
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = data.value.toString(),
-                    style = MaterialTheme.typography.displayMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Black,
-                    lineHeight = 40.sp
-                )
-                Text(
-                    text = "AQI",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold
-                )
+            if (data.value != 0) {
+                // Groupe Droite : AQI en très grand
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = data.value.toString(),
+                        style = MaterialTheme.typography.displayMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Black,
+                        lineHeight = 40.sp
+                    )
+                    Text(
+                        text = "AQI",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -952,7 +954,7 @@ fun PollenCard(
                     ) {
                         Box {
                             EnvironmentalGauge(
-                                value = (type?.level?.toFloat() ?: 0f) / 4f,
+                                value = (type?.level?.toFloat() ?: 0f) / 5f,
                                 color = type?.color ?: MaterialTheme.colorScheme.outlineVariant,
                                 modifier = Modifier.size(80.dp)
                             )
@@ -970,7 +972,7 @@ fun PollenCard(
                             )
                         }
                         Text(
-                            text = "${type?.level ?: 0}/4",
+                            text = "${type?.level ?: 0}/5",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )

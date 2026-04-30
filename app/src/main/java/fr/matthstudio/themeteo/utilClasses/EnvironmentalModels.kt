@@ -174,9 +174,9 @@ fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastRe
             recommendation = info.healthRecommendations?.generalPopulation,
             pollutants = pollutants,
             healthAdvice = healthAdvice,
-            minAqi = min,
-            maxAqi = max,
-            avgAqi = avg
+            minAqi = if (useEurAqi) 0 else min,
+            maxAqi = if (useEurAqi) 0 else max,
+            avgAqi = if (useEurAqi) 0 else avg
         )
     }
 
@@ -246,7 +246,7 @@ fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastRe
 
         val dayAqiValues = aqiByDay[dateLabel]?.map { info ->
              if (useEurAqi) {
-                info.indexes.find { it.code == "eur_aqi" }?.aqi ?: info.indexes.firstOrNull()?.aqi ?: 0
+                info.indexes.find { it.code == "fra_atmo" }?.aqi ?: info.indexes.firstOrNull()?.aqi ?: 0
             } else {
                 info.indexes.firstOrNull()?.aqi ?: 0
             }
@@ -258,7 +258,7 @@ fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastRe
 
         val currentDayAqi = if (dayAqiInfo != null) {
             if (useEurAqi) {
-                dayAqiInfo.indexes.find { it.code == "eur_aqi" }?.aqi ?: dayAqiInfo.indexes.firstOrNull()?.aqi ?: 0
+                dayAqiInfo.indexes.find { it.code == "fra_atmo" }?.aqi ?: dayAqiInfo.indexes.firstOrNull()?.aqi ?: 0
             } else {
                 dayAqiInfo.indexes.firstOrNull()?.aqi ?: 0
             }
@@ -284,7 +284,7 @@ fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastRe
                 mapPollenDay(dailyPollen).color
             }
         )
-    }?.filter { it.airQuality.value != 0 } ?: emptyList() // On ne garde que les jours complets
+    } ?: emptyList()
 
     return EnvironmentalUIModel(days, aqi != null || pollen != null)
 }

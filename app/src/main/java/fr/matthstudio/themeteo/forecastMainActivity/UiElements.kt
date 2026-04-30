@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -116,6 +117,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.modifier.modifierLocalConsumer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -581,7 +583,7 @@ fun DailyForecastRow(
                     )
                 }
                 Spacer(Modifier.width(8.dp))
-                if (dayReading.maxWind.windspeed != null && dayReading.maxWind.windspeed >= 30) {
+                if ( (dayReading.maxWind.windspeed != null && dayReading.maxWind.windspeed >= 30) || (dayReading.maxWind.windGusts != null && dayReading.maxWind.windGusts >= 45) ) {
                     Icon(
                         Icons.Rounded.Air,
                         contentDescription = null,
@@ -1109,6 +1111,7 @@ fun getPollenShortDescFromLevel(level: Int): String {
         2 -> stringResource(R.string.moderate)
         3 -> stringResource(R.string.high)
         4 -> stringResource(R.string.very_high)
+        5 -> stringResource(R.string.extreme)
         else -> stringResource(R.string.unknown)
     }
 }
@@ -1365,7 +1368,10 @@ fun SunPathVisualization(viewModel: WeatherViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                RoundedCornerShape(24.dp)
+            )
             .padding(16.dp)
     ) {
         // --- ENTÊTE : Durée du jour et Zenith ---
@@ -1556,38 +1562,44 @@ fun SunPathVisualization(viewModel: WeatherViewModel) {
         // --- PIED DE PAGE : Heures et Azimut précis ---
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(horizontalAlignment = Alignment.Start) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.WbSunny, null, Modifier.size(16.dp), tint = Color(0xFFFFB300))
-                    Spacer(Modifier.width(4.dp))
-                    Text(today?.sunrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                }
-                Text(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunriseAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Rounded.WbSunny, null, Modifier.size(22.dp), tint = Color(0xFFFFB300))
+                ResponsiveText(today?.sunrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunriseAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
+            Column(
+                modifier = Modifier.weight(2f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ResponsiveText(
                     text = String.format(Locale.getDefault(), "ELEV: %.4f°", data.currentPosition.elevation),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
                 )
-                Text(
+                ResponsiveText(
                     text = String.format(Locale.getDefault(), "AZIMUTH: %.4f°", data.currentPosition.azimuth),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.Center
                 )
             }
 
-            Column(horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(today?.sunset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Rounded.WbTwilight, null, Modifier.size(16.dp), tint = Color(0xFFFF7043))
-                }
-                Text(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunsetAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Rounded.WbTwilight, null, Modifier.size(22.dp), tint = Color(0xFFFF7043))
+                ResponsiveText(today?.sunset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunsetAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
             }
         }
 
@@ -1602,13 +1614,13 @@ fun SunPathVisualization(viewModel: WeatherViewModel) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceAround
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Heure Dorée Matin", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                ResponsiveText("Heure Dorée Matin", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
                 Text("${data.dailyData[1].goldenHourMorning.first.format(formatter)} - ${data.dailyData[1].goldenHourMorning.second.format(formatter)}", style = MaterialTheme.typography.bodySmall)
             }
             VerticalDivider(modifier = Modifier.height(30.dp), thickness = 1.dp, color = Color(0xFFFFB300).copy(alpha = 0.3f))
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Heure Dorée Soir", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                ResponsiveText("Heure Dorée Soir", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
                 Text("${data.dailyData[1].goldenHourEvening.first.format(formatter)} - ${data.dailyData[1].goldenHourEvening.second.format(formatter)}", style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -1730,7 +1742,7 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 16.dp),
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
@@ -1756,17 +1768,23 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
 
         Box(
             modifier = Modifier
-                .size(240.dp)
+                .fillMaxSize()
+                .aspectRatio(1f)
                 .graphicsLayer {
                     if (isRotationEnabled) {
                         rotationZ = -currentHeading
                     }
                 }
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), CircleShape)
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    CircleShape
+                )
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Canvas(modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)) {
                 val center = Offset(size.width / 2, size.height / 2)
                 val radius = size.width / 2
 
@@ -1840,13 +1858,17 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
                 "E",
                 style = MaterialTheme.typography.labelLarge,
                 color = Color.Gray,
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 4.dp)
             )
             Text(
                 "W",
                 style = MaterialTheme.typography.labelLarge,
                 color = Color.Gray,
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp)
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 4.dp)
             )
         }
 
@@ -1956,7 +1978,10 @@ fun MoonDetailsSection(viewModel: WeatherViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                RoundedCornerShape(24.dp)
+            )
             .padding(16.dp)
     ) {
         // --- En-tête : Phase et Illumination ---
@@ -2033,35 +2058,47 @@ fun MoonDetailsSection(viewModel: WeatherViewModel) {
         // --- Infos de Position ---
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(horizontalAlignment = Alignment.Start) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 ResponsiveText(stringResource(R.string.moonrise), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(data.dailyEvents.moonrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                ResponsiveText(data.dailyEvents.moonrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 if (data.dailyEvents.moonriseAzimuth != null) {
-                    Text(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonriseAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonriseAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 }
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
+            Column(
+                modifier = Modifier.weight(2f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ResponsiveText(
                     text = String.format(Locale.getDefault(), "ELEV: %.2f°", data.currentPosition.elevation),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color(0xFF5C6BC0), // Indigo pour la lune
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
                 )
-                Text(
+                ResponsiveText(
                     text = String.format(Locale.getDefault(), "AZIMUTH: %.4f°", data.currentPosition.azimuth),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF7986CB)
+                    color = Color(0xFF7986CB),
+                    textAlign = TextAlign.Center
                 )
             }
 
-            Column(horizontalAlignment = Alignment.End) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 ResponsiveText(stringResource(R.string.moonset), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(data.dailyEvents.moonset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                ResponsiveText(data.dailyEvents.moonset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 if (data.dailyEvents.moonsetAzimuth != null) {
-                    Text(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonsetAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonsetAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 }
             }
         }

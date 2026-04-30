@@ -246,4 +246,5 @@
     <string name="moderate">Modéré</string>
     <string name="high">Fort</string>
     <string name="very_high">Très fort</string>
+    <string name="extreme">Extrême</string>
 </resources>
