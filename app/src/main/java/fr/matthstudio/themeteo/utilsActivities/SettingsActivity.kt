@@ -4,6 +4,7 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.utilsActivities
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
@@ -38,6 +39,7 @@ import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.GpsCoordinates
@@ -54,7 +56,26 @@ class SettingsActivity : ComponentActivity() {
         val weatherCache = (application as TheMeteo).weatherCache
 
         setContent {
-            TheMeteoTheme {
+            val userSettings by weatherCache.userSettings.collectAsState()
+            // Pour le mode météo, on peut tenter de récupérer le code WMO actuel si dispo
+            // On peut s'abonner au flux du cache
+            val currentWmo = remember { mutableStateOf<Int?>(null) }
+            
+            LaunchedEffect(weatherCache.selectedLocation, weatherCache.userSettings) {
+                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                    currentWmo.value = when (state) {
+                        is fr.matthstudio.themeteo.WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                        is fr.matthstudio.themeteo.WeatherDataState.Error -> (state.staleData as? fr.matthstudio.themeteo.WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                        else -> null
+                    }
+                }
+            }
+            
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo.value,
+                isNight = false
+            ) {
                 // On passe le cache à l'écran des paramètres
                 SettingsScreen(cache = weatherCache)
             }
@@ -161,6 +182,17 @@ fun SettingsScreen(cache: WeatherCache) {
                     scope.launch {
                         // On met à jour via le repository contenu dans le cache
                         cache.userSettingsRepository.updateModel(newModel)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ThemeModeSetting(
+                currentMode = userSettings.themeMode,
+                onModeSelected = { newMode ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateThemeMode(newMode)
                     }
                 }
             )
@@ -291,23 +323,6 @@ fun SettingsScreen(cache: WeatherCache) {
 
             FilledTonalButton(
                 onClick = {
-                    val intent = android.content.Intent(activity, WidgetSettingsActivity::class.java)
-                    activity?.startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(imageVector = Icons.Rounded.Widgets, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.widget_settings),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            FilledTonalButton(
-                onClick = {
                     val intent = android.content.Intent(activity, CreditActivity::class.java)
                     activity?.startActivity(intent)
                 },
@@ -333,6 +348,62 @@ fun SettingsScreen(cache: WeatherCache) {
                 text = "Build Type: ${BuildConfig.BUILD_TYPE}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun ThemeModeSetting(
+    currentMode: ThemeMode,
+    onModeSelected: (ThemeMode) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val isSPlus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    Column {
+        Text(stringResource(R.string.theme_mode_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.theme_mode_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.theme_fixed),
+                isSelected = currentMode == ThemeMode.FIXED,
+                modifier = Modifier.weight(1f),
+                onClick = { onModeSelected(ThemeMode.FIXED) }
+            )
+            
+            if (isSPlus) {
+                Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.White.copy(alpha = 0.5f)))
+                SegmentItem(
+                    label = stringResource(R.string.theme_system),
+                    isSelected = currentMode == ThemeMode.SYSTEM,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onModeSelected(ThemeMode.SYSTEM) }
+                )
+            }
+            
+            Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.theme_weather),
+                isSelected = currentMode == ThemeMode.WEATHER,
+                modifier = Modifier.weight(1f),
+                onClick = { onModeSelected(ThemeMode.WEATHER) }
             )
         }
     }

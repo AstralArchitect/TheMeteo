@@ -4,13 +4,13 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.utilsActivities
 
-
 import android.content.Intent
 import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -29,11 +29,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -46,28 +42,30 @@ import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-
 
 class LauncherActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val container = (application as TheMeteo).container
-        val userSettings = container.userSettingsRepository
+        val app = (application as TheMeteo)
+        val container = app.container
+        val userSettingsRepo = container.userSettingsRepository
+        val weatherCache = app.weatherCache
 
         lifecycleScope.launch {
-            val isGcuAccepted = userSettings.gcuAccepted.first()
+            val isGcuAccepted = userSettingsRepo.gcuAccepted.first()
             if (!isGcuAccepted) {
                 // Si c'est la première fois que l'utilisateur ouvre l'application, alors on met la position à Paris et on met Paris par défaut temporairement
-                // On ajoute d'abord la loc, puis on met la position à Paris
                 val location = LocationIdentifier.Saved(
                     SavedLocation(
                         "Paris",
@@ -76,47 +74,87 @@ class LauncherActivity : ComponentActivity() {
                         "France"
                     )
                 )
-                (application as TheMeteo).weatherCache.addLocation(location.location)
-                (application as TheMeteo).weatherCache.setCurrentLocation(location)
-                userSettings.updateDefaultLocation(location)
+                weatherCache.addLocation(location.location)
+                weatherCache.setCurrentLocation(location)
+                userSettingsRepo.updateDefaultLocation(location)
+                
                 setContent {
-                    GcuDialog(
-                        onAccept = {
-                            lifecycleScope.launch {
-                                userSettings.updateGcuAccepted(true)
-                                checkFirebaseConsent(userSettings)
+                    val settings by weatherCache.userSettings.collectAsState()
+                    val currentWmo = remember { mutableStateOf<Int?>(null) }
+
+                    LaunchedEffect(weatherCache.selectedLocation) {
+                        weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                            currentWmo.value = when (state) {
+                                is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                                is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                                else -> null
                             }
-                        },
-                        onDecline = {
-                            finish()
                         }
-                    )
+                    }
+
+                    TheMeteoTheme(
+                        themeMode = settings.themeMode,
+                        currentWmoCode = currentWmo.value,
+                        isNight = false
+                    ) {
+                        GcuDialog(
+                            onAccept = {
+                                lifecycleScope.launch {
+                                    userSettingsRepo.updateGcuAccepted(true)
+                                    checkFirebaseConsent(userSettingsRepo)
+                                }
+                            },
+                            onDecline = {
+                                finish()
+                            }
+                        )
+                    }
                 }
             } else {
-                checkFirebaseConsent(userSettings)
+                checkFirebaseConsent(userSettingsRepo)
             }
         }
     }
 
-    private suspend fun checkFirebaseConsent(userSettings: UserSettingsRepository) {
+    private suspend fun checkFirebaseConsent(userSettingsRepo: UserSettingsRepository) {
+        val weatherCache = (application as TheMeteo).weatherCache
         if (BuildConfig.FIREBASE_ENABLED) {
-            val consent = userSettings.firebaseConsent.first()
+            val consent = userSettingsRepo.firebaseConsent.first()
             if (consent == "PENDING") {
                 setContent {
-                    ConsentDialog(
-                        onAccept = {
-                            lifecycleScope.launch {
-                                userSettings.updateFirebaseConsent("GRANTED")
-                                navigateToNextScreen()
-                            }
-                        },
-                        onDecline = {
-                            lifecycleScope.launch {
-                                userSettings.updateFirebaseConsent("DENIED")
-                                navigateToNextScreen()
+                    val settings by weatherCache.userSettings.collectAsState()
+                    val currentWmo = remember { mutableStateOf<Int?>(null) }
+
+                    LaunchedEffect(weatherCache.selectedLocation) {
+                        weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                            currentWmo.value = when (state) {
+                                is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                                is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                                else -> null
                             }
                         }
-                    )
+                    }
+
+                    TheMeteoTheme(
+                        themeMode = settings.themeMode,
+                        currentWmoCode = currentWmo.value,
+                        isNight = false
+                    ) {
+                        ConsentDialog(
+                            onAccept = {
+                                lifecycleScope.launch {
+                                    userSettingsRepo.updateFirebaseConsent("GRANTED")
+                                    navigateToNextScreen()
+                                }
+                            },
+                            onDecline = {
+                                lifecycleScope.launch {
+                                    userSettingsRepo.updateFirebaseConsent("DENIED")
+                                    navigateToNextScreen()
+                                }
+                            }
+                        )
+                    }
                 }
                 return
             }
@@ -125,9 +163,10 @@ class LauncherActivity : ComponentActivity() {
     }
 
     private fun navigateToNextScreen() {
-        val userSettings = (this.application as TheMeteo).container.userSettingsRepository
-        val currentScreen = runBlocking { userSettings.defaultScreen.first() }
+        val userSettingsRepo = (this.application as TheMeteo).container.userSettingsRepository
+        val currentScreen = runBlocking { userSettingsRepo.defaultScreen.first() }
             ?: fr.matthstudio.themeteo.DefaultScreen.FORECAST_MAIN
+            
         val intent = if (currentScreen == fr.matthstudio.themeteo.DefaultScreen.DAY_CHOSER) {
             Intent(this, DayChooserActivity::class.java).apply {
                 putExtra("LAUNCHER", true)
@@ -233,7 +272,7 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
     var isLoading by remember { mutableStateOf(true) }
     var hasError by remember { mutableStateOf(false) }
     var hasScrolledToBottom by remember { mutableStateOf(false) }
-    var refreshTrigger by remember { mutableStateOf(0) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
     val gcuUrl = "https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html"
 
     AlertDialog(
@@ -250,7 +289,11 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
                         factory = { context ->
                             WebView(context).apply {
                                 webViewClient = object : WebViewClient() {
-                                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                    override fun onPageStarted(
+                                        view: WebView?,
+                                        url: String?,
+                                        favicon: android.graphics.Bitmap?
+                                    ) {
                                         super.onPageStarted(view, url, favicon)
                                         isLoading = true
                                         hasError = false
@@ -260,10 +303,6 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
                                     override fun onPageFinished(view: WebView?, url: String?) {
                                         super.onPageFinished(view, url)
                                         isLoading = false
-                                        // If content is small and doesn't scroll, it might already be at bottom
-                                        /*if (!canScrollVertically(1)) {
-                                            hasScrolledToBottom = true
-                                        }*/
                                     }
 
                                     override fun onReceivedError(
@@ -314,7 +353,7 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
                         }
                     }
                 }
-                
+
                 if (!hasScrolledToBottom && !isLoading && !hasError) {
                     Text(
                         text = stringResource(R.string.gcu_scroll_to_bottom),

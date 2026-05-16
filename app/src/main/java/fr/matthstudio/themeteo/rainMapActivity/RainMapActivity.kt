@@ -93,7 +93,14 @@ class RainMapActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            TheMeteoTheme {
+            val userSettings by viewModel.userSettings.collectAsState()
+            val currentWmo by viewModel.currentWmo.collectAsState()
+
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo,
+                isNight = false
+            ) {
                 RainMapScreen(viewModel, initialLat, initialLon)
             }
         }

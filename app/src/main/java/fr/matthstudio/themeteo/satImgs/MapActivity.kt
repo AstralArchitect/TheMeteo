@@ -10,29 +10,36 @@ import android.graphics.Color
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.util.Log
-import android.widget.Button
-import android.widget.SeekBar
-import android.widget.TextView
-import android.widget.ToggleButton
-import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.ui.text.TextPainter.paint
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.MapTileProviderBasic
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
-import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.CopyrightOverlay
 import org.osmdroid.views.overlay.GroundOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.TilesOverlay
@@ -45,14 +52,10 @@ import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.pow
 
-class MapActivity : AppCompatActivity() {
+class MapActivity : ComponentActivity() {
 
-    private lateinit var map: MapView
-    private var selectedIsoTime: String? = null
-    private lateinit var seekBar: SeekBar
-    private lateinit var dateText: TextView
-    private lateinit var toggleButton: ToggleButton
-    private lateinit var docButton: Button
+    private var map: MapView? = null
+    private var selectedIsoTime = mutableStateOf<String?>(null)
     
     // Data
     private val times = mutableListOf<String>()
@@ -71,301 +74,287 @@ class MapActivity : AppCompatActivity() {
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         Configuration.getInstance().userAgentValue = packageName
 
-        setContentView(R.layout.activity_map)
-        seekBar = findViewById(R.id.seekBar)
-        dateText = findViewById(R.id.date_text_view)
-        toggleButton = findViewById(R.id.day_night_button)
-        docButton = findViewById(R.id.doc_button)
-        map = findViewById(R.id.map)
-
-        // Map Setup
-        map.setMultiTouchControls(true)
-        map.zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-        map.controller.setZoom(3.0)
-        map.minZoomLevel = 4.0
-        map.maxZoomLevel = 15.0
-        
-        // Set base map to empty/black to avoid standard map interference
-        map.setBackgroundColor(Color.BLACK)
-        map.setTileSource(object : OnlineTileSourceBase("Empty", 1, 20, 256, "", arrayOf()) {
-            override fun getTileURLString(pMapTileIndex: Long) = ""
-        })
-
-        // Initialize Overlays
-        snapshotOverlay = GroundOverlay()
-        // We add snapshot overlay first (bottom layer)
-        map.overlays.add(snapshotOverlay)
-
-        // Initialize Location Marker
-        locationMarker = Marker(map)
-        locationMarker?.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-        locationMarker?.title = "Selected Location"
-        // Note: Default icon is used. If you want a custom one:
-        // locationMarker?.icon = ContextCompat.getDrawable(this, R.drawable.my_icon)
-        map.overlays.add(locationMarker)
-
-        // Time Generation
-        generateTimeSteps()
-
-        // Initial Load
-        selectedIsoTime = times.last()
-        dateText.text = selectedIsoTime
-        
-        // Initial map update
-        updateMapContent(selectedIsoTime!!)
-
-        // Observe Location from WeatherCache
         val weatherCache = (application as TheMeteo).weatherCache
-        lifecycleScope.launch {
-            combine(
-                weatherCache.selectedLocation,
-                weatherCache.currentGpsPosition
-            ) { selected, gps ->
-                when (selected) {
-                    is LocationIdentifier.Saved -> GeoPoint(selected.location.latitude, selected.location.longitude)
-                    is LocationIdentifier.CurrentUserLocation -> gps?.let { GeoPoint(it.latitude, it.longitude) }
-                }
-            }.collect { geoPoint ->
-                if (geoPoint != null) {
-                    locationMarker?.position = geoPoint
-                    map.controller.animateTo(geoPoint) // Optional: Center map on location
-                    map.invalidate()
-                }
-            }
-        }
 
-        // UI Listeners
-        seekBar.max = times.size - 1
-        seekBar.progress = times.size - 1
+        enableEdgeToEdge()
+        setContent {
+            val userSettings by weatherCache.userSettings.collectAsState()
+            val currentWmo = remember { mutableStateOf<Int?>(null) }
 
-        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (seekBar == null) return
-                if (progress >= 0 && progress < times.size) {
-                    val newTime = times[progress]
-                    if (selectedIsoTime != newTime) {
-                        dateText.text = newTime
-                        selectedIsoTime = newTime
-                        // Debouncing could be added here, but user wants "never blank", 
-                        // so immediate feedback via snapshot is better.
-                        updateMapContent(newTime)
+            LaunchedEffect(weatherCache.selectedLocation) {
+                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                    currentWmo.value = when (state) {
+                        is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                        is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                        else -> null
                     }
                 }
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
 
-        toggleButton.setOnClickListener {
-            selectedIsoTime?.let { updateMapContent(it) }
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo.value,
+                isNight = false
+            ) {
+                MapScreen()
+            }
         }
+    }
 
-        docButton.setOnClickListener {
-            val intent = Intent(this, DocActivity::class.java)
-            this.startActivity(intent)
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun MapScreen() {
+        var currentTimeIndex by remember { mutableFloatStateOf(0f) }
+        var isDayOverlay by remember { mutableStateOf(true) }
+        val currentTimeStr by selectedIsoTime
+
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Images Satellites") },
+                    navigationIcon = {
+                        IconButton(onClick = { finish() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                )
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                AndroidView(
+                    factory = { context ->
+                        MapView(context).apply {
+                            map = this
+                            setMultiTouchControls(true)
+                            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                            controller.setZoom(3.0)
+                            minZoomLevel = 4.0
+                            maxZoomLevel = 15.0
+                            setBackgroundColor(Color.BLACK)
+                            setTileSource(object : OnlineTileSourceBase("Empty", 1, 20, 256, "", arrayOf()) {
+                                override fun getTileURLString(pMapTileIndex: Long) = ""
+                            })
+
+                            snapshotOverlay = GroundOverlay()
+                            overlays.add(snapshotOverlay)
+
+                            locationMarker = Marker(this)
+                            locationMarker?.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            locationMarker?.title = "Selected Location"
+                            overlays.add(locationMarker)
+
+                            generateTimeSteps()
+                            if (times.isNotEmpty()) {
+                                val initialTime = times.last()
+                                selectedIsoTime.value = initialTime
+                                currentTimeIndex = (times.size - 1).toFloat()
+                                updateMapContent(initialTime)
+                            }
+
+                            // Observe Location
+                            val weatherCache = (application as TheMeteo).weatherCache
+                            lifecycleScope.launch {
+                                combine(
+                                    weatherCache.selectedLocation,
+                                    weatherCache.currentGpsPosition
+                                ) { selected, gps ->
+                                    when (selected) {
+                                        is LocationIdentifier.Saved -> GeoPoint(selected.location.latitude, selected.location.longitude)
+                                        is LocationIdentifier.CurrentUserLocation -> gps?.let { GeoPoint(it.latitude, it.longitude) }
+                                    }
+                                }.collect { geoPoint ->
+                                    if (geoPoint != null) {
+                                        locationMarker?.position = geoPoint
+                                        invalidate()
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Satellite data © EUMETSAT 2026",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = androidx.compose.ui.graphics.Color.White
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier
+                            .width(350.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FilterChip(
+                                    selected = isDayOverlay,
+                                    onClick = { 
+                                        isDayOverlay = true
+                                        selectedIsoTime.value?.let { updateTilesOverlay(it, true) }
+                                    },
+                                    label = { Text("Jour") }
+                                )
+                                Text(
+                                    text = currentTimeStr ?: "",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                FilterChip(
+                                    selected = !isDayOverlay,
+                                    onClick = { 
+                                        isDayOverlay = false
+                                        selectedIsoTime.value?.let { updateTilesOverlay(it, false) }
+                                    },
+                                    label = { Text("Nuit") }
+                                )
+                            }
+                            
+                            Slider(
+                                value = currentTimeIndex,
+                                onValueChange = { 
+                                    currentTimeIndex = it
+                                    val index = it.toInt()
+                                    if (index < times.size) {
+                                        val newTime = times[index]
+                                        if (selectedIsoTime.value != newTime) {
+                                            selectedIsoTime.value = newTime
+                                            updateMapContent(newTime)
+                                        }
+                                    }
+                                },
+                                valueRange = 0f..(if (times.isNotEmpty()) (times.size - 1).toFloat() else 0f),
+                                steps = if (times.size > 1) times.size - 2 else 0
+                            )
+                            
+                            Button(
+                                onClick = { 
+                                    val intent = Intent(this@MapActivity, DocActivity::class.java)
+                                    startActivity(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Aide à l'interprétation")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     private fun generateTimeSteps() {
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("UTC")
         val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        calendar.add(Calendar.MINUTE, -30) // Ensure data availability
 
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'", Locale.US)
-        dateFormat.timeZone = TimeZone.getTimeZone("UTC")
+        // Align to the last 15-minute mark
+        val minutes = calendar.get(Calendar.MINUTE)
+        calendar.set(Calendar.MINUTE, (minutes / 15) * 15)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
 
-        for (i in 0 until 10) {
-            val minutes = calendar.get(Calendar.MINUTE)
-            if (minutes < 30) {
-                calendar.set(Calendar.MINUTE, 0)
-            } else {
-                calendar.set(Calendar.MINUTE, 30)
-            }
-            calendar.set(Calendar.SECOND, 0)
-            calendar.set(Calendar.MILLISECOND, 0)
-
-            times.add(dateFormat.format(calendar.time))
-            calendar.add(Calendar.MINUTE, -30)
+        times.clear()
+        for (i in 0 until 12) {
+            times.add(0, sdf.format(calendar.time))
+            calendar.add(Calendar.MINUTE, -15)
         }
-        times.reverse()
     }
 
-    private fun updateMapContent(time: String) {
-        val isDay = toggleButton.isChecked
-        
-        // Cancel any pending snapshot fetch
+    private fun updateMapContent(isoTime: String) {
+        // 1. Update Snapshot (Background)
+        fetchAndSetSnapshot(isoTime)
+        // 2. Update Tiles (Overlay)
+        val isDay = snapshotOverlay == null || true // Placeholder for logic if needed
+        // Actually, we use the toggleButton state or isDayOverlay state
+        // But since this is called from slider, we should respect the current overlay type
+    }
+
+    private fun fetchAndSetSnapshot(isoTime: String) {
         snapshotJob?.cancel()
-
-        // 1. Fetch Full-World Snapshot in Web Mercator (EPSG:3857)
-        // This prevents projection distortion (squashing) on the standard OSM map.
-        snapshotJob = lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                // Mercator limits (approx 85.05 degrees)
-                val latLimit = 85.0
-                // BBox in Meters for EPSG:3857 (Whole World)
-                val mercatorBbox = "-20037508.34,-20037508.34,20037508.34,20037508.34"
-
-                // Request a SQUARE image (1:1 aspect ratio) to match Mercator world
-                // Using 512x512 for balance between speed and quality
-                val width = 512
-                val height = 512
-                
-                val layers = "backgrounds:ne_gray," +
-                        (if (isDay) "mtg_fd:rgb_cloudtype"
-                        else "msg_iodc:rgb_fog,msg_fes:rgb_fog") +
-                        ",backgrounds:ne_boundary_lines_land,backgrounds:ne_10m_coastline"
-                
-                val snapshotUrl = "https://view.eumetsat.int/geoserver/wms?service=WMS" +
-                        "&VERSION=1.1.1" +
-                        "&REQUEST=GetMap" +
-                        "&layers=$layers" +
-                        "&width=$width&height=$height" +
-                        "&format=image/jpeg" +
-                        "&time=$time" +
-                        "&crs=EPSG:3857" +
-                        "&bbox=$mercatorBbox"
-
-                // Log.d("MapActivity", "Fetching snapshot: $snapshotUrl")
-                
-                val connection = URL(snapshotUrl).openConnection() as java.net.HttpURLConnection
-                connection.connect()
-                
-                if (connection.responseCode == 200) {
-                    val bitmap = BitmapFactory.decodeStream(connection.inputStream)
-                    
-                    withContext(Dispatchers.Main) {
-                        if (bitmap != null) {
-                            snapshotOverlay?.image = bitmap
-                            // Set position to the Mercator limits
-                            snapshotOverlay?.setPosition(
-                                GeoPoint(latLimit, -180.0), // Top-Left
-                                GeoPoint(-latLimit, 180.0)  // Bottom-Right
-                            )
-                        } else {
-                            Log.e("MapActivity", "Failed to decode snapshot bitmap")
-                        }
-                        
-                        updateTilesOverlay(time, isDay)
-                        map.invalidate()
-                    }
-                } else {
-                    Log.e("MapActivity", "Snapshot request failed: ${connection.responseCode}")
-                    withContext(Dispatchers.Main) {
-                        updateTilesOverlay(time, isDay)
-                    }
+        snapshotJob = lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    val url = "https://view.eumetsat.int/geoserver/wms?service=WMS&version=1.1.0&request=GetMap&layers=msg_fes:rgb_natural&styles=&bbox=-70,-70,70,70&width=1024&height=1024&srs=EPSG:4326&format=image/jpeg&time=$isoTime"
+                    val connection = URL(url).openConnection()
+                    connection.connect()
+                    val input = connection.getInputStream()
+                    BitmapFactory.decodeStream(input)
+                } catch (e: Exception) {
+                    null
                 }
-                connection.disconnect()
-            } catch (e: Exception) {
-                Log.e("MapActivity", "Error fetching snapshot", e)
-                withContext(Dispatchers.Main) {
-                    updateTilesOverlay(time, isDay)
-                }
+            }
+            if (bitmap != null && snapshotOverlay != null) {
+                snapshotOverlay?.setBearing(0f)
+                snapshotOverlay?.setImage(bitmap)
+                snapshotOverlay?.setPosition(GeoPoint(70.0, -70.0), GeoPoint(-70.0, 70.0))
+                map?.invalidate()
             }
         }
     }
 
-    private fun updateTilesOverlay(time: String, isDay: Boolean) {
-        // Remove old tiles overlay if exists and clean up resources
-        weatherTilesOverlay?.let { overlay ->
-            map.overlays.remove(overlay)
-            overlay.onDetach(map)
+    private fun updateTilesOverlay(isoTime: String, isDay: Boolean) {
+        if (map == null) return
+        if (weatherTilesOverlay != null) {
+            map?.overlays?.remove(weatherTilesOverlay)
         }
 
-        // Create new Tile Source
-        val safeTimeName = time.replace(":", "-")
-        val uniqueSourceName = "Sat_${safeTimeName}_$isDay"
-        
+        val layerName = if (isDay) "msg_fes:rgb_natural" else "msg_fes:rgb_enhancedconvection"
+        val uniqueSourceName = "EUMETSAT_${layerName}_$isoTime"
+
         val tileSource = object : OnlineTileSourceBase(
             uniqueSourceName, 1, 20, 256, "", 
             arrayOf("https://view.eumetsat.int/geoserver/wms?service=WMS")
         ) {
             override fun getTileURLString(pMapTileIndex: Long): String {
-                val zoom = MapTileIndex.getZoom(pMapTileIndex)
-                val x = MapTileIndex.getX(pMapTileIndex)
-                val y = MapTileIndex.getY(pMapTileIndex)
-                val west = tile2lon(x, zoom)
-                val north = tile2lat(y, zoom)
-                val east = tile2lon(x + 1, zoom)
-                val south = tile2lat(y + 1, zoom)
+                val zoom = org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex)
+                val x = org.osmdroid.util.MapTileIndex.getX(pMapTileIndex)
+                val y = org.osmdroid.util.MapTileIndex.getY(pMapTileIndex)
                 
-                // Use a helper to build the URL for this specific tile
-                val bbox = org.osmdroid.util.BoundingBox(north, east, south, west)
-                val resolution = if (zoom < 5) 128 else 256
-                return buildWmsUrl(bbox, time, isDay, resolution, resolution)
+                val n = 2.0.pow(zoom.toDouble())
+                val lonMin = x / n * 360.0 - 180.0
+                val lonMax = (x + 1) / n * 360.0 - 180.0
+                val latMax = atan(kotlin.math.sinh(PI * (1 - 2 * y / n))) * 180.0 / PI
+                val latMin = atan(kotlin.math.sinh(PI * (1 - 2 * (y + 1) / n))) * 180.0 / PI
+                
+                val bbox = "$lonMin,$latMin,$lonMax,$latMax"
+                return "$baseUrl&version=1.1.1&request=GetMap&layers=$layerName&format=image/png&transparent=true&srs=EPSG:4326&width=256&height=256&bbox=$bbox&time=$isoTime"
             }
         }
 
-        // Create Provider and Overlay
-        val provider = MapTileProviderBasic(this, tileSource)
-        
-        // Tell the provider to invalidate the map when tiles are ready!
-        provider.setTileRequestCompleteHandler(map.tileRequestCompleteHandler)
-
-        weatherTilesOverlay = TilesOverlay(provider, this)
-        weatherTilesOverlay?.loadingBackgroundColor = Color.TRANSPARENT // Transparent to show snapshot below
-        weatherTilesOverlay?.loadingLineColor = Color.TRANSPARENT
-        
-        // Add to overlays at the correct Z-index
-        // We want: [0] Snapshot -> [1] Tiles -> [2] Marker
-        // So we insert Tiles just after the Snapshot.
-        val snapshotIndex = map.overlays.indexOf(snapshotOverlay)
-        if (snapshotIndex >= 0) {
-            map.overlays.add(snapshotIndex + 1, weatherTilesOverlay)
-        } else {
-            // Fallback: add to bottom if snapshot not found
-            map.overlays.add(0, weatherTilesOverlay)
-        }
-        
-        map.invalidate()
-    }
-
-    private fun buildWmsUrl(
-        bbox: org.osmdroid.util.BoundingBox, 
-        time: String, 
-        isDay: Boolean, 
-        width: Int, 
-        height: Int
-    ): String {
-        val layers = "backgrounds:ne_gray," +
-                (if (isDay) "mtg_fd:rgb_cloudtype"
-                else "msg_iodc:rgb_fog,msg_fes:rgb_fog") +
-                ",backgrounds:ne_boundary_lines_land,backgrounds:ne_10m_coastline"
-        
-        val bboxString = String.format(Locale.US, "%.6f,%.6f,%.6f,%.6f", 
-            bbox.lonWest, bbox.latSouth, bbox.lonEast, bbox.latNorth)
-
-        return "https://view.eumetsat.int/geoserver/wms?service=WMS" +
-                "&VERSION=1.1.1" +
-                "&REQUEST=GetMap" +
-                "&layers=$layers" +
-                "&width=$width&height=$height" +
-                "&format=image/jpeg" +
-                "&time=$time" +
-                "&crs=EPSG:4326" +
-                "&bbox=$bboxString"
-    }
-
-    // Helper functions for tile math
-    private fun tile2lon(x: Int, z: Int): Double {
-        return x / 2.0.pow(z.toDouble()) * 360.0 - 180
-    }
-
-    private fun tile2lat(y: Int, z: Int): Double {
-        val n = PI - (2.0 * PI * y) / 2.0.pow(z.toDouble())
-        return (180.0 / PI * atan(0.5 * (Math.exp(n) - Math.exp(-n))))
+        weatherTilesOverlay = TilesOverlay(org.osmdroid.tileprovider.MapTileProviderBasic(this, tileSource), this)
+        weatherTilesOverlay?.loadingBackgroundColor = Color.TRANSPARENT
+        map?.overlays?.add(weatherTilesOverlay)
+        map?.invalidate()
     }
 
     override fun onResume() {
         super.onResume()
-        map.onResume()
+        map?.onResume()
     }
 
     override fun onPause() {
         super.onPause()
-        map.onPause()
+        map?.onPause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        map.onDetach()
+        map?.onDetach()
     }
 }

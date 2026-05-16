@@ -33,6 +33,12 @@ enum class WindUnit {
     MPH
 }
 
+enum class ThemeMode {
+    FIXED,
+    SYSTEM,
+    WEATHER
+}
+
 class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     // 1. Définir les clés pour chaque paramètre
@@ -51,33 +57,35 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val FORECAST_TYPE = intPreferencesKey("forecast_type")
         val TEMPERATURE_UNIT = intPreferencesKey("temperature_unit")
         val WIND_UNIT = intPreferencesKey("wind_unit")
-        val WIDGET_TRANSPARENCY = intPreferencesKey("widget_transparency")
-        val WIDGET_TEXT_SIZE = intPreferencesKey("widget_text_size")
         val BENTO_CARDS_ORDER = stringPreferencesKey("bento_cards_order")
         val USE_EUR_AQI = booleanPreferencesKey("use_eur_aqi")
+        val BACKGROUND_LOCATION_ASKED = booleanPreferencesKey("background_location_asked")
+        val THEME_MODE = intPreferencesKey("theme_mode")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour savoir si la permission de localisation en arrière-plan a déjà été demandée.
+     */
+    val backgroundLocationAsked: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.BACKGROUND_LOCATION_ASKED] ?: false
+    }
+
+    /**
+     * Flow pour le mode de thème (FIXED, SYSTEM, WEATHER).
+     */
+    val themeMode: Flow<ThemeMode> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.THEME_MODE]?.let { index ->
+            ThemeMode.entries.getOrNull(index)
+        } ?: ThemeMode.FIXED
+    }
 
     /**
      * Flow pour l'utilisation de l'indice européen (EUR_AQI) ou l'indice universel (UAQI).
      */
     val useEurAqi: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.USE_EUR_AQI] ?: true
-    }
-
-    /**
-     * Flow pour la transparence du widget (0-100).
-     */
-    val widgetTransparency: Flow<Int> = dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.WIDGET_TRANSPARENCY] ?: 50
-    }
-
-    /**
-     * Flow pour la taille du texte du widget (petit, moyen, grand -> 0, 1, 2).
-     */
-    val widgetTextSize: Flow<Int> = dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.WIDGET_TEXT_SIZE] ?: 1
     }
 
     /**
@@ -337,29 +345,29 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /**
-     * Met à jour la transparence du widget.
-     */
-    suspend fun updateWidgetTransparency(transparency: Int) {
-        dataStore.edit { preferences ->
-            preferences[PreferencesKeys.WIDGET_TRANSPARENCY] = transparency
-        }
-    }
-
-    /**
-     * Met à jour la taille du texte du widget.
-     */
-    suspend fun updateWidgetTextSize(sizeIndex: Int) {
-        dataStore.edit { preferences ->
-            preferences[PreferencesKeys.WIDGET_TEXT_SIZE] = sizeIndex
-        }
-    }
-
-    /**
      * Met à jour l'utilisation de l'indice européen.
      */
     suspend fun updateUseEurAqi(useEurAqi: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.USE_EUR_AQI] = useEurAqi
+        }
+    }
+
+    /**
+     * Met à jour le flag indiquant si la permission de localisation en arrière-plan a été demandée.
+     */
+    suspend fun updateBackgroundLocationAsked(asked: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.BACKGROUND_LOCATION_ASKED] = asked
+        }
+    }
+
+    /**
+     * Met à jour le mode de thème.
+     */
+    suspend fun updateThemeMode(mode: ThemeMode) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.THEME_MODE] = mode.ordinal
         }
     }
 

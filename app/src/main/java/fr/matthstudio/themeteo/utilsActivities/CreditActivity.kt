@@ -35,6 +35,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
+import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.Dispatchers
@@ -44,8 +47,27 @@ import java.net.URL
 class CreditActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val weatherCache = (application as TheMeteo).weatherCache
+        
         setContent {
-            TheMeteoTheme {
+            val userSettings by weatherCache.userSettings.collectAsState()
+            val currentWmo = remember { mutableStateOf<Int?>(null) }
+
+            LaunchedEffect(weatherCache.selectedLocation) {
+                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                    currentWmo.value = when (state) {
+                        is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                        is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                        else -> null
+                    }
+                }
+            }
+
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo.value,
+                isNight = false
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

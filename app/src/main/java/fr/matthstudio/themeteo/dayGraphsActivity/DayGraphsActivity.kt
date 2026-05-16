@@ -122,7 +122,15 @@ class DayGraphsActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            TheMeteoTheme {
+            val userSettings by weatherViewModel.userSettings.collectAsState()
+            val isNight by weatherViewModel.isNight.collectAsState()
+            val currentWmo by weatherViewModel.currentWmo.collectAsState()
+
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo,
+                isNight = isNight
+            ) {
                 Surface(
                     modifier = Modifier
                         .fillMaxSize(),

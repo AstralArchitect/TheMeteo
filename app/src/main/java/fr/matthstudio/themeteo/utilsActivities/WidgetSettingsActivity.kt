@@ -29,11 +29,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -42,22 +49,39 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.edit
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.state.getAppWidgetState
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
+import androidx.glance.state.PreferencesGlanceStateDefinition
+import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherCache
+import fr.matthstudio.themeteo.forecastMainActivity.getPollenShortDescFromLevel
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.widget.DailyWeatherWidget
 import fr.matthstudio.themeteo.widget.WeatherWidget
+import fr.matthstudio.themeteo.widget.WidgetUtils
 import kotlinx.coroutines.launch
 
 class WidgetSettingsActivity : ComponentActivity() {
@@ -79,9 +103,27 @@ class WidgetSettingsActivity : ComponentActivity() {
         val weatherCache = (application as TheMeteo).weatherCache
         
         setContent {
-            TheMeteoTheme {
+            val userSettings by weatherCache.userSettings.collectAsState()
+            val currentWmo = remember { mutableStateOf<Int?>(null) }
+
+            LaunchedEffect(weatherCache.selectedLocation) {
+                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                    currentWmo.value = when (state) {
+                        is fr.matthstudio.themeteo.WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                        is fr.matthstudio.themeteo.WeatherDataState.Error -> (state.staleData as? fr.matthstudio.themeteo.WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                        else -> null
+                    }
+                }
+            }
+
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo.value,
+                isNight = false
+            ) {
                 WidgetSettingsScreen(
                     weatherCache = weatherCache,
+                    appWidgetId = appWidgetId,
                     onBack = { 
                         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                             val resultValue = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -98,17 +140,79 @@ class WidgetSettingsActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetSettingsScreen(
-    weatherCache: fr.matthstudio.themeteo.WeatherCache,
+    weatherCache: WeatherCache,
+    appWidgetId: Int,
     onBack: () -> Unit
 ) {
     val settings by weatherCache.userSettings.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    var selectedTheme by remember { mutableStateOf(WidgetUtils.THEME_SYSTEM) }
+    var transparency by remember { mutableIntStateOf(0) }
+    var textSize by remember { mutableIntStateOf(0) }
+
+    // Load current settings if they exist
+    LaunchedEffect(appWidgetId) {
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
+            val prefs = getAppWidgetState(
+                context,
+                PreferencesGlanceStateDefinition,
+                glanceId
+            )
+            prefs[WidgetUtils.KEY_COLOR_THEME]?.let { selectedTheme = it }
+            prefs[WidgetUtils.KEY_TRANSPARENCY]?.let { transparency = it }
+            prefs[WidgetUtils.KEY_TEXT_SIZE]?.let { textSize = it }
+        }
+    }
+
     fun triggerWidgetUpdate() {
         scope.launch {
             WeatherWidget().updateAll(context)
             DailyWeatherWidget().updateAll(context)
+        }
+    }
+
+    fun saveThemeToWidget(theme: String) {
+        selectedTheme = theme
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            scope.launch {
+                val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
+                updateAppWidgetState(context, glanceId) { prefs ->
+                    prefs[WidgetUtils.KEY_COLOR_THEME] = theme
+                }
+                WeatherWidget().update(context, glanceId)
+                DailyWeatherWidget().update(context, glanceId)
+            }
+        }
+    }
+
+    fun saveTransparencyToWidget(transp: Int) {
+        transparency = transp
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            scope.launch {
+                val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
+                updateAppWidgetState(context, glanceId) { prefs ->
+                    prefs[WidgetUtils.KEY_TRANSPARENCY] = transparency
+                }
+                WeatherWidget().update(context, glanceId)
+                DailyWeatherWidget().update(context, glanceId)
+            }
+        }
+    }
+
+    fun saveTextSizeToWidget(textS: Int) {
+        textSize = textS
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            scope.launch {
+                val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
+                updateAppWidgetState(context, glanceId) { prefs ->
+                    prefs[WidgetUtils.KEY_TEXT_SIZE] = textSize
+                }
+                WeatherWidget().update(context, glanceId)
+                DailyWeatherWidget().update(context, glanceId)
+            }
         }
     }
 
@@ -119,6 +223,13 @@ fun WidgetSettingsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Rounded.Check, contentDescription = "Done")
+                        }
                     }
                 }
             )
@@ -133,6 +244,26 @@ fun WidgetSettingsScreen(
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // --- THEME SELECTION ---
+            Text(
+                text = "Widget Theme",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.align(Alignment.Start).padding(bottom = 8.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                ThemeOption("System", Color.Gray, selectedTheme == WidgetUtils.THEME_SYSTEM) { saveThemeToWidget(WidgetUtils.THEME_SYSTEM) }
+                ThemeOption("System Inv.", Color.LightGray, selectedTheme == WidgetUtils.THEME_SYSTEM_INVERTED) { saveThemeToWidget(
+                    WidgetUtils.THEME_SYSTEM_INVERTED) }
+                ThemeOption("Blue", Color(0xFF2196F3), selectedTheme == WidgetUtils.THEME_BLUE) { saveThemeToWidget(WidgetUtils.THEME_BLUE) }
+                ThemeOption("Green", Color(0xFF4CAF50), selectedTheme == WidgetUtils.THEME_GREEN) { saveThemeToWidget(WidgetUtils.THEME_GREEN) }
+                ThemeOption("Warm", Color(0xFFFF9800), selectedTheme == WidgetUtils.THEME_WARM) { saveThemeToWidget(WidgetUtils.THEME_WARM) }
+                ThemeOption("Dark", Color(0xFF212121), selectedTheme == WidgetUtils.THEME_DARK) { saveThemeToWidget(WidgetUtils.THEME_DARK) }
+                ThemeOption("Light", Color(0xFFF5F5F5), selectedTheme == WidgetUtils.THEME_LIGHT) { saveThemeToWidget(WidgetUtils.THEME_LIGHT) }
+            }
+
             // --- PREVIEW SECTION ---
             Text(
                 text = "Preview",
@@ -144,7 +275,7 @@ fun WidgetSettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                        brush = Brush.linearGradient(
                             colors = listOf(Color(0xFF4B6CB7), Color(0xFF182848))
                         ),
                         shape = RoundedCornerShape(16.dp)
@@ -153,17 +284,25 @@ fun WidgetSettingsScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    val previewLocationName = when (val loc = settings.defaultLocation) {
+                        is LocationIdentifier.CurrentUserLocation -> stringResource(R.string.current_location)
+                        is LocationIdentifier.Saved -> loc.location.name
+                    }
                     WidgetPreviewCard(
                         title = "Current Weather (2x1)",
-                        transparency = settings.widgetTransparency,
-                        textSizeIndex = settings.widgetTextSize,
-                        isDaily = false
+                        locationName = previewLocationName,
+                        transparency = transparency,
+                        textSizeIndex = textSize,
+                        isDaily = false,
+                        theme = selectedTheme
                     )
                     WidgetPreviewCard(
                         title = "Daily Forecast (3x2)",
-                        transparency = settings.widgetTransparency,
-                        textSizeIndex = settings.widgetTextSize,
-                        isDaily = true
+                        locationName = previewLocationName,
+                        transparency = transparency,
+                        textSizeIndex = textSize,
+                        isDaily = true,
+                        theme = selectedTheme
                     )
                 }
             }
@@ -172,15 +311,15 @@ fun WidgetSettingsScreen(
 
             // --- CONTROLS SECTION ---
             Text(
-                text = "${stringResource(R.string.widget_transparency)}: ${settings.widgetTransparency}%",
+                text = "${stringResource(R.string.widget_transparency)}: ${transparency}%",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.align(Alignment.Start)
             )
             Slider(
-                value = settings.widgetTransparency.toFloat(),
+                value = transparency.toFloat(),
                 onValueChange = { 
                     scope.launch { 
-                        weatherCache.userSettingsRepository.updateWidgetTransparency(it.toInt()) 
+                        saveTransparencyToWidget(it.toInt())
                         triggerWidgetUpdate()
                     }
                 },
@@ -190,7 +329,7 @@ fun WidgetSettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            val textSizeLabel = when(settings.widgetTextSize) {
+            val textSizeLabel = when(textSize) {
                 0 -> stringResource(R.string.text_size_small)
                 1 -> stringResource(R.string.text_size_medium)
                 else -> stringResource(R.string.text_size_large)
@@ -201,10 +340,10 @@ fun WidgetSettingsScreen(
                 modifier = Modifier.align(Alignment.Start)
             )
             Slider(
-                value = settings.widgetTextSize.toFloat(),
+                value = textSize.toFloat(),
                 onValueChange = { 
                     scope.launch { 
-                        weatherCache.userSettingsRepository.updateWidgetTextSize(it.toInt()) 
+                        saveTextSizeToWidget(it.toInt())
                         triggerWidgetUpdate()
                     }
                 },
@@ -216,8 +355,55 @@ fun WidgetSettingsScreen(
 }
 
 @Composable
-fun WidgetPreviewCard(title: String, transparency: Int, textSizeIndex: Int, isDaily: Boolean) {
+fun ThemeOption(label: String, color: Color, isSelected: Boolean, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(color, RoundedCornerShape(20.dp))
+                .border(
+                    width = if (isSelected) 3.dp else 1.dp,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(20.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isSelected) {
+                Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(24.dp))
+            }
+        }
+        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+fun WidgetPreviewCard(title: String, locationName: String, transparency: Int, textSizeIndex: Int, isDaily: Boolean, theme: String) {
     val alpha = (100 - transparency) / 100f
+    
+    val backgroundColor = when(theme) {
+        WidgetUtils.THEME_BLUE -> Color(0xFFE3F2FD)
+        WidgetUtils.THEME_GREEN -> Color(0xFFE8F5E9)
+        WidgetUtils.THEME_WARM -> Color(0xFFFFF3E0)
+        WidgetUtils.THEME_DARK -> Color(0xFF1C1B1F)
+        WidgetUtils.THEME_LIGHT -> Color(0xFFF9FAEF)
+        WidgetUtils.THEME_SYSTEM -> MaterialTheme.colorScheme.secondaryContainer
+        WidgetUtils.THEME_SYSTEM_INVERTED -> MaterialTheme.colorScheme.onSecondaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+
+    val contentColor = when(theme) {
+        WidgetUtils.THEME_DARK -> Color.White
+        WidgetUtils.THEME_LIGHT -> Color.Black
+        WidgetUtils.THEME_BLUE, WidgetUtils.THEME_GREEN, WidgetUtils.THEME_WARM -> 
+            if (transparency < 50) Color.Black else Color.White
+        WidgetUtils.THEME_SYSTEM -> if (transparency < 75) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface
+        WidgetUtils.THEME_SYSTEM_INVERTED -> if (transparency > 75) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface
+        else -> Color.White
+    }
+
     val baseTextSize = when(textSizeIndex) {
         0 -> 10.sp
         1 -> 12.sp
@@ -233,9 +419,9 @@ fun WidgetPreviewCard(title: String, transparency: Int, textSizeIndex: Int, isDa
         Text(title, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 4.dp))
         Surface(
             modifier = if (isDaily) Modifier.size(width = 240.dp, height = 160.dp) else Modifier.size(width = 180.dp, height = 90.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = alpha),
-            shape = RoundedCornerShape(28.dp),
-            shadowElevation = 4.dp
+            color = backgroundColor.copy(alpha = alpha),
+            contentColor = contentColor,
+            shape = RoundedCornerShape(28.dp)
         ) {
             if (!isDaily) {
                 // Small Widget Preview
@@ -244,7 +430,7 @@ fun WidgetPreviewCard(title: String, transparency: Int, textSizeIndex: Int, isDa
                     verticalArrangement = Arrangement.Center,
                     modifier = Modifier.padding(8.dp)
                 ) {
-                    Text("Paris", style = MaterialTheme.typography.labelSmall.copy(fontSize = (baseTextSize.value - 2).sp, fontWeight = FontWeight.Medium))
+                    Text(locationName, style = MaterialTheme.typography.labelSmall.copy(fontSize = (baseTextSize.value - 2).sp, fontWeight = FontWeight.Medium))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(painter = painterResource(id = R.drawable.clear_day), contentDescription = null, modifier = Modifier.size(40.dp), tint = Color.Unspecified)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -260,7 +446,7 @@ fun WidgetPreviewCard(title: String, transparency: Int, textSizeIndex: Int, isDa
             } else {
                 // Daily Widget Preview
                 Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Paris", style = MaterialTheme.typography.labelSmall.copy(fontSize = baseTextSize, fontWeight = FontWeight.Bold))
+                    Text(locationName, style = MaterialTheme.typography.labelSmall.copy(fontSize = baseTextSize, fontWeight = FontWeight.Bold))
                     Spacer(modifier = Modifier.height(8.dp))
                     repeat(3) { // Show 3 days in preview
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -78,6 +78,8 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.getDailyData
+import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
@@ -241,11 +243,12 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
 @Composable
 fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewModel: WeatherViewModel) {
 
-    if (hourlyForecast is WeatherDataState.Loading) {
+    val hourlyData = hourlyForecast.getHourlyData()
+    if (hourlyForecast is WeatherDataState.Loading && hourlyData == null) {
         CircularProgressIndicator()
         return
     }
-    if (hourlyForecast is WeatherDataState.Error) {
+    if (hourlyForecast is WeatherDataState.Error && hourlyData == null) {
         Text(
             text = hourlyForecast.message
         )
@@ -281,6 +284,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
                     Icon(
                         Icons.Rounded.Timer,
                         contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = stringResource(R.string.hourly_forecast),
@@ -601,12 +605,14 @@ fun SummaryDetailsCard(modifier: Modifier, onClick: () -> Unit) {
 @Composable
 fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
     val dailyForecast by viewModel.dailyForecast.collectAsState()
+    val dailyData = dailyForecast.getDailyData()
+
     BentoCard(
         modifier = Modifier
             .fillMaxWidth()
     ) {
         val nDays = 7
-        if (dailyForecast == WeatherDataState.Loading) {
+        if (dailyForecast is WeatherDataState.Loading && dailyData == null) {
             Box(
                 modifier = Modifier.padding(32.dp).fillMaxWidth(),
                 contentAlignment = Alignment.Center
@@ -616,10 +622,9 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
             return@BentoCard
         }
 
-        if (dailyForecast is WeatherDataState.Error || (dailyForecast as? WeatherDataState.SuccessDaily)?.data.isNullOrEmpty())
+        if (dailyData.isNullOrEmpty())
             return@BentoCard
 
-        val dailyData = (dailyForecast as WeatherDataState.SuccessDaily).data
         val minOverallTemp = dailyData.take(nDays).minOf { it.minTemperature ?: 0.0 }
         val maxOverallTemp = dailyData.take(nDays).maxOf { it.maxTemperature ?: 0.0 }
         val userSettings by viewModel.userSettings.collectAsState()

@@ -12,6 +12,7 @@ import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
+import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -55,6 +57,50 @@ class WeatherViewModel(
      * Expose la localisation actuellement sélectionnée depuis le WeatherCache.
      */
     val selectedLocation: StateFlow<LocationIdentifier> = weatherCache.selectedLocation
+
+    /**
+     * Un flux qui émet toutes les secondes pour les mises à jour en temps réel.
+     */
+    private val ticker = kotlinx.coroutines.flow.flow {
+        while (true) {
+            emit(Unit)
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    /**
+     * État "Nuit" centralisé, dérivé des données de prévisions horaires.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val isNight: StateFlow<Boolean> = combine(
+        selectedLocation,
+        userSettings
+    ) { _, _ ->
+    }.flatMapLatest {
+        weatherCache.get(java.time.LocalDateTime.now().withMinute(0).withSecond(0).withNano(0), 1)
+    }.combine(ticker) { state, _ ->
+        val reading = state.getHourlyData()?.firstOrNull()
+        val radiation = reading?.skyInfo?.shortwaveRadiation
+        (radiation ?: 1.0) < 1.0
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /**
+     * Code WMO actuel pour le thème.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentWmo: StateFlow<Int?> = combine(
+        weatherCache.selectedLocation,
+        weatherCache.userSettings
+    ) { _, _ ->
+    }.flatMapLatest {
+        weatherCache.get(java.time.LocalDateTime.now(), 1)
+    }.map { state ->
+        when (state) {
+            is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+            is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+            else -> null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /**
      * Expose les positions enregistrées par l'utilisateur depuis le WeatherCache.

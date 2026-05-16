@@ -18,6 +18,7 @@ import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -70,63 +71,19 @@ class WeatherViewModel(
     private val ticker = kotlinx.coroutines.flow.flow {
         while (true) {
             emit(Unit)
-            kotlinx.coroutines.delay(1000)
+            kotlinx.coroutines.delay(1_000)
         }
     }
 
     /**
-     * Données solaires calculées localement, mises à jour chaque seconde.
+     * Données solaires calculées centralement dans le cache.
      */
-    val sunData: StateFlow<FullSunData?> = combine(selectedLocation, ticker) { location, _ ->
-        val coords = when (location) {
-            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
-            is LocationIdentifier.CurrentUserLocation -> weatherCache.currentGpsPosition.value
-        }
-
-        coords?.let {
-            FullSunCalculator(it.latitude, it.longitude).getCompleteSunData()
-        }
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        null
-    )
-
-    private var lastMoonLocation: LocationIdentifier? = null
-    private var lastMoonDay: LocalDate? = null
-    private var cachedDailyMoonEvents: DailyMoonEvents? = null
+    val sunData: StateFlow<FullSunData?> = weatherCache.sunData
 
     /**
-     * Données lunaires calculées localement, mises à jour chaque seconde.
-     * Mise en cache des événements journaliers pour éviter les calculs lourds en boucle.
+     * Données lunaires calculées centralement dans le cache.
      */
-    val moonData: StateFlow<MoonData?> = combine(selectedLocation, ticker) { location, _ ->
-        val coords = when (location) {
-            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
-            is LocationIdentifier.CurrentUserLocation -> weatherCache.currentGpsPosition.value
-        }
-
-        coords?.let {
-            val calc = MoonCalculator(it.latitude, it.longitude)
-            val now = LocalDateTime.now()
-            val today = now.toLocalDate()
-
-            if (lastMoonLocation != location || lastMoonDay != today || cachedDailyMoonEvents == null) {
-                cachedDailyMoonEvents = calc.getDailyEvents(today)
-                lastMoonLocation = location
-                lastMoonDay = today
-            }
-
-            MoonData(
-                dailyEvents = cachedDailyMoonEvents!!,
-                currentPosition = calc.getMoonPosition(now)
-            )
-        }
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        null
-    )
+    val moonData: StateFlow<MoonData?> = weatherCache.moonData
 
     /**
      * Expose les paramètres utilisateur (modèle, arrondi, etc.) directement depuis le WeatherCache.
@@ -174,6 +131,9 @@ class WeatherViewModel(
     private val _refreshCounter = MutableStateFlow(0)
     val refreshCounter: StateFlow<Int> = _refreshCounter.asStateFlow()
 
+    private val _locationSettingsException = MutableStateFlow<Exception?>(null)
+    val locationSettingsException: StateFlow<Exception?> = _locationSettingsException.asStateFlow()
+
     private val _shouldShowPolicyUpdateDialog = MutableStateFlow(false)
     val shouldShowPolicyUpdateDialog: StateFlow<Boolean> = _shouldShowPolicyUpdateDialog.asStateFlow()
 
@@ -198,6 +158,17 @@ class WeatherViewModel(
         SharingStarted.WhileSubscribed(5000),
         WeatherDataState.Loading
     )
+
+    /**
+     * État "Nuit" centralisé, dérivé des données de prévisions horaires.
+     * Basé sur le rayonnement solaire (shortwave radiation) < 1.0.
+     */
+    val isNight: StateFlow<Boolean> = combine(hourlyForecast) { state ->
+        val now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0)
+        val reading = state[0].getHourlyData()?.find { it.time == now }
+        val radiation = reading?.skyInfo?.shortwaveRadiation
+        (radiation ?: 1.0) < 1.0
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val dailyForecast: StateFlow<WeatherDataState> = combine(
@@ -357,6 +328,12 @@ class WeatherViewModel(
         }
     }
 
+    fun markBackgroundLocationAsked() {
+        viewModelScope.launch {
+            weatherCache.userSettingsRepository.updateBackgroundLocationAsked(true)
+        }
+    }
+
     // --- 3. ACTIONS INITIÉES PAR L'UI ---
 
     /**
@@ -461,7 +438,16 @@ class WeatherViewModel(
      */
     fun refreshLocation() {
         weatherCache.refreshCurrentLocation()
+        weatherCache.locationProvider.checkLocationSettings { enabled, exception ->
+            if (!enabled && exception != null) {
+                _locationSettingsException.value = exception
+            }
+        }
         _refreshCounter.value++
+    }
+
+    fun consumeLocationSettingsException() {
+        _locationSettingsException.value = null
     }
 
     /**

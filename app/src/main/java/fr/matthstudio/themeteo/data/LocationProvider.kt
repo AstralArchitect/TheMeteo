@@ -9,10 +9,13 @@ import android.content.Context
 import android.os.Looper
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.navigationevent.NavigationEventDispatcher
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
@@ -51,36 +54,28 @@ class LocationProvider(private val context: Context) {
         }
     }
 
-    @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): GpsCoordinates? = suspendCancellableCoroutine { continuation ->
         if (!checkLocationPermission()) {
+            Log.e("getCurrentLocation", "Permission not allowed")
             continuation.resume(null)
             return@suspendCancellableCoroutine
         }
 
         val cancellationTokenSource = CancellationTokenSource()
         
-        // Use dynamic priority based on granted permission
+        // Success listener for fresh location
         fusedLocationClient.getCurrentLocation(
             getPriority(),
             cancellationTokenSource.token
-        ).addOnSuccessListener { location ->
-            if (location != null) {
-                continuation.resume(GpsCoordinates(location.latitude, location.longitude))
+        ).addOnCompleteListener { task ->
+            if (task.isSuccessful && task.result != null) {
+                continuation.resume(GpsCoordinates(task.result.latitude, task.result.longitude))
             } else {
-                // Fallback to last location if fresh one is null
-                fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
+                // Fallback to last location
+                fusedLocationClient.lastLocation.addOnCompleteListener { lastTask ->
+                    val lastLoc = if (lastTask.isSuccessful) lastTask.result else null
                     continuation.resume(lastLoc?.let { GpsCoordinates(it.latitude, it.longitude) })
-                }.addOnFailureListener {
-                    continuation.resume(null)
                 }
-            }
-        }.addOnFailureListener {
-            // Fallback to last location if fresh request fails
-            fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
-                continuation.resume(lastLoc?.let { GpsCoordinates(it.latitude, it.longitude) })
-            }.addOnFailureListener {
-                continuation.resume(null)
             }
         }
 
@@ -90,12 +85,35 @@ class LocationProvider(private val context: Context) {
     }
 
     /**
-     * Un Flow qui émet des mises à jour de localisation.
-     * ATTENTION : Ce Flow ne commencera à émettre que si les permissions de localisation
-     * sont accordées par l'utilisateur.
+     * Vérifie si les paramètres de localisation du système sont activés.
      */
-    @SuppressLint("MissingPermission") // La permission est vérifiée dans l'UI avant l'appel
+    fun checkLocationSettings(onResult: (Boolean, Exception?) -> Unit) {
+        val locationRequest = LocationRequest.Builder(getPriority(), 10000L).build()
+        val builder = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+            .setAlwaysShow(true)
+        
+        val client: SettingsClient = LocationServices.getSettingsClient(context)
+        val task = client.checkLocationSettings(builder.build())
+
+        task.addOnSuccessListener {
+            onResult(true, null)
+        }
+        task.addOnFailureListener { exception ->
+            onResult(false, exception)
+        }
+    }
+
+    /**
+     * Un Flow qui émet des mises à jour de localisation.
+     */
+    @SuppressLint("MissingPermission")
     val locationFlow: Flow<GpsCoordinates> = callbackFlow {
+        if (!checkLocationPermission()) {
+            close()
+            return@callbackFlow
+        }
+
         val locationRequest = LocationRequest.Builder(getPriority(), 10000L)
             .setWaitForAccurateLocation(false)
             .setMinUpdateIntervalMillis(5000L)
@@ -105,28 +123,20 @@ class LocationProvider(private val context: Context) {
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 locationResult.lastLocation?.let { location ->
-                    // Émettre la nouvelle coordonnée dans le Flow
-                    launch {
-                        send(GpsCoordinates(location.latitude, location.longitude))
-                    }
+                    trySend(GpsCoordinates(location.latitude, location.longitude))
                 }
             }
         }
 
-        // Démarrer les mises à jour de localisation
-        try {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
-            )
-        } catch (e: SecurityException) {
+        fusedLocationClient.requestLocationUpdates(
+            locationRequest,
+            locationCallback,
+            Looper.getMainLooper()
+        ).addOnFailureListener { e ->
             close(e)
         }
 
-        // Ce bloc est appelé lorsque le Flow est annulé (le collecteur s'arrête)
         awaitClose {
-            // Arrêter les mises à jour pour économiser la batterie
             fusedLocationClient.removeLocationUpdates(locationCallback)
         }
     }

@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherDataState
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -18,14 +19,38 @@ import io.ktor.client.request.get
 import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 class RainMapViewModel(private val applicationContext: Application) : ViewModel() {
+
+    private val weatherCache = (applicationContext as TheMeteo).weatherCache
+    val userSettings = weatherCache.userSettings
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentWmo: StateFlow<Int?> = combine(
+        weatherCache.selectedLocation,
+        weatherCache.userSettings
+    ) { _, _ ->
+    }.flatMapLatest {
+        weatherCache.get(java.time.LocalDateTime.now(), 1)
+    }.map { state ->
+        when (state) {
+            is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+            is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+            else -> null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _uiState = MutableStateFlow<RainMapUiState>(RainMapUiState.Loading)
     val uiState: StateFlow<RainMapUiState> = _uiState.asStateFlow()

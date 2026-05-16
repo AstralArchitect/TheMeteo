@@ -133,6 +133,7 @@ import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.rememberPermissionState
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
@@ -1192,18 +1193,64 @@ fun LocationPermissionHandler(
         )
     )
 
-    if (!locationPermissionState.allPermissionsGranted) {
+    // Background permission state (separate request as required by Android)
+    val backgroundLocationPermissionState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        rememberPermissionState(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    } else {
+        null
+    }
+
+    var showBackgroundRationale by remember { mutableStateOf(false) }
+
+    // Request foreground if nothing granted yet
+    val anyForegroundGranted = locationPermissionState.permissions.any { it.status.isGranted }
+    if (!anyForegroundGranted && !locationPermissionState.shouldShowRationale) {
         LaunchedEffect(Unit) {
             locationPermissionState.launchMultiplePermissionRequest()
         }
     }
 
-    // Trigger refresh when any permission is granted to immediately fetch location
-    val anyPermissionGranted = locationPermissionState.permissions.any { it.status.isGranted }
-    LaunchedEffect(anyPermissionGranted) {
-        if (anyPermissionGranted) {
+    // Trigger refresh when foreground is granted
+    LaunchedEffect(anyForegroundGranted) {
+        if (anyForegroundGranted) {
             viewModel.refreshLocation()
+            // Check if we should suggest background location for widgets
+            val settings = viewModel.userSettings.value
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                backgroundLocationPermissionState?.status?.isGranted == false &&
+                !settings.backgroundLocationAsked) {
+                showBackgroundRationale = true
+            }
         }
+    }
+
+    if (showBackgroundRationale) {
+        AlertDialog(
+            onDismissRequest = { 
+                showBackgroundRationale = false 
+                viewModel.markBackgroundLocationAsked()
+            },
+            title = { Text(stringResource(R.string.background_location_rationale_title)) },
+            text = { Text(stringResource(R.string.background_location_rationale_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    showBackgroundRationale = false
+                    backgroundLocationPermissionState?.launchPermissionRequest()
+                    // If they click to launch request, we also mark as asked
+                    viewModel.markBackgroundLocationAsked()
+                }) {
+                    Text(stringResource(R.string.background_location_button))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showBackgroundRationale = false 
+                    viewModel.markBackgroundLocationAsked()
+                }) {
+                    Text(stringResource(R.string.decline))
+                }
+            }
+        )
     }
 }
 

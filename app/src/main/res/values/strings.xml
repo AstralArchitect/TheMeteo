@@ -270,4 +270,15 @@
     <string name="very_high">Very High</string>
     <string name="none">None</string>
     <string name="extreme">Extreme</string>
+    <string name="error_gps_unavailable">GPS position not available. Please ensure location permissions are granted.</string>
+    <string name="background_location_rationale_title">Widget Updates</string>
+    <string name="background_location_rationale_message">To keep the weather updated on your home screen widgets, the app needs permission to access your location even when it is not in use. Please select \"Allow all the time\" in the next screen.</string>
+    <string name="background_location_button">Enable Background Updates</string>
+
+    <!-- Theme Settings -->
+    <string name="theme_mode_title">Theme Mode</string>
+    <string name="theme_mode_desc">Choose how the application theme is applied.</string>
+    <string name="theme_fixed">Fixed</string>
+    <string name="theme_system">System</string>
+    <string name="theme_weather">Weather</string>
 </resources>

@@ -4,7 +4,11 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.forecastMainActivity
 
+import android.app.Activity
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -77,6 +81,8 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.getDailyData
+import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.data.BentoCardType
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
@@ -115,7 +121,19 @@ class ForecastMainActivity : ComponentActivity() {
         // C'est ici que vous appelez votre fonction Composable principale
         enableEdgeToEdge()
         setContent {
-            TheMeteoTheme {
+            val userSettings by weatherViewModel.userSettings.collectAsState()
+            val hourlyForecast by weatherViewModel.hourlyForecast.collectAsState()
+            val dailyForecast by weatherViewModel.dailyForecast.collectAsState()
+            val isNight by weatherViewModel.isNight.collectAsState()
+
+            val currentWmo = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                ?: (hourlyForecast as? WeatherDataState.Error)?.getHourlyData()?.firstOrNull()?.wmo
+
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo,
+                isNight = isNight
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -173,6 +191,30 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val isDark = isSystemInDarkTheme()
     val hourlyForecast by viewModel.hourlyForecast.collectAsState()
     val dailyForecast by viewModel.dailyForecast.collectAsState()
+    val isNight by viewModel.isNight.collectAsState()
+
+    // --- LOGIQUE DE RÉSOLUTION DU GPS ---
+    val locationSettingsException by viewModel.locationSettingsException.collectAsState()
+    val settingLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.refreshLocation()
+        }
+        viewModel.consumeLocationSettingsException()
+    }
+
+    LaunchedEffect(locationSettingsException) {
+        val exception = locationSettingsException
+        if (exception is com.google.android.gms.common.api.ResolvableApiException) {
+            try {
+                val intentSenderRequest = IntentSenderRequest.Builder(exception.resolution.intentSender).build()
+                settingLauncher.launch(intentSenderRequest)
+            } catch (e: Exception) {
+                // Ignore failure
+            }
+        }
+    }
 
     val weatherIconFilter = remember(isDark) {
         if (!isDark) {
@@ -186,16 +228,15 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     // Demander les permissions
     LocationPermissionHandler(viewModel)
 
-    val weatherState = when (viewModel.hourlyForecast.collectAsState().value) {
-        is WeatherDataState.SuccessHourly -> getSimpleWeather((viewModel.hourlyForecast.collectAsState().value as WeatherDataState.SuccessHourly).data.first())
+    val weatherState = when (val state = hourlyForecast) {
+        is WeatherDataState.SuccessHourly -> getSimpleWeather(state.data.first())
+        is WeatherDataState.Error -> {
+            state.getHourlyData()?.firstOrNull()?.let { getSimpleWeather(it) }
+                ?: SimpleWeather("Error", SimpleWeatherWord.SUNNY)
+        }
         WeatherDataState.Loading -> SimpleWeather("Loading", SimpleWeatherWord.SUNNY)
         else -> SimpleWeather("Error", SimpleWeatherWord.SUNNY)
     }
-
-    val isNight = (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.sunset
-        ?.toEventLocalDateTime(context.applicationContext)?.isBefore(LocalDateTime.now()) ?: false
-            || (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.sunrise
-                ?.toEventLocalDateTime(context.applicationContext)?.isAfter(LocalDateTime.now()) ?: false
 
     val description = when(weatherState.word) {
         SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)

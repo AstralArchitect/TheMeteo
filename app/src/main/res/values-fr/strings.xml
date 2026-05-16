@@ -247,4 +247,15 @@
     <string name="high">Fort</string>
     <string name="very_high">Très fort</string>
     <string name="extreme">Extrême</string>
+    <string name="error_gps_unavailable">Position GPS indisponible. Veuillez vérifier les permissions de localisation.</string>
+    <string name="background_location_rationale_title">Mises à jour des widgets</string>
+    <string name="background_location_rationale_message">Pour maintenir la météo à jour sur vos widgets, l\'application a besoin de l\'autorisation d\'accéder à votre position même lorsqu\'elle n\'est pas utilisée. Veuillez sélectionner \"Toujours autoriser\" dans l\'écran suivant.</string>
+    <string name="background_location_button">Activer en arrière-plan</string>
+
+    <!-- Theme Settings -->
+    <string name="theme_mode_title">Mode du Thème</string>
+    <string name="theme_mode_desc">Choisissez comment le thème de l\'application est appliqué.</string>
+    <string name="theme_fixed">Fixe</string>
+    <string name="theme_system">Système</string>
+    <string name="theme_weather">Météo</string>
 </resources>

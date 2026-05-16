@@ -27,9 +27,9 @@ android {
     defaultConfig {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 45
-        versionName = "2.4.1"
+        targetSdk = 37
+        versionCode = 48
+        versionName = "2.4.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -68,8 +68,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
@@ -96,7 +96,7 @@ android {
 }
 
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(17)
 }
 
 dependencies {

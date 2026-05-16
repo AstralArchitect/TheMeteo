@@ -19,6 +19,8 @@ import fr.matthstudio.themeteo.data.AppDataContainer
 import fr.matthstudio.themeteo.data.LocationProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.io.File

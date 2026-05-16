@@ -20,18 +20,25 @@ import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import fr.matthstudio.themeteo.data.LocationProvider
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.data.UserLocationsRepository
 import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.utilClasses.AirQualityForecastResponse
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
+import fr.matthstudio.themeteo.utilClasses.DailyMoonEvents
+import fr.matthstudio.themeteo.utilClasses.FullSunCalculator
+import fr.matthstudio.themeteo.utilClasses.FullSunData
+import fr.matthstudio.themeteo.utilClasses.MoonCalculator
+import fr.matthstudio.themeteo.utilClasses.MoonData
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -87,14 +94,14 @@ data class UserSettings(
     val forecastType: ForecastType,
     val temperatureUnit: TemperatureUnit,
     val windUnit: WindUnit,
-    val widgetTransparency: Int,
-    val widgetTextSize: Int,
     val firebaseConsent: String,
     val gcuAccepted: Boolean,
     val lastGcuUpdate: String?,
     val lastPrivacyPolicyUpdate: String?,
     val hasOpenedAppOnce: Boolean,
-    val useEurAqi: Boolean
+    val useEurAqi: Boolean,
+    val backgroundLocationAsked: Boolean,
+    val themeMode: ThemeMode
 )
 
 /**
@@ -154,7 +161,7 @@ class WeatherCache(
     val userLocationsRepository: UserLocationsRepository,
     val userSettingsRepository: UserSettingsRepository,
     private val applicationScope: CoroutineScope,
-    private val locationProvider: LocationProvider,
+    val locationProvider: LocationProvider,
     private val cache: MutableMap<LocationIdentifier, MutableMap<String, ModelDataCache>> = mutableMapOf(),
     private val applicationContext: Application
 ) {
@@ -162,7 +169,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, 50, 1, "PENDING", false, null, null, false, true))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -178,16 +185,75 @@ class WeatherCache(
     // --- StateFlow pour la position GPS réelle ---
     private val _currentGpsPosition = MutableStateFlow<GpsCoordinates?>(null)
     val currentGpsPosition: StateFlow<GpsCoordinates?> = _currentGpsPosition.asStateFlow()
+    private val lastGpsPosFetch = MutableStateFlow<LocalDateTime?>(null)
     private val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val _isBatterySaverActive = MutableStateFlow(powerManager.isPowerSaveMode)
     val isBatterySaverActive: StateFlow<Boolean> = _isBatterySaverActive.asStateFlow()
 
     private val _isLocationPermissionGranted = MutableStateFlow(locationProvider.checkLocationPermission())
     val isLocationPermissionGranted: StateFlow<Boolean> = _isLocationPermissionGranted.asStateFlow()
+
+    private val _isGpsEnabled = MutableStateFlow(true)
+
+    // --- Flux centralisés pour les coordonnées, le soleil et la lune ---
+
+    /**
+     * Coordonnées effectives basées sur la localisation sélectionnée.
+     * C'est l'unique source de vérité pour le lieu actuel.
+     */
+    val effectiveCoordinates: StateFlow<GpsCoordinates?> = combine(
+        selectedLocation,
+        currentGpsPosition
+    ) { location, gps ->
+        when (location) {
+            is LocationIdentifier.CurrentUserLocation -> gps
+            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
+        }
+    }.stateIn(applicationScope, SharingStarted.Eagerly, null)
+
+    private val ticker = flow {
+        while (true) {
+            emit(Unit)
+            delay(1000)
+        }
+    }
+
+    /**
+     * Données solaires calculées centralement.
+     */
+    val sunData: StateFlow<FullSunData?> = combine(effectiveCoordinates, ticker) { coords, _ ->
+        coords?.let {
+            FullSunCalculator(it.latitude, it.longitude).getCompleteSunData()
+        }
+    }.stateIn(applicationScope, SharingStarted.WhileSubscribed(5000), null)
+
+    private var cachedDailyMoonEvents: DailyMoonEvents? = null
+    private var lastMoonCoords: GpsCoordinates? = null
+    private var lastMoonDay: LocalDate? = null
+
+    /**
+     * Données lunaires calculées centralement.
+     */
+    val moonData: StateFlow<MoonData?> = combine(effectiveCoordinates, ticker) { coords, _ ->
+        coords?.let {
+            val calc = MoonCalculator(it.latitude, it.longitude)
+            val now = LocalDateTime.now()
+            val today = now.toLocalDate()
+
+            if (lastMoonCoords != it || lastMoonDay != today || cachedDailyMoonEvents == null) {
+                cachedDailyMoonEvents = calc.getDailyEvents(today)
+                lastMoonCoords = it
+                lastMoonDay = today
+            }
+
+            MoonData(
+                dailyEvents = cachedDailyMoonEvents!!,
+                currentPosition = calc.getMoonPosition(now)
+            )
+        }
+    }.stateIn(applicationScope, SharingStarted.WhileSubscribed(5000), null)
     
     init {
-        // ... (Battery Saver monitor)
-        
         // Initialiser la localisation sélectionnée avec la valeur par défaut sauvegardée
         applicationScope.launch {
             userSettingsRepository.defaultLocation.collect { defaultLoc ->
@@ -219,14 +285,14 @@ class WeatherCache(
                 userSettingsRepository.forecastType,
                 userSettingsRepository.temperatureUnit,
                 userSettingsRepository.windUnit,
-                userSettingsRepository.widgetTransparency,
-                userSettingsRepository.widgetTextSize,
                 userSettingsRepository.firebaseConsent,
                 userSettingsRepository.gcuAccepted,
                 userSettingsRepository.lastGcuUpdate,
                 userSettingsRepository.lastPrivacyPolicyUpdate,
                 userSettingsRepository.hasOpenedAppOnce,
-                userSettingsRepository.useEurAqi
+                userSettingsRepository.useEurAqi,
+                userSettingsRepository.backgroundLocationAsked,
+                userSettingsRepository.themeMode
             ) { values ->
                 val model = values[0] as String?
                 val round = values[1] as Boolean
@@ -237,14 +303,14 @@ class WeatherCache(
                 val type = values[6] as ForecastType?
                 val unit = values[7] as TemperatureUnit?
                 val wUnit = values[8] as WindUnit?
-                val transparency = values[9] as Int
-                val textSize = values[10] as Int
-                val consent = values[11] as String
-                val gcu = values[12] as Boolean
-                val lastGcu = values[13] as String?
-                val lastPrivacy = values[14] as String?
-                val hasOpened = values[15] as Boolean
-                val useEurAqi = values[16] as Boolean
+                val consent = values[9] as String
+                val gcu = values[10] as Boolean
+                val lastGcu = values[11] as String?
+                val lastPrivacy = values[12] as String?
+                val hasOpened = values[13] as Boolean
+                val useEurAqi = values[14] as Boolean
+                val backgroundAsked = values[15] as Boolean
+                val themeMode = values[16] as ThemeMode
                         
                 UserSettings(
                     model ?: "best_match",
@@ -256,14 +322,14 @@ class WeatherCache(
                     type ?: ForecastType.DETERMINISTIC,
                     unit ?: TemperatureUnit.CELSIUS,
                     wUnit ?: WindUnit.KPH,
-                    transparency,
-                    textSize,
                     consent,
                     gcu,
                     lastGcu,
                     lastPrivacy,
                     hasOpened,
-                    useEurAqi
+                    useEurAqi,
+                    backgroundAsked,
+                    themeMode
                 )
             }.collect { settings ->
                 _userSettings.value = settings
@@ -273,17 +339,6 @@ class WeatherCache(
                 applicationScope.launch {
                     fr.matthstudio.themeteo.widget.WeatherWidget().updateAll(applicationContext)
                     fr.matthstudio.themeteo.widget.DailyWeatherWidget().updateAll(applicationContext)
-                }
-            }
-        }
-
-        // Gère la mise à jour unique de la position GPS
-        applicationScope.launch {
-            selectedLocation.collect { identifier ->
-                if (identifier is LocationIdentifier.CurrentUserLocation) {
-                    refreshCurrentLocation()
-                } else {
-                    _currentGpsPosition.value = null
                 }
             }
         }
@@ -346,8 +401,9 @@ class WeatherCache(
 
     private suspend fun resolveCoordinates(identifier: LocationIdentifier): GpsCoordinates? {
         return when (identifier) {
-            is LocationIdentifier.CurrentUserLocation -> _currentGpsPosition.value ?: run {
-                withTimeoutOrNull(15000) { currentGpsPosition.filterNotNull().first() }
+            is LocationIdentifier.CurrentUserLocation -> {
+                // On attend que la position GPS soit disponible (non nulle)
+                currentGpsPosition.filterNotNull().first()
             }
             is LocationIdentifier.Saved -> GpsCoordinates(identifier.location.latitude, identifier.location.longitude)
         }
@@ -372,9 +428,10 @@ class WeatherCache(
     /**
      * Récupère les données météo horaires.
      */
-    fun get(startTime: LocalDateTime, hours: Int): Flow<WeatherDataState> = flow {
+    fun get(startTime: LocalDateTime, hours: Int, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
         val currentSettings = userSettings.value
-        val currentLocationIdentifier = selectedLocation.value
+        val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         val effectiveModel = getEffectiveModel(currentSettings, coords)
@@ -394,10 +451,10 @@ class WeatherCache(
         if (currentSettings.enableModelFallback && !isEnsembleMode) {
             var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
             while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
-                modelChain.add(currentM.secondaryModelApiName!!)
-                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
+                modelChain.add(currentM.secondaryModelApiName)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName, false)
             }
-            // Sécurité : s'assurer que best_match est à la fin si pas déjà présent
+            // Sécurité : s'assurer que best_match est à la fin si pas déjà présent.
             if (!modelChain.contains("best_match")) {
                 modelChain.add("best_match")
             }
@@ -463,9 +520,8 @@ class WeatherCache(
 
         if (needsFetch) {
             if (coords == null) {
-                if (mergedData.isNullOrEmpty()) {
-                    emit(WeatherDataState.Error("GPS position not available. Please ensure location permissions are granted."))
-                }
+                val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
+                emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessHourly(it) }))
                 return@flow
             }
 
@@ -507,10 +563,10 @@ class WeatherCache(
                     if (!finalMerged.isNullOrEmpty()) {
                         emit(WeatherDataState.SuccessHourly(finalMerged))
                     } else {
-                        emit(WeatherDataState.Error("Weather data unavailable after fetch."))
+                        emit(WeatherDataState.Error("Weather data unavailable after fetch.", mergedData?.let { WeatherDataState.SuccessHourly(it) }))
                     }
-                } else if (mergedData.isNullOrEmpty()) {
-                    emit(WeatherDataState.Error("Network error: Unable to reach weather service."))
+                } else {
+                    emit(WeatherDataState.Error("Network error: Unable to reach weather service.", mergedData?.let { WeatherDataState.SuccessHourly(it) }))
                 }
             }
         }
@@ -557,9 +613,10 @@ class WeatherCache(
     /**
      * Récupère les données météo journalières.
      */
-    fun get(date: LocalDate, days: Long): Flow<WeatherDataState> = flow {
+    fun get(date: LocalDate, days: Long, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
         val currentSettings = userSettings.value
-        val currentLocationIdentifier = selectedLocation.value
+        val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         val effectiveModel = getEffectiveModel(currentSettings, coords)
@@ -642,9 +699,8 @@ class WeatherCache(
 
         if (needsFetch) {
             if (coords == null) {
-                if (mergedData.isNullOrEmpty()) {
-                    emit(WeatherDataState.Error("GPS position not available."))
-                }
+                val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
+                emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessDaily(it) }))
                 return@flow
             }
 
@@ -654,8 +710,8 @@ class WeatherCache(
                     updateCache(currentLocationIdentifier, effectiveModel, freshData, isDataObsolete || isFirstDayStale)
                     val primaryData = getDailyFromCache(primaryCache, date, endDate)
                     if (primaryData != null) emit(WeatherDataState.SuccessDaily(primaryData))
-                } else if (mergedData.isNullOrEmpty()) {
-                    emit(WeatherDataState.Error("Failed to fetch daily ensemble forecast."))
+                } else {
+                    emit(WeatherDataState.Error("Failed to fetch daily ensemble forecast.", mergedData?.let { WeatherDataState.SuccessDaily(it) }))
                 }
             } else {
                 val freshDataMap = weatherService.getForecast(coords.latitude, coords.longitude, modelChain, date, endDate)
@@ -685,10 +741,10 @@ class WeatherCache(
                     if (!finalMerged.isNullOrEmpty()) {
                         emit(WeatherDataState.SuccessDaily(finalMerged))
                     } else {
-                        emit(WeatherDataState.Error("Daily weather data unavailable after fetch."))
+                        emit(WeatherDataState.Error("Daily weather data unavailable after fetch.", mergedData?.let { WeatherDataState.SuccessDaily(it) }))
                     }
-                } else if (mergedData.isNullOrEmpty()) {
-                    emit(WeatherDataState.Error("Network error during daily forecast fetch."))
+                } else {
+                    emit(WeatherDataState.Error("Network error during daily forecast fetch.", mergedData?.let { WeatherDataState.SuccessDaily(it) }))
                 }
             }
         }
@@ -828,7 +884,9 @@ class WeatherCache(
     }
 
     fun getAirQuality(): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
         val currentLocationIdentifier = selectedLocation.value
+        val coords = resolveCoordinates(currentLocationIdentifier)
         val currentModel = userSettings.value.model
         val now = LocalDateTime.now()
 
@@ -844,12 +902,7 @@ class WeatherCache(
             if (Duration.between(modelCache.lastAirQualityFetch, now).toMinutes() < 30) {
                 return@flow
             }
-        } else {
-            // No cache at all, show loading
-            emit(WeatherDataState.Loading)
         }
-
-        val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null) {
             // If we already emitted cache, don't override it with an error
             if (modelCache.airQualityInfo == null) {
@@ -893,7 +946,9 @@ class WeatherCache(
     }
 
     fun getLocalVigilance(): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
         val currentLocationIdentifier = selectedLocation.value
+        val coords = resolveCoordinates(currentLocationIdentifier)
         val currentModel = userSettings.value.model
         val now = LocalDateTime.now()
 
@@ -909,11 +964,7 @@ class WeatherCache(
             if (Duration.between(modelCache.lastVigilanceFetch, now).toHours() < 1) {
                 return@flow
             }
-        } else {
-            emit(WeatherDataState.Loading)
         }
-
-        val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null) {
             if (modelCache.vigilanceInfo == null) {
                 emit(WeatherDataState.Error("GPS position unavailable for vigilance alerts."))
@@ -943,13 +994,35 @@ class WeatherCache(
         }
     }
 
-    fun refreshCurrentLocation() {
+    suspend fun rmCacheLoc(location: LocationIdentifier) {
+        cacheMutex.withLock {
+            cache.remove(location)
+        }
+    }
+
+    fun refreshCurrentLocation(force: Boolean = false) {
         _isLocationPermissionGranted.value = locationProvider.checkLocationPermission()
-        if (selectedLocation.value is LocationIdentifier.CurrentUserLocation) {
+
+        // Vérifier si le GPS est activé au niveau système
+        locationProvider.checkLocationSettings { enabled, _ ->
+            _isGpsEnabled.value = enabled
+        }
+
+        if (selectedLocation.value is LocationIdentifier.CurrentUserLocation || force) {
             applicationScope.launch {
                 val newCoordinates = locationProvider.getCurrentLocation()
                 if (newCoordinates != null) _currentGpsPosition.value = newCoordinates
             }
+        }
+    }
+
+    suspend fun refreshCurrentLocationSuspend() {
+        _isLocationPermissionGranted.value = locationProvider.checkLocationPermission()
+
+        // On attend la position (getCurrentLocation est déjà suspend)
+        val newCoordinates = locationProvider.getCurrentLocation()
+        if (newCoordinates != null) {
+            _currentGpsPosition.value = newCoordinates
         }
     }
 }
@@ -961,5 +1034,17 @@ sealed class WeatherDataState {
     data class SuccessCurrent(val data: Map<Pair<Double, Double>, CurrentWeatherReading>) : WeatherDataState()
     data class SuccessAirQuality(val data: Triple<AirQualityInfo, AirQualityForecastResponse?, PollenResponse?>) : WeatherDataState()
     data class SuccessVigilance(val data: VigilanceInfos) : WeatherDataState()
-    data class Error(val message: String) : WeatherDataState()
+    data class Error(val message: String, val staleData: WeatherDataState? = null) : WeatherDataState()
+}
+
+fun WeatherDataState.getHourlyData(): List<AllHourlyVarsReading>? = when(this) {
+    is WeatherDataState.SuccessHourly -> data
+    is WeatherDataState.Error -> (staleData as? WeatherDataState.SuccessHourly)?.data
+    else -> null
+}
+
+fun WeatherDataState.getDailyData(): List<DailyReading>? = when(this) {
+    is WeatherDataState.SuccessDaily -> data
+    is WeatherDataState.Error -> (staleData as? WeatherDataState.SuccessDaily)?.data
+    else -> null
 }

@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -52,9 +54,13 @@
             android:theme="@style/AppTheme.Compose" />
         <activity
             android:name=".utilsActivities.WidgetSettingsActivity"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/widget_settings"
-            android:theme="@style/AppTheme.Compose" />
+            android:theme="@style/AppTheme.Compose">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".dayGraphsActivity.DayGraphsActivity"
             android:exported="false"
