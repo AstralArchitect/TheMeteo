@@ -342,6 +342,14 @@ class WeatherCache(
                 }
             }
         }
+
+        applicationScope.launch {
+            selectedLocation.collect { location ->
+                if (location is LocationIdentifier.CurrentUserLocation) {
+                    refreshCurrentLocation()
+                }
+            }
+        }
     }
 
 
@@ -402,8 +410,12 @@ class WeatherCache(
     private suspend fun resolveCoordinates(identifier: LocationIdentifier): GpsCoordinates? {
         return when (identifier) {
             is LocationIdentifier.CurrentUserLocation -> {
-                // On attend que la position GPS soit disponible (non nulle)
-                currentGpsPosition.filterNotNull().first()
+                run {
+                    withTimeoutOrNull(10_000) {
+                        // On attend que la position GPS soit disponible
+                        currentGpsPosition.filterNotNull().first()
+                    }
+                }
             }
             is LocationIdentifier.Saved -> GpsCoordinates(identifier.location.latitude, identifier.location.longitude)
         }
@@ -433,6 +445,11 @@ class WeatherCache(
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
+        if (coords == null)
+        {
+            emit(WeatherDataState.Error("Unable to get GPS position"))
+            return@flow
+        }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         val effectiveModel = getEffectiveModel(currentSettings, coords)
         
@@ -618,6 +635,11 @@ class WeatherCache(
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
+        if (coords == null)
+        {
+            emit(WeatherDataState.Error("Unable to get GPS position"))
+            return@flow
+        }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         val effectiveModel = getEffectiveModel(currentSettings, coords)
 
@@ -887,6 +909,11 @@ class WeatherCache(
         emit(WeatherDataState.Loading)
         val currentLocationIdentifier = selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
+        if (coords == null)
+        {
+            emit(WeatherDataState.Error("Unable to get GPS position"))
+            return@flow
+        }
         val currentModel = userSettings.value.model
         val now = LocalDateTime.now()
 
@@ -949,6 +976,11 @@ class WeatherCache(
         emit(WeatherDataState.Loading)
         val currentLocationIdentifier = selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
+        if (coords == null)
+        {
+            emit(WeatherDataState.Error("Unable to get GPS position"))
+            return@flow
+        }
         val currentModel = userSettings.value.model
         val now = LocalDateTime.now()
 

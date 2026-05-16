@@ -4,6 +4,7 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.data
 
+import android.os.Build
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -78,7 +79,7 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     val themeMode: Flow<ThemeMode> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.THEME_MODE]?.let { index ->
             ThemeMode.entries.getOrNull(index)
-        } ?: ThemeMode.FIXED
+        } ?: (if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) ThemeMode.FIXED else ThemeMode.SYSTEM)
     }
 
     /**
