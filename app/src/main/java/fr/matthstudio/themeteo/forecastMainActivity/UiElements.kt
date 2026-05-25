@@ -1,17 +1,43 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
-import android.location.Geocoder
+import android.content.Context
+import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
+import android.view.Surface
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,14 +47,33 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.ExploreOff
+import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.Flood
+import androidx.compose.material.icons.rounded.SevereCold
+import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.material.icons.rounded.Tsunami
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.Water
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,35 +86,54 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.modifier.modifierLocalConsumer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.rememberPermissionState
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
@@ -80,15 +144,35 @@ import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.GeocodingResult
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
+import fr.matthstudio.themeteo.dayGraphsActivity.WeatherIconGraphGlobal
+import fr.matthstudio.themeteo.utilClasses.PhaseType
+import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
+import fr.matthstudio.themeteo.utilClasses.toSmartString
+import kotlinx.coroutines.launch
+import java.time.Duration
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlin.math.sin
 
 /**
  * Énumération pour représenter les conditions météo de manière simple et robuste.
@@ -113,11 +197,12 @@ enum class SimpleWeatherWord {
 
 data class SimpleWeather (
     var sentence: String,
-    var word: SimpleWeatherWord,
+    var word: SimpleWeatherWord?,
     var image: ImageBitmap? = null
 )
 
-fun weatherCodeToSimpleWord(code: Int): SimpleWeatherWord {
+fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
+    if (code == null) return null
     return when (code) {
         0 -> SimpleWeatherWord.SUNNY
         1, 2 -> SimpleWeatherWord.SUNNY_CLOUDY
@@ -183,10 +268,15 @@ fun getSimpleWeather(value: AllHourlyVarsReading): SimpleWeather {
 
     LaunchedEffect(value) {
         val skyState = value.skyInfo
-        val precipitation = value.precipitationData.precipitation
-        val rain = value.precipitationData.rain
-        val snow = value.precipitationData.snowfall
+        val precipitation = value.precipitationData.precipitation ?: 0.0
+        val rain = value.precipitationData.rain ?: 0.0
+        val snow = value.precipitationData.snowfall ?: 0.0
         val wCode = value.wmo
+
+        val cloudLow = skyState.cloudcoverLow ?: 0
+        val cloudMid = skyState.cloudcoverMid ?: 0
+        val cloudHigh = skyState.cloudcoverHigh ?: 0
+        val opacity = skyState.opacity ?: 0
 
         val newWeather = SimpleWeather("", SimpleWeatherWord.SUNNY)
         newWeather.word = weatherCodeToSimpleWord(wCode)
@@ -195,34 +285,30 @@ fun getSimpleWeather(value: AllHourlyVarsReading): SimpleWeather {
         var modifier: String? = null
 
         // 1. État du ciel
-        if (skyState.opacity in 1..30) {
+        if (opacity in 1..30) {
             skySentence = skySunny
-            if (skyState.cloudcoverHigh > 50) modifier = modWithVeil
-        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 25) {
-            skySentence = if (skyState.cloudcoverHigh > 50) skyVeiled else skyClear
-        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 50) {
+            if (cloudHigh > 50) modifier = modWithVeil
+        } else if (max(cloudLow, cloudMid) <= 25) {
+            skySentence = if (cloudHigh > 50) skyVeiled else skyClear
+        } else if (max(cloudLow, cloudMid) <= 50) {
             skySentence = skyScattered
-            if (skyState.cloudcoverHigh > 50) modifier = modWithVeiledSky
-        } else if (max(skyState.cloudcoverLow, skyState.cloudcoverMid) <= 75) {
+            if (cloudHigh > 50) modifier = modWithVeiledSky
+        } else if (max(cloudLow, cloudMid) <= 75) {
             skySentence = skyPartlyCloudy
-            if (skyState.cloudcoverHigh > 50) modifier = modWithVeil
+            if (cloudHigh > 50) modifier = modWithVeil
         } else {
             skySentence = skyOvercast
         }
 
         // 2. Précipitations (Priorité à la neige)
         var precipModifier: String? = null
-        if (precipitation != null) {
-            if (precipitation >= 0.1f) {
-                if (snow != null) {
-                    if (rain != null) {
-                        precipModifier = if (snow >= 0.1f) {
-                            if (snow < 0.5) modWithLightSnow else if (snow < 1.0) modWithModerateSnow else modWithHeavySnow
-                        } else if (rain >= 0.1f) {
-                            if (rain < 0.5) modWithLightRain else if (rain < 3.0) modWithModerateRain else if (rain < 10.0) modWithHeavyRain else modWithTorrentialRain
-                        } else modWithPrecipitation
-                    }
-                }
+        if (precipitation >= 0.1) {
+            if (snow >= 0.1) {
+                precipModifier = if (snow < 0.5) modWithLightSnow else if (snow < 1.0) modWithModerateSnow else modWithHeavySnow
+            } else if (rain >= 0.1) {
+                precipModifier = if (rain < 0.5) modWithLightRain else if (rain < 3.0) modWithModerateRain else if (rain < 10.0) modWithHeavyRain else modWithTorrentialRain
+            } else {
+                precipModifier = modWithPrecipitation
             }
         }
 
@@ -251,7 +337,6 @@ enum class ChosenVar {
 
 @Composable
 fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onClick: () -> Unit) {
-    val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
     val weatherIconFilter = remember(isDark) {
         if (!isDark) {
@@ -323,11 +408,12 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                     SimpleWeatherWord.SNOWY3 -> snowy3IconPath
                     SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
                     SimpleWeatherWord.STORMY -> stormyIconPath
+                    null -> Icons.Default.NotInterested
                 }
 
                 if (dayReading.wmoEnsemble != null) {
                     val userSettings by viewModel.userSettings.collectAsState()
-                    val isBatterySaverActive by (LocalContext.current.applicationContext as fr.matthstudio.themeteo.TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+                    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
                     val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
                     
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -335,18 +421,39 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                         EnsembleIconSmall(dayReading.wmoEnsemble.worst, animated, weatherIconFilter)
                     }
                 } else {
-                    AsyncImage(
-                        model = fileName,
-                        contentDescription = "Icône météo actuelle",
-                        modifier = Modifier
-                            .width(30.dp)
-                            .height(30.dp),
-                        contentScale = ContentScale.Fit,
-                        colorFilter = weatherIconFilter
-                    )
+                    if (fileName is String) {
+                        AsyncImage(
+                            model = fileName,
+                            contentDescription = "Icône météo actuelle",
+                            modifier = Modifier
+                                .width(30.dp)
+                                .height(30.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                    } else {
+                        Image(
+                            imageVector = fileName as ImageVector,
+                            contentDescription = "Icône météo actuelle",
+                            modifier = Modifier
+                                .width(30.dp)
+                                .height(30.dp),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = weatherIconFilter
+                        )
+                    }
                 }
+                val userSettings by viewModel.userSettings.collectAsState()
                 Text(
-                    text = "${dayReading.maxTemperature?.roundToInt()}°/${dayReading.minTemperature?.roundToInt()}°",
+                    text = "${UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit,
+                        roundToInt = true,
+                        showUnitSymbol = false,
+                        showDegreeSymbol = true
+                    )} / ${UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit,
+                        roundToInt = true,
+                        showUnitSymbol = false,
+                        showDegreeSymbol = true
+                    )}",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 8.dp)
                 )
@@ -356,21 +463,184 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
 }
 
 @Composable
-fun EnsembleIconSmall(wmo: Int, animated: Boolean, filter: ColorFilter?) {
-    if (animated) {
-        fr.matthstudio.themeteo.forecastMainActivity.AnimatedSvgIcon(
-            iconPath = fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
-            modifier = Modifier.size(30.dp)
+fun TemperatureRangeBar(
+    minTemp: Double,
+    maxTemp: Double,
+    minOverallTemp: Double,
+    maxOverallTemp: Double,
+    unit: TemperatureUnit,
+    modifier: Modifier = Modifier
+) {
+    val range = maxOverallTemp - minOverallTemp
+    if (range <= 0) return
+
+    val startFactor = (minTemp - minOverallTemp) / range
+    val endFactor = (maxTemp - minOverallTemp) / range
+
+    Canvas(modifier = modifier
+        .height(4.dp)
+        .fillMaxWidth()) {
+        val width = size.width
+        val height = size.height
+        val startX = (width * startFactor).toFloat()
+        val endX = (width * endFactor).toFloat()
+
+        // Background track
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.2f),
+            size = Size(width, height),
+            cornerRadius = CornerRadius(height / 2, height / 2)
         )
-    } else {
-        AsyncImage(
-            model = fr.matthstudio.themeteo.forecastMainActivity.getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
-            contentDescription = null,
-            modifier = Modifier.size(30.dp),
-            contentScale = ContentScale.Fit,
-            colorFilter = filter
+
+        // Range bar
+        drawRoundRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color(0xFF64B5F6), Color(0xFFFFD54F), Color(0xFFFF8A65))
+            ),
+            topLeft = Offset(startX, 0f),
+            size = androidx.compose.ui.geometry.Size(endX - startX, height),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2, height / 2)
         )
     }
+}
+
+@Composable
+fun DailyForecastRow(
+    dayReading: DailyReading,
+    isExpanded: Boolean,
+    minOverallTemp: Double,
+    maxOverallTemp: Double,
+    userSettings: UserSettings,
+    isBatterySaverActive: Boolean,
+    onClick: () -> Unit,
+    expandedContent: @Composable () -> Unit
+) {
+    val isDark = isSystemInDarkTheme()
+    val weatherIconFilter = remember(isDark) {
+        if (!isDark) {
+            ColorFilter.colorMatrix(ColorMatrix().apply {
+                // Assombrit légèrement les icônes statiques en mode clair
+                setToScale(0.7f, 0.7f, 0.7f, 1f)
+            })
+        } else null
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Jour
+            Text(
+                text = if (dayReading.date == LocalDate.now()) stringResource(R.string.today)
+                else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.width(50.dp)
+            )
+
+            // Icône
+            val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
+            
+            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                if (dayReading.wmoEnsemble != null) {
+                    Row {
+                        EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
+                    }
+                } else if (weatherWord != null) {
+                    LottieWeatherIcon(
+                        iconPath = getLottieIconPath(weatherWord, false),
+                        animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Précipitations + vent
+            Row(
+                modifier = Modifier.width(80.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                if (dayReading.precipitation != null && dayReading.precipitation > 0.1) {
+                    Icon(
+                        Icons.Rounded.Water,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    ResponsiveText(
+                        text = "${dayReading.precipitation.toSmartString()}mm",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                if ( (dayReading.maxWind.windspeed != null && dayReading.maxWind.windspeed >= 30) || (dayReading.maxWind.windGusts != null && dayReading.maxWind.windGusts >= 45) ) {
+                    Icon(
+                        Icons.Rounded.Air,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Températures
+            Text(
+                text = UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                modifier = Modifier.width(35.dp)
+            )
+
+            TemperatureRangeBar(
+                minTemp = dayReading.minTemperature ?: 0.0,
+                maxTemp = dayReading.maxTemperature ?: 0.0,
+                minOverallTemp = minOverallTemp,
+                maxOverallTemp = maxOverallTemp,
+                unit = userSettings.temperatureUnit,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
+            )
+
+            Text(
+                text = UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.width(35.dp)
+            )
+        }
+
+        AnimatedVisibility(visible = isExpanded) {
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                expandedContent()
+            }
+        }
+    }
+}
+
+@Composable
+fun EnsembleIconSmall(wmo: Int?, animated: Boolean, filter: ColorFilter?) {
+    if (wmo == null) return
+    val weatherWord = weatherCodeToSimpleWord(wmo)!!
+
+    LottieWeatherIcon(
+        iconPath = getLottieIconPath(weatherWord, false),
+        animate = animated,
+        modifier = Modifier.size(30.dp)
+    )
 }
 
 /*@Composable
@@ -439,20 +709,37 @@ fun LocationManagementSheet(
     savedLocations: List<SavedLocation>,
     selectedLocation: LocationIdentifier,
     currentWeathers: WeatherDataState,
-    defaultLocation: LocationIdentifier,
+    userSettings: UserSettings,
     isPermissionGranted: Boolean,
     onSelectLocation: (LocationIdentifier) -> Unit,
     onRemoveLocation: (SavedLocation) -> Unit,
+    onRenameLocation: (SavedLocation, String) -> Unit,
     onReorderLocations: (List<SavedLocation>) -> Unit,
     onSetDefaultLocation: (LocationIdentifier) -> Unit,
     onAddLocationClick: () -> Unit,
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState()
 ) {
+    // État local pour la liste réorganisable
+    var listState by remember(savedLocations) { mutableStateOf(savedLocations) }
+    val lazyListState = rememberLazyListState()
+    var renamingLocation by remember { mutableStateOf<SavedLocation?>(null) }
+
+    if (renamingLocation != null) {
+        RenameLocationDialog(
+            currentLocation = renamingLocation!!,
+            onRename = { location, newName ->
+                onRenameLocation(location, newName)
+                renamingLocation = null
+            },
+            onDismiss = { renamingLocation = null }
+        )
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MaterialTheme.colorScheme.surface.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
+        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MaterialTheme.colorScheme.secondaryContainer.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
         scrimColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(alpha = 0.5f)
     ) {
         Column(modifier = Modifier
@@ -460,14 +747,20 @@ fun LocationManagementSheet(
             .padding(16.dp))
         {
             Text(stringResource(R.string.manage_locations), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
-            LazyColumn {
+            
+            LazyColumn(
+                state = lazyListState,
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
                 // Item pour la position actuelle - Visible uniquement si permission accordée
                 if (isPermissionGranted) {
                     item {
                         LocationRow(
                             name = stringResource(R.string.current_location),
                             isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
-                            isDefault = defaultLocation is LocationIdentifier.CurrentUserLocation,
+                            isDefault = userSettings.defaultLocation is LocationIdentifier.CurrentUserLocation,
+                            temperatureUnit = userSettings.temperatureUnit,
+                            roundToInt = userSettings.roundToInt,
                             onClick = {
                                 onSelectLocation(LocationIdentifier.CurrentUserLocation)
                                 onDismiss()
@@ -479,34 +772,73 @@ fun LocationManagementSheet(
                 }
 
                 // Liste des lieux sauvegardés
-                items(savedLocations.size) { index ->
-                    val location = savedLocations[index]
-                    // On vérifie si defaultLocation est un type 'Saved' et si sa localisation interne est la même
-                    val isDefault = (defaultLocation as? LocationIdentifier.Saved)?.location == location
+                items(listState.size, key = { listState[it].name + listState[it].latitude + listState[it].longitude }) { index ->
+                    val location = listState[index]
+                    val isDefault = (userSettings.defaultLocation as? LocationIdentifier.Saved)?.location == location
                     val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
+                    
+                    var itemOffset by remember { mutableStateOf(0f) }
+                    val currentIndex by rememberUpdatedState(index)
+                    val itemHeight = 64f // Matching the Modifier.height(64.dp) below
+
                     LocationRow(
                         name = location.name,
                         isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
                         currentWeatherReading = currentWeather,
+                        temperatureUnit = userSettings.temperatureUnit,
+                        roundToInt = userSettings.roundToInt,
                         isDefault = isDefault,
                         onClick = {
                             onSelectLocation(LocationIdentifier.Saved(location))
                             onDismiss()
                         },
                         onDelete = { onRemoveLocation(location) },
+                        onRename = { renamingLocation = location },
                         onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) },
-                        onMoveUp = if (index > 0) { {
-                            val newList = savedLocations.toMutableList()
-                            val item = newList.removeAt(index)
-                            newList.add(index - 1, item)
-                            onReorderLocations(newList)
-                        } } else null,
-                        onMoveDown = if (index < savedLocations.size - 1) { {
-                            val newList = savedLocations.toMutableList()
-                            val item = newList.removeAt(index)
-                            newList.add(index + 1, item)
-                            onReorderLocations(newList)
-                        } } else null
+                        modifier = Modifier
+                            .animateItem()
+                            .offset(y = itemOffset.dp)
+                            .pointerInput(Unit) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { /* Optionnel : retour haptique, non utilisé ici */ },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        itemOffset += dragAmount.y / density
+
+                                        // Logique de swap corrigée
+                                        val threshold =
+                                            32f // Seuil pour déclencher le swap (moitié de la hauteur)
+                                        if (itemOffset > threshold && currentIndex < listState.size - 1) {
+                                            val newList = listState.toMutableList()
+                                            val item = newList.removeAt(currentIndex)
+                                            newList.add(currentIndex + 1, item)
+                                            listState = newList
+                                            // Ajustement de l'offset pour compenser le changement de position "home"
+                                            itemOffset -= itemHeight
+                                            onReorderLocations(newList)
+                                        } else if (itemOffset < -threshold && currentIndex > 0) {
+                                            val newList = listState.toMutableList()
+                                            val item = newList.removeAt(currentIndex)
+                                            newList.add(currentIndex - 1, item)
+                                            listState = newList
+                                            // Ajustement de l'offset pour compenser le changement de position "home"
+                                            itemOffset += itemHeight
+                                            onReorderLocations(newList)
+                                        }
+                                    },
+                                    onDragEnd = { itemOffset = 0f },
+                                    onDragCancel = { itemOffset = 0f }
+                                )
+                            },
+                        dragHandle = {
+                            Icon(
+                                imageVector = Icons.Default.DragHandle,
+                                contentDescription = "Réorganiser",
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .padding(4.dp)
+                            )
+                        }
                     )
                 }
             }
@@ -526,27 +858,29 @@ fun LocationManagementSheet(
     }
 }
 
-// 2. LA LIGNE POUR UN LIEU INDIVIDUEL DANS LE PANNEAU
 @Composable
 fun LocationRow(
+    modifier: Modifier = Modifier,
     name: String,
     isSelected: Boolean,
     isDefault: Boolean,
     currentWeatherReading: CurrentWeatherReading? = null,
+    temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
+    roundToInt: Boolean = true,
     onSetAsDefault: () -> Unit,
     onClick: () -> Unit,
-    onDelete: (() -> Unit)?, // Nullable car la position actuelle n'a pas de bouton de suppression
-    onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    onDelete: (() -> Unit)?, 
+    onRename: (() -> Unit)? = null,
+    dragHandle: (@Composable () -> Unit)? = null
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(64.dp)
             .clickable(onClick = onClick)
             .padding(vertical = 12.dp)
             .background(
-                if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .5f) else Color.Transparent,
+                if (isSelected) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .5f) else Color.Transparent,
                 MaterialTheme.shapes.small
             )
     ) {
@@ -556,29 +890,14 @@ fun LocationRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                if (onMoveUp != null || onMoveDown != null) {
-                    Column {
-                        if (onMoveUp != null) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = "Monter",
-                                modifier = Modifier.size(20.dp).clickable(onClick = onMoveUp)
-                            )
-                        }
-                        if (onMoveDown != null) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Descendre",
-                                modifier = Modifier.size(20.dp).clickable(onClick = onMoveDown)
-                            )
-                        }
-                    }
+                if (dragHandle != null) {
+                    dragHandle()
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(
                     text = name,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                    color = if (isSelected) MaterialTheme.colorScheme.tertiary else Color.Unspecified,
                     fontWeight = if (isSelected) FontWeight.Bold else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -587,20 +906,30 @@ fun LocationRow(
             Row (verticalAlignment = Alignment.CenterVertically) {
                 if (currentWeatherReading != null) {
                     Icon(
-                        imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)),
+                        imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)!!),
                         contentDescription = "Icône météo actuelle",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
                     )
                     Text(
-                        text = "${currentWeatherReading.temperature?.roundToInt()}°",
+                        text = UnitConverter.formatTemperature(currentWeatherReading.temperature, temperatureUnit, roundToInt),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = if (isSelected) FontWeight.Bold else null
                     )
                 }
+                if (onRename != null) {
+                    IconButton(onClick = onRename) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "Renommer le lieu",
+                            tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 Icon (
                     imageVector = if (isDefault) Icons.Default.Star else Icons.Default.StarOutline,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.clickable(
                         enabled = true,
                         onClick = onSetAsDefault
@@ -620,12 +949,54 @@ fun LocationRow(
     }
 }
 
+@Composable
+fun RenameLocationDialog(
+    currentLocation: SavedLocation,
+    onRename: (SavedLocation, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var newName by remember { mutableStateOf(currentLocation.name) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Renommer le lieu") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Nouveau nom") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (newName.isNotBlank()) {
+                        onRename(currentLocation, newName)
+                    }
+                }
+            ) {
+                Text("Enregistrer")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Annuler")
+            }
+        }
+    )
+}
+
 
 // 3. LA BOÎTE DE DIALOGUE POUR LA RECHERCHE ET L'AJOUT
 @Composable
 fun AddLocationDialog(
     searchResults: List<GeocodingResult>, // Remplacez par votre type réel de résultat
     userLocation: GpsCoordinates?,
+    weatherService: WeatherService,
     onSearch: (String) -> Unit,
     onLocationSelected: (LocationIdentifier) -> Unit,
     onAddLocation: (SavedLocation) -> Unit,
@@ -640,6 +1011,7 @@ fun AddLocationDialog(
         Dialog(onDismissRequest = { showMapPicker = false }) {
             MapPickerScreen(
                 initialLocation = userLocation,
+                weatherService = weatherService,
                 onLocationSelected = { coords, name ->
                     onMapLocationAdded(coords, name)
                     showMapPicker = false
@@ -699,12 +1071,61 @@ fun AddLocationDialog(
 }
 
 @Composable
+fun EnvironmentalGauge(
+    value: Float, // 0.0 to 1.0
+    color: Color,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit = {}
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 8.dp.toPx()
+            // Fond de la jauge (gris discret)
+            drawArc(
+                color = color.copy(alpha = 0.15f),
+                startAngle = 140f,
+                sweepAngle = 260f,
+                useCenter = false,
+                style = Stroke(strokeWidth, cap = StrokeCap.Round)
+            )
+            // Partie active de la jauge (couleur API)
+            drawArc(
+                color = color,
+                startAngle = 140f,
+                sweepAngle = 260f * value.coerceIn(0f, 1f),
+                useCenter = false,
+                style = Stroke(strokeWidth, cap = StrokeCap.Round)
+            )
+        }
+        content()
+    }
+}
+
+@Composable
+fun getPollenShortDescFromLevel(level: Int): String {
+    return when (level) {
+        0 -> stringResource(R.string.none)
+        1 -> stringResource(R.string.low)
+        2 -> stringResource(R.string.moderate)
+        3 -> stringResource(R.string.high)
+        4 -> stringResource(R.string.very_high)
+        5 -> stringResource(R.string.extreme)
+        else -> stringResource(R.string.unknown)
+    }
+}
+
+@Composable
 fun MapPickerScreen(
     initialLocation: GpsCoordinates?,
+    weatherService: WeatherService,
     onLocationSelected: (GpsCoordinates, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     // Position initiale : GPS, fallback Paris
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
@@ -744,16 +1165,15 @@ fun MapPickerScreen(
                 val target = cameraPositionState.position.target
                 val coords = GpsCoordinates(target.latitude, target.longitude)
 
-                // Utilisation du Geocoder pour trouver le nom de la ville
-                val cityName = try {
-                    val geocoder = Geocoder(context, Locale.getDefault())
-                    val addresses = geocoder.getFromLocation(target.latitude, target.longitude, 1)
-                    addresses?.firstOrNull()?.locality ?: context.getString(R.string.custom_location)
-                } catch (e: Exception) {
-                    context.getString(R.string.custom_location)
+                scope.launch {
+                    val cityName = weatherService.getCityNameFromCoords(
+                        target.latitude,
+                        target.longitude,
+                        context
+                    ) ?: context.getString(R.string.custom_location)
+                    
+                    onLocationSelected(coords, cityName)
                 }
-
-                onLocationSelected(coords, cityName)
             }
         ) {
             Text(stringResource(R.string.pick_this_location))
@@ -773,23 +1193,72 @@ fun LocationPermissionHandler(
         )
     )
 
-    if (!locationPermissionState.allPermissionsGranted) {
+    // Background permission state (separate request as required by Android)
+    val backgroundLocationPermissionState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        rememberPermissionState(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    } else {
+        null
+    }
+
+    var showBackgroundRationale by remember { mutableStateOf(false) }
+
+    // Request foreground if nothing granted yet
+    val anyForegroundGranted = locationPermissionState.permissions.any { it.status.isGranted }
+    if (!anyForegroundGranted && !locationPermissionState.shouldShowRationale) {
         LaunchedEffect(Unit) {
             locationPermissionState.launchMultiplePermissionRequest()
         }
     }
 
-    // Bug fix: Trigger refresh when permissions are granted to immediately fetch location
-    LaunchedEffect(locationPermissionState.allPermissionsGranted) {
-        if (locationPermissionState.allPermissionsGranted) {
+    // Trigger refresh when foreground is granted
+    LaunchedEffect(anyForegroundGranted) {
+        if (anyForegroundGranted) {
             viewModel.refreshLocation()
+            // Check if we should suggest background location for widgets
+            val settings = viewModel.userSettings.value
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                backgroundLocationPermissionState?.status?.isGranted == false &&
+                !settings.backgroundLocationAsked) {
+                showBackgroundRationale = true
+            }
         }
+    }
+
+    if (showBackgroundRationale) {
+        AlertDialog(
+            onDismissRequest = { 
+                showBackgroundRationale = false 
+                viewModel.markBackgroundLocationAsked()
+            },
+            title = { Text(stringResource(R.string.background_location_rationale_title)) },
+            text = { Text(stringResource(R.string.background_location_rationale_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    showBackgroundRationale = false
+                    backgroundLocationPermissionState?.launchPermissionRequest()
+                    // If they click to launch request, we also mark as asked
+                    viewModel.markBackgroundLocationAsked()
+                }) {
+                    Text(stringResource(R.string.background_location_button))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showBackgroundRationale = false 
+                    viewModel.markBackgroundLocationAsked()
+                }) {
+                    Text(stringResource(R.string.decline))
+                }
+            }
+        )
     }
 }
 
 @Composable
 fun GenericGraph(
     viewModel: WeatherViewModel,
+    temperatureUnit: TemperatureUnit,
+    windUnit: WindUnit,
     graphType: GraphType,
     graphColor: Color,
     valueRange: ClosedFloatingPointRange<Float>? = null,
@@ -806,6 +1275,8 @@ fun GenericGraph(
     GenericGraphGlobal(
         fullForecast,
         roundToInt,
+        temperatureUnit,
+        windUnit,
         graphType,
         graphColor,
         valueRange,
@@ -817,6 +1288,8 @@ fun GenericGraph(
 fun AdvancedGraph(
     fullForecast: WeatherDataState,
     roundToInt: Boolean,
+    temperatureUnit: TemperatureUnit,
+    windUnit: WindUnit,
     graphType: GraphType,
     graphColor: Color,
     valueRange: ClosedFloatingPointRange<Float>? = null,
@@ -835,234 +1308,1046 @@ fun AdvancedGraph(
     GenericGraphGlobal(
         fullForecast,
         roundToInt,
+        temperatureUnit,
+        windUnit,
         graphType,
         graphColor,
         valueRange,
         scrollState,
         contentWidth,
         contentHeight,
-        compactHourFormat
+        compactHourFormat,
+        sparseMode = true
     )
 }
-
-/*@Composable
-fun BarsGraph(
-    viewModel: WeatherViewModel,
-    valueRange: ClosedFloatingPointRange<Float>? = null,
-    scrollState: ScrollState = rememberScrollState()
-) {
-    val forecast by viewModel.minutelyForecast15.collectAsState()
-
-    if (forecast.isEmpty()) {
-        return // Ne rien dessiner si les données ne sont pas prêtes
-    }
-
-    Box(
-        modifier = Modifier
-            .width(1000.dp) // Largeur fixe pour correspondre aux autres graphiques
-            .horizontalScroll(scrollState),
-    ) {
-        val rainColor = Color(0xFF64B5F6) // Bleu pour la pluie
-        val snowColor = Color.White       // Blanc pour la neige
-        val textColor: Int = AndroidColor.rgb(
-            MaterialTheme.colorScheme.onBackground.red,
-            MaterialTheme.colorScheme.onBackground.green,
-            MaterialTheme.colorScheme.onBackground.blue
-        )
-
-        Canvas(
-            modifier = Modifier
-                .width(1000.dp)
-                .height(150.dp)
-        ) {
-            val xPadding = 50f
-            val yPadding = 100f
-
-            // Déterminer la valeur maximale pour l'échelle Y
-            val maxPrecipitation = forecast.maxOfOrNull { it.rain + it.snowfall }?.toFloat() ?: 1f
-            val maxValue = valueRange?.endInclusive?.coerceAtLeast(maxPrecipitation) ?: maxPrecipitation
-
-            if (maxValue <= 0f) return@Canvas // Éviter la division par zéro si aucune précipitation
-
-            val canvasWidth = size.width
-            val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
-            val barWidth = xStep * 0.7f // Laisser un peu d'espace entre les barres
-            val yScale = (size.height - 2 * yPadding) / maxValue
-
-            forecast.forEachIndexed { index, reading ->
-                val x = xPadding + (index * xStep)
-                val rainHeight = (reading.rain * yScale).toFloat()
-                val snowHeight = (reading.snowfall * yScale).toFloat()
-                val totalHeight = rainHeight + snowHeight
-
-                // 1. Dessiner la barre de pluie (en bas)
-                if (rainHeight > 0) {
-                    drawRect(
-                        color = rainColor,
-                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight),
-                        size = androidx.compose.ui.geometry.Size(barWidth, rainHeight)
-                    )
-                }
-
-                // 2. Dessiner la barre de neige (empilée sur la pluie)
-                if (snowHeight > 0) {
-                    drawRect(
-                        color = snowColor,
-                        topLeft = Offset(x - barWidth / 2, size.height - yPadding - rainHeight - snowHeight),
-                        size = androidx.compose.ui.geometry.Size(barWidth, snowHeight)
-                    )
-                }
-
-                // 3. Dessiner la valeur totale au-dessus de la barre (si > 0)
-                val totalPrecipitationValue = reading.rain + reading.snowfall
-                if (totalPrecipitationValue > 0) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        String.format(Locale.getDefault(), "%.1f", totalPrecipitationValue), // Formatter avec une décimale
-                        x,
-                        size.height - yPadding - totalHeight - 15f, // Position au-dessus de la barre
-                        Paint().apply {
-                            textAlign = Paint.Align.CENTER
-                            textSize = 25f
-                            color = textColor
-                        }
-                    )
-                }
-
-                // 4. Dessiner la minute en bas
-                drawContext.canvas.nativeCanvas.drawText(
-                    reading.time.format(DateTimeFormatter.ofPattern("mm")),
-                    x,
-                    size.height - yPadding + 90f,
-                    Paint().apply {
-                        textAlign = Paint.Align.CENTER
-                        textSize = 35f
-                        color = textColor
-                    }
-                )
-                // Dessiner l'heure au dessus de la minute si elle est égale à 0 et dessiner une barre vertical devant celle-ci
-                if (reading.time.minute == 0) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        reading.time.format(DateTimeFormatter.ofPattern("HH")) + "h",
-                        x,
-                        size.height - yPadding + 60f,
-                        Paint().apply {
-                            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                            textAlign = Paint.Align.CENTER
-                            textSize = 35f
-                            color = textColor
-                        }
-                    )
-                    drawRect(
-                        color = Color.Gray,
-                        topLeft = Offset(x - xStep / 2f, 0f),
-                        size = androidx.compose.ui.geometry.Size(2f, size.height)
-                    )
-                }
-            }
-        }
-    }
-}*/
 
 @Composable
 fun WeatherIconGraph(
     viewModel: WeatherViewModel,
-    scrollState: ScrollState = rememberScrollState()
+    forecast: WeatherDataState?,
+    scrollState: ScrollState = rememberScrollState(),
+    contentWidth: Dp = 1000.dp,
+    showPairsOnly: Boolean = false
 ) {
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                setToScale(0.9f, 0.9f, 0.9f, 1f)
-            })
-        } else null
-    }
     // Get the forecast
-    val forecast by viewModel.hourlyForecast.collectAsState()
-    // Charger les icônes
-    val iconWeatherFolder = "file:///android_asset/icons/weather/"
-    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
-    val sunnyNightIconPath: String = iconWeatherFolder + "clear-night.svg"
-    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
-    val sunnyCloudyNightIconPath: String = iconWeatherFolder + "cloudy-3-night.svg"
-    val sunnyCloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
-    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
-    val dustIconPath: String = iconWeatherFolder + "dust.svg"
-    val drizzleDayIconPath: String = iconWeatherFolder + "rainy-1-day.svg"
-    val drizzleNightIconPath: String = iconWeatherFolder + "rainy-1-night.svg"
-    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
-    val rainy1DayIconPath: String = iconWeatherFolder + "rainy-2-day.svg"
-    val rainy1NightIconPath: String = iconWeatherFolder + "rainy-2-night.svg"
-    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
-    val rainy2DayIconPath: String = iconWeatherFolder + "rainy-3-day.svg"
-    val rainy2NightIconPath: String = iconWeatherFolder + "rainy-3-night.svg"
-    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
-    val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
-    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
-    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
-    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
-    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
+    val defaultForecast by viewModel.hourlyForecast.collectAsState()
+    val userSettings by viewModel.userSettings.collectAsState()
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-    val simpleWeatherList = mutableListOf<Pair<SimpleWeatherWord, Boolean?>>()
+    WeatherIconGraphGlobal(
+        forecast ?: defaultForecast,
+        scrollState,
+        userSettings,
+        isBatterySaverActive,
+        contentWidth,
+        showPairsOnly
+    )
+}
 
-    if ((forecast as WeatherDataState.SuccessHourly).data.first().skyInfo.shortwaveRadiation != null) {
-        for (index in 0..23) {
-            simpleWeatherList.add(
-                Pair(
-                    getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word,
-                    (forecast as WeatherDataState.SuccessHourly).data[index].skyInfo.shortwaveRadiation!! >= 1.0
-                )
-            )
-        }
+@Composable
+fun HealthAdviceCard(title: String, advice: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f))
+            .padding(16.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text(advice, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+fun EnvironmentalSectionHeader(title: String, icon: ImageVector, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun SunPathVisualization(viewModel: WeatherViewModel) {
+    val sunData by viewModel.sunData.collectAsState()
+    if (sunData == null) return
+    val data = sunData!!
+
+    val context = LocalContext.current
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    val now = LocalDateTime.now()
+    val totalSecondsDay = 24 * 3600f
+    val currentSeconds = now.hour * 3600f + now.minute * 60f + now.second
+
+    // hier = dailyData[0], aujourd'hui = dailyData[1], demain = dailyData[2]
+    val yesterday = data.dailyData.getOrNull(0)
+    val today = data.dailyData.getOrNull(1)
+    val tomorrow = data.dailyData.getOrNull(2)
+
+    val sr0 = today?.sunrise?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (6f * 3600f)
+    val ss0 = today?.sunset?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (18f * 3600f)
+
+    val isShifted = ss0 < sr0
+
+    val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
+        // Logique Shifting : centré sur le midi solaire
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
+        val ss1Shifted = ss1 + totalSecondsDay
+        val noon = (sr0 + ss1Shifted) / 2f
+        listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
     } else {
-        for (index in 0..23) {
-            simpleWeatherList.add(Pair(getSimpleWeather((forecast as WeatherDataState.SuccessHourly).data[index]).word, null))
-        }
+        // Logique Standard : 00:00 à 24:00
+        val ss0Fixed = if (ss0 < sr0) ss0 + totalSecondsDay else ss0
+        listOf(sr0, ss0Fixed, 0f, totalSecondsDay)
     }
 
-    Box(
+    val noonSecs = (srUsed + ssUsed) / 2f
+
+    var sunSecs = currentSeconds
+    // Normalize currentSeconds into [windowStart, windowEnd]
+    while (sunSecs < windowStart) sunSecs += totalSecondsDay
+    while (sunSecs > windowEnd) sunSecs -= totalSecondsDay
+    val sunProgress = (sunSecs - windowStart) / totalSecondsDay
+
+    Column(
         modifier = Modifier
-            .width(1000.dp) // Largeur fixe, identique à GenericGraph
-            .horizontalScroll(scrollState), // ScrollState partagé
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                RoundedCornerShape(24.dp)
+            )
+            .padding(16.dp)
     ) {
+        // --- ENTÊTE : Durée du jour et Zenith ---
         Row(
-            modifier = Modifier
-                .fillMaxWidth(), // La Row prend toute la largeur du Box (1000.dp).
-            horizontalArrangement = Arrangement.SpaceBetween, // L'arrangement gère l'espacement
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            simpleWeatherList.forEach { (weatherWord, isDay) ->
-                val fileName = when (weatherWord) {
-                    SimpleWeatherWord.SUNNY -> if (isDay != null) if (isDay) sunnyDayIconPath else sunnyNightIconPath else sunnyDayIconPath
-                    SimpleWeatherWord.SUNNY_CLOUDY -> if (isDay != null) if (isDay) sunnyCloudyDayIconPath else sunnyCloudyNightIconPath else sunnyCloudyIconPath
-                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
-                    SimpleWeatherWord.FOGGY -> foggyIconPath
-                    SimpleWeatherWord.HAZE -> hazeIconPath
-                    SimpleWeatherWord.DUST -> dustIconPath
-                    SimpleWeatherWord.DRIZZLY -> if (isDay != null) if (isDay) drizzleDayIconPath else drizzleNightIconPath else drizzleIconPath
-                    SimpleWeatherWord.RAINY1 -> if (isDay != null) if (isDay) rainy1DayIconPath else rainy1NightIconPath else rainy1IconPath
-                    SimpleWeatherWord.RAINY2 -> if (isDay != null) if (isDay) rainy2DayIconPath else rainy2NightIconPath else rainy2IconPath
-                    SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
-                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
-                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
-                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
-                    SimpleWeatherWord.STORMY -> stormyIconPath
-                }
+            Column {
+                if (today != null && tomorrow != null && yesterday != null) {
+                    if (sunSecs > srUsed && sunSecs < ssUsed) {
+                        Text(
+                            text = stringResource(R.string.day_duration_no_value),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = String.format(
+                                Locale.getDefault(),
+                                "%dh %dmin",
+                                today.dayLength.toHours(), today.dayLength.toMinutes() % 60
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else if (sunSecs > ssUsed) {
+                        val nightLength = Duration.between(tomorrow.sunrise, today.sunset.plusHours(24))
+                        Text(
+                            text = "Night Duration",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
-                AsyncImage(
-                    model = fileName,
-                    contentDescription = "Icône météo actuelle",
-                    modifier = Modifier
-                        .width((1000f/24f).dp),
-                    contentScale = ContentScale.Fit,
-                    colorFilter = weatherIconFilter
+                        Text(
+                            text = String.format(
+                                Locale.getDefault(),
+                                "%dh %dmin",
+                                nightLength.toHours(), nightLength.seconds % 60
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "Zenith",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = String.format(Locale.getDefault(), "%.1f°", today?.zenithElevation ?: 0.0),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // --- VISUALISATION PRINCIPALE (Canvas) ---
+        BoxWithConstraints (
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+        ) {
+            val widthDp = maxWidth
+
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokeWidth = 2.dp.toPx()
+                val horizonY = size.height / 2
+
+                // Curve crosses horizon at sunrise/sunset relative to noon
+                val crossingCos = cos(2.0 * PI * (srUsed - noonSecs) / totalSecondsDay).toFloat()
+
+                // Normalize scale so day peak is at top and night trough at bottom
+                val scaleY = (size.height / 2 - 25.dp.toPx()) / (1f + abs(crossingCos))
+
+                // Draw Sine Path (24h cycle centered or standard)
+                val path = Path()
+                val segments = 150
+                for (i in 0..segments) {
+                    val tSecs = windowStart + (i.toFloat() / segments) * totalSecondsDay
+                    val x = (i.toFloat() / segments) * size.width
+                    val yOffset =
+                        cos(2.0 * PI * (tSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+                    val y = horizonY - yOffset * scaleY
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+
+                drawPath(
+                    path = path,
+                    color = Color.Gray.copy(alpha = 0.3f),
+                    style = Stroke(
+                        width = strokeWidth,
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                            floatArrayOf(10f, 10f),
+                            0f
+                        )
+                    )
+                )
+
+                // Horizon line
+                drawLine(
+                    color = Color.Gray.copy(alpha = 0.5f),
+                    start = Offset(0f, horizonY),
+                    end = Offset(size.width, horizonY),
+                    strokeWidth = 1.dp.toPx()
+                )
+
+                // Current sun position on the curve
+                val currentYOffset =
+                    cos(2.0 * PI * (sunSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+                val sunY = horizonY - currentYOffset * scaleY
+
+                val isDay = currentYOffset > 0
+                val sunColor = if (isDay) Color(0xFFFFD700) else Color(0xFFB0C4DE)
+
+                drawCircle(
+                    color = sunColor,
+                    radius = 8.dp.toPx(),
+                    center = Offset(sunProgress * size.width, sunY)
+                )
+
+                if (isDay) {
+                    drawCircle(
+                        color = sunColor.copy(alpha = 0.3f),
+                        radius = 12.dp.toPx(),
+                        center = Offset(sunProgress * size.width, sunY)
+                    )
+                }
+            }
+
+            // Time markers
+            Box(modifier = Modifier.fillMaxSize()) {
+                val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+                // Absolute markers (Dynamic based on window)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    fun formatSecs(secs: Float): String {
+                        val s = (secs % totalSecondsDay + totalSecondsDay) % totalSecondsDay
+                        val m = (s / 60).toInt()
+                        val h = (m / 60)
+                        val mm = (s % 60).toInt()
+                        return String.format(Locale.getDefault(), "%02d:%02d", h, mm)
+                    }
+                    Text(formatSecs(windowStart), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text(formatSecs((windowStart + windowEnd) / 2f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text(formatSecs(windowEnd), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                }
+
+                // Solar Noon Marker at Zenith (Standard mode only)
+                if (!isShifted) {
+                    val noonX = (noonSecs / totalSecondsDay) * widthDp.value
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = noonX.dp, y = 8.dp) // Placed near the top
+                            .graphicsLayer { translationX = -size.width / 2 }
+                    ) {
+                        Text(
+                            text = (noonSecs % totalSecondsDay).let { s ->
+                                val m = (s / 60).toInt()
+                                val h = (m / 60)
+                                val mm = m % 60
+                                String.format(Locale.getDefault(), "%02d:%02d", h, mm)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            //color = MaterialTheme.colorScheme.primary,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- PIED DE PAGE : Heures et Azimut précis ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Rounded.WbSunny, null, Modifier.size(22.dp), tint = Color(0xFFFFB300))
+                ResponsiveText(today?.sunrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunriseAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+
+            Column(
+                modifier = Modifier.weight(2f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ResponsiveText(
+                    text = String.format(Locale.getDefault(), "ELEV: %.4f°", data.currentPosition.elevation),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
+                )
+                ResponsiveText(
+                    text = String.format(Locale.getDefault(), "AZIMUTH: %.4f°", data.currentPosition.azimuth),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Rounded.WbTwilight, null, Modifier.size(22.dp), tint = Color(0xFFFF7043))
+                ResponsiveText(today?.sunset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", today?.sunsetAzimuth ?: 0.0), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+        }
+
+        // --- SECTION HEURES DORÉES ---
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFFFB300).copy(alpha = 0.1f))
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                ResponsiveText("Heure Dorée Matin", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
+                Text("${data.dailyData[1].goldenHourMorning.first.format(formatter)} - ${data.dailyData[1].goldenHourMorning.second.format(formatter)}", style = MaterialTheme.typography.bodySmall)
+            }
+            VerticalDivider(modifier = Modifier.height(30.dp), thickness = 1.dp, color = Color(0xFFFFB300).copy(alpha = 0.3f))
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                ResponsiveText("Heure Dorée Soir", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE65100))
+                Text("${data.dailyData[1].goldenHourEvening.first.format(formatter)} - ${data.dailyData[1].goldenHourEvening.second.format(formatter)}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SunMoonCompass(viewModel: WeatherViewModel) {
+    val sunData by viewModel.sunData.collectAsState()
+    val moonData by viewModel.moonData.collectAsState()
+    val context = LocalContext.current
+
+    if (sunData == null || moonData == null) return
+
+    val sunToday = sunData!!.dailyData.getOrNull(1) ?: return
+    val moonPos = moonData!!.currentPosition
+    val sunPos = sunData!!.currentPosition
+
+    // Sensor-based rotation state
+    var isRotationEnabled by remember { mutableStateOf(false) }
+    var currentHeading by remember { mutableFloatStateOf(0f) }
+
+    // Sensor Logic
+    DisposableEffect(isRotationEnabled) {
+        if (!isRotationEnabled) return@DisposableEffect onDispose {}
+
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val rotVec = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val magnet = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+
+        var smoothedAz = 0f
+        val alpha = 0.15f
+        val rMat = FloatArray(9)
+        val iMat = FloatArray(9)
+        val orient = FloatArray(3)
+        val accelVals = FloatArray(3)
+        val magnetVals = FloatArray(3)
+        var haveAccel = false
+        var haveMag = false
+
+        val listener = object : SensorEventListener {
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+            override fun onSensorChanged(event: SensorEvent) {
+                when (event.sensor.type) {
+                    Sensor.TYPE_ROTATION_VECTOR -> {
+                        val R = FloatArray(9)
+                        val ori = FloatArray(3)
+                        SensorManager.getRotationMatrixFromVector(R, event.values)
+                        SensorManager.getOrientation(R, ori)
+                        updateAzimuth(Math.toDegrees(ori[0].toDouble()).toFloat())
+                    }
+                    Sensor.TYPE_ACCELEROMETER -> {
+                        for (i in event.values.indices) accelVals[i] += alpha * (event.values[i] - accelVals[i])
+                        haveAccel = true
+                        maybeUpdateFallback()
+                    }
+                    Sensor.TYPE_MAGNETIC_FIELD -> {
+                        for (i in event.values.indices) magnetVals[i] += alpha * (event.values[i] - magnetVals[i])
+                        haveMag = true
+                        maybeUpdateFallback()
+                    }
+                }
+            }
+
+            private fun maybeUpdateFallback() {
+                if (haveAccel && haveMag) {
+                    if (SensorManager.getRotationMatrix(rMat, iMat, accelVals, magnetVals)) {
+                        SensorManager.getOrientation(rMat, orient)
+                        updateAzimuth(Math.toDegrees(orient[0].toDouble()).toFloat())
+                    }
+                }
+            }
+
+            private fun updateAzimuth(rawDeg: Float) {
+                var deg = (rawDeg + 360f) % 360f
+
+                // Add display rotation
+                val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        context.display?.rotation ?: Surface.ROTATION_0
+                    } catch (e: Exception) {
+                        Surface.ROTATION_0
+                    }
+                } else {
+                    Surface.ROTATION_0
+                }
+
+                val rotationDegrees = when (rotation) {
+                    Surface.ROTATION_0 -> 0f
+                    Surface.ROTATION_90 -> 90f
+                    Surface.ROTATION_180 -> 180f
+                    Surface.ROTATION_270 -> 270f
+                    else -> 0f
+                }
+                deg = (deg + rotationDegrees + 360f) % 360f
+
+                var diff = deg - smoothedAz
+                if (abs(diff) > 180f) diff -= 360f * sign(diff)
+                smoothedAz = (smoothedAz + alpha * diff + 360f) % 360f
+                currentHeading = smoothedAz
+            }
+        }
+
+        if (rotVec != null) {
+            sensorManager.registerListener(listener, rotVec, SensorManager.SENSOR_DELAY_UI)
+        } else {
+            sensorManager.registerListener(listener, accel, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(listener, magnet, SensorManager.SENSOR_DELAY_UI)
+        }
+
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(Modifier.width(48.dp))
+            Text(
+                text = stringResource(R.string.compass_view),
+                style = MaterialTheme.typography.titleMedium
+            )
+            IconButton(onClick = { isRotationEnabled = !isRotationEnabled }) {
+                Icon(
+                    if (isRotationEnabled) Icons.Rounded.Explore else Icons.Rounded.ExploreOff,
+                    contentDescription = stringResource(R.string.enable_rotation),
+                    tint = if (isRotationEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .aspectRatio(1f)
+                .graphicsLayer {
+                    if (isRotationEnabled) {
+                        rotationZ = -currentHeading
+                    }
+                }
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    CircleShape
+                )
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)) {
+                val center = Offset(size.width / 2, size.height / 2)
+                val radius = size.width / 2
+
+                // Outer Circle
+                drawCircle(
+                    color = Color.Gray.copy(alpha = 0.1f),
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                // Markers for N, E, S, W
+                val markerLength = 10.dp.toPx()
+                for (angle in 0 until 360 step 90) {
+                    val rad = (angle - 90) * (PI / 180.0)
+                    val start = Offset(
+                        center.x + (radius - markerLength) * cos(rad).toFloat(),
+                        center.y + (radius - markerLength) * sin(rad).toFloat()
+                    )
+                    val end = Offset(
+                        center.x + radius * cos(rad).toFloat(),
+                        center.y + radius * sin(rad).toFloat()
+                    )
+                    drawLine(Color.Gray, start, end, strokeWidth = 2.dp.toPx())
+                }
+
+                // Sunrise Azimuth
+                drawAzimuthMarker(
+                    center, radius, sunToday.sunriseAzimuth,
+                    color = Color(0xFFFFB300),
+                    label = "Rise"
+                )
+
+                // Sunset Azimuth
+                drawAzimuthMarker(
+                    center, radius, sunToday.sunsetAzimuth,
+                    color = Color(0xFFFF7043),
+                    label = "Set"
+                )
+
+                // Current Sun Position
+                drawAzimuthPointer(
+                    center, radius * cos(sunPos.elevation * (PI / 180.0)).toFloat(), sunPos.azimuth,
+                    color = if (sunPos.elevation >= 0 ) Color(0xFFFFD700) else Color(0x00FFD700),
+                    iconRadius = 8.dp.toPx()
+                )
+
+                // Current Moon Position
+                drawAzimuthPointer(
+                    center, radius * cos(moonPos.elevation.toDouble() * (PI / 180.0)).toFloat(), moonPos.azimuth,
+                    color = if (moonPos.elevation >= 0 ) Color(0xFFB0C4DE) else Color(0x00B0C4DE),
+                    iconRadius = 6.dp.toPx()
+                )
+            }
+
+            // Central text for North
+            Text(
+                "N",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Red,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+            Text(
+                "S",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Gray,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+            Text(
+                "E",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Gray,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 4.dp)
+            )
+            Text(
+                "W",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.Gray,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Legend
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LegendItem(Color(0xFFFFB300), stringResource(R.string.sunrise))
+            LegendItem(Color(0xFFFF7043), stringResource(R.string.sunset))
+            LegendItem(Color(0xFFFFD700), stringResource(R.string.sun))
+            LegendItem(Color(0xFFB0C4DE), stringResource(R.string.moon))
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color, CircleShape)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAzimuthMarker(
+    center: Offset,
+    radius: Float,
+    azimuth: Double,
+    color: Color,
+    label: String
+) {
+    val rad = (azimuth - 90) * (PI / 180.0)
+    val pos = Offset(
+        center.x + radius * cos(rad).toFloat(),
+        center.y + radius * sin(rad).toFloat()
+    )
+
+    drawCircle(
+        color = color,
+        radius = 4.dp.toPx(),
+        center = pos
+    )
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAzimuthPointer(
+    center: Offset,
+    length: Float,
+    azimuth: Double,
+    color: Color,
+    iconRadius: Float
+) {
+    val rad = (azimuth - 90) * (PI / 180.0)
+    val pointerEnd = Offset(
+        center.x + length * cos(rad).toFloat(),
+        center.y + length * sin(rad).toFloat()
+    )
+
+    drawLine(
+        color = color,
+        start = center,
+        end = pointerEnd,
+        strokeWidth = 2.dp.toPx()
+    )
+
+    drawCircle(
+        color = color,
+        radius = iconRadius,
+        center = pointerEnd
+    )
+
+    // Add glow
+    drawCircle(
+        color = color.copy(alpha = 0.3f),
+        radius = iconRadius + 4.dp.toPx(),
+        center = pointerEnd
+    )
+}
+
+
+@Composable
+fun MoonDetailsSection(viewModel: WeatherViewModel) {
+    val moonData by viewModel.moonData.collectAsState()
+    if (moonData == null) return
+    val data = moonData!!
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    val phaseName = when (data.dailyEvents.phase.phaseType) {
+        PhaseType.NEW_MOON -> stringResource(R.string.moon_phase_new_moon)
+        PhaseType.WAXING_CRESCENT -> stringResource(R.string.moon_phase_waxing_crescent)
+        PhaseType.FIRST_QUARTER -> stringResource(R.string.moon_phase_first_quarter)
+        PhaseType.WAXING_GIBBOUS -> stringResource(R.string.moon_phase_waxing_gibbous)
+        PhaseType.FULL_MOON -> stringResource(R.string.moon_phase_full_moon)
+        PhaseType.WANING_GIBBOUS -> stringResource(R.string.moon_phase_waning_gibbous)
+        PhaseType.LAST_QUARTER -> stringResource(R.string.moon_phase_last_quarter)
+        PhaseType.WANING_CRESCENT -> stringResource(R.string.moon_phase_waning_crescent)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                RoundedCornerShape(24.dp)
+            )
+            .padding(16.dp)
+    ) {
+        // --- En-tête : Phase et Illumination ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(stringResource(R.string.moon_phase), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(phaseName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.illumination, String.format(Locale.getDefault(), "%.1f%%", data.dailyEvents.phase.fractionIlluminated * 100)), style = MaterialTheme.typography.bodyMedium)
+            }
+
+            // Icone dynamique de la lune
+            Canvas(modifier = Modifier.size(48.dp)) {
+                val r = size.width / 2
+                val center = Offset(r, r)
+
+                // 1. Fond : Partie sombre de la lune
+                drawCircle(
+                    color = Color(0xFF2C3E50).copy(alpha = 0.4f),
+                    radius = r,
+                    center = center
+                )
+
+                val fraction = data.dailyEvents.phase.fractionIlluminated.toFloat()
+                val isWaxing = data.dailyEvents.phase.ageDays < 14.765
+
+                if (fraction > 0.01f) {
+                    val path = Path()
+                    val x = r * (1f - 2f * fraction)
+                    val limbSweep = if (isWaxing) 180f else -180f
+                    val terminatorSweep = -limbSweep
+
+                    // 2. Dessiner la partie illuminée
+                    path.moveTo(center.x, center.y - r)
+
+                    // Arc du bord extérieur (Limb)
+                    path.arcTo(
+                        rect = androidx.compose.ui.geometry.Rect(center.x - r, center.y - r, center.x + r, center.y + r),
+                        startAngleDegrees = -90f,
+                        sweepAngleDegrees = limbSweep,
+                        forceMoveTo = false
+                    )
+
+                    // Arc du terminateur (la ligne entre jour et nuit sur la lune)
+                    path.arcTo(
+                        rect = androidx.compose.ui.geometry.Rect(center.x - abs(x), center.y - r, center.x + abs(x), center.y + r),
+                        startAngleDegrees = 90f,
+                        sweepAngleDegrees = if (x > 0) terminatorSweep else limbSweep,
+                        forceMoveTo = false
+                    )
+
+                    path.close()
+
+                    drawPath(
+                        path = path,
+                        color = Color(0xFFF5F5F5) // Blanc cassé / Argent
+                    )
+
+                    // Petit effet de lueur
+                    drawCircle(
+                        color = Color(0xFFF5F5F5).copy(alpha = 0.1f),
+                        radius = r + 2.dp.toPx(),
+                        center = center
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // --- Infos de Position ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ResponsiveText(stringResource(R.string.moonrise), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ResponsiveText(data.dailyEvents.moonrise?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                if (data.dailyEvents.moonriseAzimuth != null) {
+                    ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonriseAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(2f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ResponsiveText(
+                    text = String.format(Locale.getDefault(), "ELEV: %.2f°", data.currentPosition.elevation),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFF5C6BC0), // Indigo pour la lune
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
+                )
+                ResponsiveText(
+                    text = String.format(Locale.getDefault(), "AZIMUTH: %.4f°", data.currentPosition.azimuth),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF7986CB),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ResponsiveText(stringResource(R.string.moonset), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ResponsiveText(data.dailyEvents.moonset?.format(formatter) ?: "--:--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                if (data.dailyEvents.moonsetAzimuth != null) {
+                    ResponsiveText(String.format(Locale.getDefault(), "Az: %.1f°", data.dailyEvents.moonsetAzimuth), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = String.format(Locale.getDefault(), "Distance: %,d km", data.currentPosition.distanceKm.toInt()),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+    }
+}
+
+@Composable
+fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                    alpha = 0.6f
+                )
+            )
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedVisibility(
+            visibleState = visibleState,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.8f)
+                    .clickable(enabled = false) { },
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.vigilance_alerts_dept_code,
+                            vigilanceData.departmentCode
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(vigilanceData.alerts) { alert ->
+                            val alertColor = when (alert.maxColorId) {
+                                1 -> Color(0xFF4CAF50)
+                                2 -> Color(0xFFFFEB3B)
+                                3 -> Color(0xFFFF9800)
+                                4 -> Color(0xFFF44336)
+                                else -> MaterialTheme.colorScheme.outline
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        alertColor.copy(alpha = 0.1f),
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .padding(12.dp)
+                            ) {
+                                val isDark = isSystemInDarkTheme()
+                                val itemContentColor = if (!isDark) when (alert.maxColorId) {
+                                    2 -> Color(0xFF422B00) // Marron très foncé
+                                    3 -> Color(0xFFE65100) // Orange foncé
+                                    4 -> Color(0xFFB71C1C) // Rouge foncé
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                } else alertColor
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = getPhenomenonIcon(alert.phenomenonId),
+                                        contentDescription = null,
+                                        tint = itemContentColor,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = stringResource(mapPhenomenonIdToName(alert.phenomenonId)),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = itemContentColor
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                alert.steps.forEach { step ->
+                                    val start = OffsetDateTime.parse(step.beginTime)
+                                    val end = OffsetDateTime.parse(step.endTime)
+                                    val isToday = start.toLocalDate() == LocalDate.now()
+
+                                    val stepColor = when (step.colorId) {
+                                        1 -> Color(0xFF4CAF50)
+                                        2 -> Color(0xFFFFEB3B)
+                                        3 -> Color(0xFFFF9800)
+                                        4 -> Color(0xFFF44336)
+                                        else -> Color.Gray
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier
+                                            .size(10.dp)
+                                            .background(stepColor, CircleShape))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${start.format(formatter)} - ${end.format(formatter)} ${if (!isToday) "(${start.format(dayFormatter)})" else ""}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://vigilance.meteofrance.fr/fr".toUri())
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.official_website), style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.close))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ResponsiveText(
+    text: String,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontWeight: FontWeight? = null,
+    textAlign: TextAlign? = null,
+    maxLines: Int = 1,
+    targetTextSizeHeight: TextUnit = style.fontSize
+) {
+    var textSize by remember { mutableStateOf(targetTextSizeHeight) }
+    var readyToDraw by remember { mutableStateOf(false) }
+
+    Text(
+        text = text,
+        modifier = modifier,
+        color = color,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        fontSize = textSize,
+        style = style,
+        maxLines = maxLines,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        onTextLayout = { textLayoutResult ->
+            if (textLayoutResult.hasVisualOverflow) {
+                textSize = (textSize.value * 0.9f).sp
+            } else {
+                readyToDraw = true
+            }
+        }
+    )
 }
 
 /**
@@ -1080,4 +2365,18 @@ fun mapPhenomenonIdToName(id: String): Int = when (id) {
     "8" -> R.string.flooding
     "9" -> R.string.waves_submersion
     else -> R.string.unknown_phenomenon
+}
+
+fun getPhenomenonIcon(phenomenonId: String): ImageVector {
+    return when (phenomenonId) {
+        "1" -> Icons.Rounded.Air // Vent
+        "2" -> Icons.Rounded.Water // Pluie / Innondation
+        "3" -> Icons.Rounded.FlashOn // Orages
+        "4" -> Icons.Rounded.Flood // Crues
+        "5" -> Icons.Rounded.AcUnit // Neige
+        "6" -> Icons.Rounded.Thermostat // Chaud
+        "7" -> Icons.Rounded.SevereCold // Froid
+        "9" -> Icons.Rounded.Tsunami // Waves
+        else -> Icons.Rounded.Warning
+    }
 }

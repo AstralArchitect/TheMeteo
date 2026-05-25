@@ -6,13 +6,13 @@
     <string name="actual_situation">Situation Actuelle</string>
     <string name="open_satellite_view">Ouvrir les vues Satellites</string>
     <string name="loc_unavaiable">Localisation non disponible. Utilisation de Paris par défaut.</string>
-    <string name="temperature">Température (°C)</string>
-    <string name="apparent_temperature">Température Ressentie (°C)</string>
-    <string name="dew_point">Point de rosée (°C)</string>
+    <string name="temperature">Température</string>
+    <string name="apparent_temperature">Température Ressentie</string>
+    <string name="dew_point">Point de rosée</string>
     <string name="humidity">Humidité (%)</string>
     <string name="rain">Pluie (mm)</string>
     <string name="precipitation_prob">Probabilité de pluie (%)</string>
-    <string name="wind_speed">Vitesse du vent (km/h)</string>
+    <string name="wind_speed">Vitesse du vent</string>
     <string name="pressure">Pression (hPa)</string>
     <string name="cloud_cover">Couverture nuageuse (%)</string>
     <string name="forecast_for_the">Prévision pour le %s</string>
@@ -32,12 +32,12 @@
     <string name="add_city">Ajouter une ville</string>
     <string name="next_days_temperature_forecast">Prévisions pour les %1$d prochains jours</string>
     <string name="unknown_error">Erreur inconnue</string>
-    <string name="wind_speed_unit">Vitesse du vent km/h</string>
+    <string name="wind_speed_unit">Vitesse du vent</string>
     <string name="settings">Paramètres</string>
     <string name="chose_model">Choisissez le modèle pour les prévisions.</string>
     <string name="precipitation">Précipitations (mm)</string>
     <string name="hourly_forecast">Prévisions heure par heure</string>
-    <string name="a_temperature_unit">Temp. ress. °C</string>
+    <string name="a_temperature_unit">Temp. ress.</string>
     <string name="precipitation_unit">Précip. mm/h</string>
     <string name="daily_forecast">Prévision par Jour</string>
     <string name="_15_minutely_precipitation_forecast">Prévision de Précipitation</string>
@@ -46,8 +46,8 @@
     <string name="sun">Soleil</string>
     <string name="sun_infos">Infos Solaires</string>
     <string name="today_s_sunrise">Coucher du Soleil</string>
-    <string name="today">Ajd.</string>
-    <string name="tomorrow">Dm.</string>
+    <string name="today">Auj.</string>
+    <string name="tomorrow">Dem.</string>
     <string name="sunrise_no_value">Lever de Soleil</string>
     <string name="sunset_no_value">Coucher de Soleil</string>
     <string name="day_duration_no_value">Durée du jour</string>
@@ -86,13 +86,35 @@
     <string name="rainy">Pluvieux</string>
     <string name="currently">Maintenant</string>
     <string name="goes_to_current_weather_page">Page Météo Actuelle</string>
+    <string name="full_period_forecast">Prévision sur toute la période</string>
     <string name="app_focus">Affichage par défaut</string>
     <string name="curent_weather">Actuel</string>
+    <string name="compass_view">Vue Boussole</string>
+    <string name="compass_north">Nord</string>
+    <string name="moon">Lune</string>
+    <string name="enable_rotation">Utiliser la boussole</string>
+    <string name="rotation_not_available">Capteur boussole non disponible sur cet appareil</string>
+    <string name="aqi_index_title">Indice de Qualité de l\'Air (AQI)</string>
+    <string name="aqi_index_desc">Choisissez entre l\'indice européen (standard en Europe) ou l\'indice universel (standardisé par Google).</string>
+    <string name="european_index">Européen</string>
+    <string name="universal_index">Universel</string>
+
+    <string name="min">Min</string>
+    <string name="max">Max</string>
+    <string name="avg">Moy</string>
+
     <string name="daily_forecast_setting">Journalier</string>
     <string name="no_current_risks">Aucun risque actuellement</string>
     <string name="herbes">Herbes</string>
     <string name="trees">Arbres</string>
     <string name="weed">Herbacées</string>
+    <string name="pollen_components">Plantes en saison (composants)</string>
+    <string name="rain_expected">Précipitations prévues</string>
+    <string name="rain_at_format">Prévues à %s</string>
+    <string name="wind_unit_title">Unité de vitesse du vent</string>
+    <string name="wind_unit_desc">Choisissez entre Kilomètres par heure et Miles par heure.</string>
+    <string name="kph">km/h</string>
+    <string name="mph">mph</string>
 
     <!-- Formatted Strings -->
     <string name="vigilance_level_time_format">Niveau %1$d (%2$s) de %3$s à %4$s. Cliquez pour voir le détail.</string>
@@ -101,6 +123,23 @@
     <string name="uv_index_format">Indice UV : %d</string>
     <string name="pollen_index_format">Indice : %d</string>
     <string name="major_pollutant_format">Polluant majeur : %s</string>
+    <string name="sun_event_format" translatable="false">%1$s : %2$s</string>
+    <string name="sun_event_day_format" translatable="false">%1$s (%2$s) : %3$s</string>
+    <string name="sun_moon_details">Détails Soleil &amp; Lune</string>
+    <string name="sun_path">Trajectoire du Soleil</string>
+    <string name="solar_noon">Midi Solaire</string>
+    <string name="moon_phase">Phase de la Lune</string>
+    <string name="moon_phase_new_moon">Nouvelle Lune</string>
+    <string name="moon_phase_waxing_crescent">Premier Croissant</string>
+    <string name="moon_phase_first_quarter">Premier Quartier</string>
+    <string name="moon_phase_waxing_gibbous">Lune Gibbeuse Croissante</string>
+    <string name="moon_phase_full_moon">Pleine Lune</string>
+    <string name="moon_phase_waning_gibbous">Lune Gibbeuse Décroissante</string>
+    <string name="moon_phase_last_quarter">Dernier Quartier</string>
+    <string name="moon_phase_waning_crescent">Dernier Croissant</string>
+    <string name="moonrise">Lever de Lune</string>
+    <string name="moonset">Coucher de Lune</string>
+    <string name="illumination">Illumination : %1$s</string>
 
     <!-- Weather Sentence Building -->
     <string name="sky_sunny">Ciel ensoleillé</string>
@@ -141,7 +180,7 @@
     <string name="vigilance_alerts_dept_code">Vigilances (Dept. %1$s)</string>
     <string name="official_website">Site Officiel</string>
     <string name="custom_location">Position Personnalisée</string>
-    <string name="pick_this_location">Chosir ce lieu</string>
+    <string name="pick_this_location">Choisir ce lieu</string>
     <string name="violent_wind">VENT VIOLENT</string>
     <string name="rain_flood">PLUIE-INNONDATION</string>
     <string name="thunderstorms_phenomenon">ORAGES</string>
@@ -158,8 +197,8 @@
     <string name="animated_icons_title">Icônes animées</string>
     <string name="animated_icons_desc">Animer les icônes météo, désactivé lorsque l\'économiseur de batterie est activé</string>
     <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
-    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du \"Meilleur Modèle\"</string>
-    <string name="meilleur_mod_le_par_d_faut">Meilleur Modèle (par défaut)</string>
+    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du modèle \"Auto\"</string>
+    <string name="meilleur_mod_le_par_d_faut">Auto (par défaut)</string>
     <string name="major_polluant">Polluant Majeur: %1$s</string>
     <string name="gusts">Rafales</string>
     <string name="forecast_type_title">Type de prévision</string>
@@ -171,4 +210,52 @@
     <string name="ensemble_warning_message">Le mode ensemble fournit des informations plus détaillées mais consomme plus de données et de batterie. Il peut également être plus complexe à interpréter car il montre l\'éventail des possibles (ruban d\'incertitude).</string>
     <string name="ensemble_warning_confirm">J\'ai compris</string>
     <string name="ensemble_warning_cancel">Annuler</string>
+    <string name="remerciement_1">Un grand merci à Google Maps, Open-Meteo, RainViewer, EUMETSAT et Basmilius pour leurs travaux exceptionnels et la mise à disposition de ces ressources précieuses, sans qui cette application n\'aurait pas pu voir le jour.</string>
+    <string name="no_precipitations">Pas de précipitations prévues</string>
+    <string name="remerciement_2">Et une grande gratitude envers le travail exceptionnel de la communauté Open Source. Un immense merci à Open-Meteo et Basmilius pour le partage de leurs ressources et de leur savoir-faire.</string>
+    <string name="credits_sources_legal_mentions">Sources, Crédits &amp; Mentions Légales</string>
+    <string name="temperature_unit_title">Unité de Température</string>
+    <string name="temperature_unit_desc">Choisissez entre Celsius, Farenheit et Kelvin.</string>
+    <string name="app_focus_desc">Choisissez quelle page s\'ouvre à l\'ouverture de l\'app.</string>
+    <string name="weather_alert">VIGILANCE JAUNE</string>
+    <string name="weather_warning">VIGILANCE ORANGE</string>
+    <string name="severe_weather_warning">VIGILANCE ROUGE</string>
+    <string name="firebase_crashlytics_title">Firebase Crashlytics</string>
+    <string name="firebase_crashlytics_desc">Partager des rapports d\'erreur anonymes pour nous aider à corriger les bugs et améliorer l\'application.</string>
+    <string name="firebase_crashlytics_dialog_title">Activer Crashlytics ?</string>
+    <string name="firebase_crashlytics_dialog_message">En activant Firebase Crashlytics, vous acceptez d\'envoyer des données techniques anonymes (modèle d\'appareil, trace d\'erreur) à Google en cas de plantage de l\'application. Cela nous aide à identifier et corriger les problèmes plus rapidement. Aucune donnée personnelle n\'est collectée.</string>
+    <string name="gcu_title">Conditions Générales d\'Utilisation</string>
+    <string name="gcu_content_loading">Chargement des CGU…</string>
+    <string name="gcu_content_error">Erreur lors du chargement des CGU. Veuillez vérifier votre connexion internet et réessayer.</string>
+    <string name="accept">Accepter</string>
+    <string name="decline">Refuser</string>
+    <string name="retry">Réessayer</string>
+    <string name="gcu_scroll_to_bottom">Veuillez faire défiler jusqu\'en bas pour accepter</string>
+    <string name="policy_update_title">Mise à jour des conditions</string>
+    <string name="policy_update_message">Nos conditions d\'utilisation et/ou notre politique de confidentialité ont été mises à jour. Veuillez les consulter.</string>
+    <string name="grasses">Herbes</string>
+    <string name="pollen_risks">Risques de Pollen</string>
+    <string name="widget_settings">Paramètres du Widget</string>
+    <string name="widget_transparency">Transparence</string>
+    <string name="widget_text_size">Taille du texte</string>
+    <string name="text_size_small">Petit</string>
+    <string name="air_quality">Qualité de l\'Air</string>
+    <string name="environmental_details">Détails Environnementaux</string>
+    <string name="air_components">Composants de l\'air</string>
+    <string name="low">Faible</string>
+    <string name="moderate">Modéré</string>
+    <string name="high">Fort</string>
+    <string name="very_high">Très fort</string>
+    <string name="extreme">Extrême</string>
+    <string name="error_gps_unavailable">Position GPS indisponible. Veuillez vérifier les permissions de localisation.</string>
+    <string name="background_location_rationale_title">Mises à jour des widgets</string>
+    <string name="background_location_rationale_message">Pour maintenir la météo à jour sur vos widgets, l\'application a besoin de l\'autorisation d\'accéder à votre position même lorsqu\'elle n\'est pas utilisée. Veuillez sélectionner \"Toujours autoriser\" dans l\'écran suivant.</string>
+    <string name="background_location_button">Activer en arrière-plan</string>
+
+    <!-- Theme Settings -->
+    <string name="theme_mode_title">Mode du Thème</string>
+    <string name="theme_mode_desc">Choisissez comment le thème de l\'application est appliqué.</string>
+    <string name="theme_fixed">Fixe</string>
+    <string name="theme_system">Système</string>
+    <string name="theme_weather">Météo</string>
 </resources>

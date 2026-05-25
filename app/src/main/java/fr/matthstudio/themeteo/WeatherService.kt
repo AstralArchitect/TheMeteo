@@ -1,37 +1,47 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo
 
-import android.os.Parcelable
-import android.util.Log
+// Commenter lorsqu'on utilise pas le logging
+
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.compose.runtime.traceEventEnd
+import android.os.Parcelable
+import android.util.Log
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
-import fr.matthstudio.themeteo.utilClasses.AirQualityLocation
-import fr.matthstudio.themeteo.utilClasses.AirQualityRequest
+import fr.matthstudio.themeteo.telemetry.TelemetryManager
+import fr.matthstudio.themeteo.utilClasses.AirQualityForecastResponse
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
+import fr.matthstudio.themeteo.utilClasses.AirQualityLocation
+import fr.matthstudio.themeteo.utilClasses.AirQualityPeriod
+import fr.matthstudio.themeteo.utilClasses.AirQualityRequest
 import fr.matthstudio.themeteo.utilClasses.AlertStep
 import fr.matthstudio.themeteo.utilClasses.GovernmentInvertedGeocodingAPIResponse
 import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.VigilanceMapResponse
-import fr.matthstudio.themeteo.telemetry.TelemetryManager
-import io.ktor.client.*
-import io.ktor.client.call.*
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.contentnegotiation.*
-
-// Commenter lorsqu'on utilise pas le logging
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.logging.Logger
-
-import io.ktor.client.request.*
+import io.ktor.client.plugins.logging.Logging
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.contentType
-import io.ktor.serialization.kotlinx.json.*
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -46,14 +56,12 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Collections.emptyList
-import java.util.Locale as JavaLocale
 import kotlin.math.max
 import kotlin.math.roundToInt
-import kotlin.text.format
+import java.util.Locale as JavaLocale
 
 // --- DATA CLASSES (inchangées) ---
 @Serializable
-
 data class PrecipitationData(
     val precipitation: Double?, // en mm
     val precipitationProbability: Int?, // en %
@@ -64,10 +72,10 @@ data class PrecipitationData(
 
 @Serializable
 data class SkyInfoData(
-    val cloudcoverTotal: Int, // en %
-    val cloudcoverLow: Int,
-    val cloudcoverMid: Int,
-    val cloudcoverHigh: Int,
+    val cloudcoverTotal: Int?, // en %
+    val cloudcoverLow: Int?,
+    val cloudcoverMid: Int?,
+    val cloudcoverHigh: Int?,
     val shortwaveRadiation: Double?, // en W/m^2
     val directRadiation: Double?, // en W/m^2
     val diffuseRadiation: Double?, // en W/m^2
@@ -93,10 +101,10 @@ data class AllHourlyVarsReading(
     val precipitationData: PrecipitationData,
     val skyInfo: SkyInfoData,
     val wind: WindData,
-    val pressure: Int,
-    val humidity: Int,
+    val pressure: Int?,
+    val humidity: Int?,
     val dewpoint: Double?,
-    val wmo: Int,
+    val wmo: Int?,
     val ensembleStats: Map<String, EnsembleStat>? = null,
     val wmoEnsemble: WmoEnsembleStat? = null
 )
@@ -111,7 +119,7 @@ data class DailyReading(
     val precipitation: Double?,
     val maxWind: WindData,
     val maxUvIndex: Int?,
-    val wmo: Int,
+    val wmo: Int?,
     val sunset: String,
     val sunrise: String,
     val wmoEnsemble: WmoEnsembleStat? = null
@@ -147,6 +155,12 @@ data class GeocodingResult(
 fun Double?.nanToNull(): Double? {
     return if (this == null || this.isNaN()) null else this
 }
+
+@Serializable
+data class PolicyUpdateInfo(
+    @SerialName("last_gcu_update") val lastGcuUpdate: String,
+    @SerialName("last_privacy_policy_update") val lastPrivacyPolicyUpdate: String
+)
 
 class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     // On définit la config une seule fois ici
@@ -188,6 +202,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 parameter("format", "json")
             }.body<GeocodingResponse>().results
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("Geocoder", "Erreur de géocodage : ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -248,6 +263,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     AirQualityRequest(
                         location = AirQualityLocation(latitude, longitude),
                         extraComputations = listOf(
+                            "LOCAL_AQI",
                             "HEALTH_RECOMMENDATIONS",
                             "DOMINANT_POLLUTANT_CONCENTRATION",
                             "POLLUTANT_CONCENTRATION"
@@ -268,7 +284,81 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("AirQuality", "Exception lors de la récupération de la qualité de l'air : ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
+    }
+
+    suspend fun getAirQualityForecast(latitude: Double, longitude: Double, context: Context): AirQualityForecastResponse? {
+        val url = "https://airquality.googleapis.com/v1/forecast:lookup"
+        val sha1 = getSigningSha1(context) ?: return null
+        val packageName = context.packageName
+
+        return try {
+            val response = client.post(url) {
+                parameter("key", BuildConfig.MAPS_API_KEY)
+                header("X-Android-Package", packageName)
+                header("X-Android-Cert", sha1)
+                setBody(
+                    AirQualityRequest(
+                        location = AirQualityLocation(latitude, longitude),
+                        extraComputations = listOf(
+                            "LOCAL_AQI",
+                            "HEALTH_RECOMMENDATIONS",
+                            "DOMINANT_POLLUTANT_CONCENTRATION",
+                            "POLLUTANT_CONCENTRATION"
+                        ),
+                        period = AirQualityPeriod(
+                            startTime = LocalDateTime.now().toString() + "Z",
+                            endTime = LocalDateTime.now().plusDays(3).toString() + "Z"
+                        ),
+                        pageSize = 72,
+                        languageCode = java.util.Locale.getDefault().language
+                    )
+                )
+                contentType(io.ktor.http.ContentType.Application.Json)
+            }
+
+            if (response.status.value == 200) {
+                response.body<AirQualityForecastResponse>()
+            } else {
+                val errorBody = response.body<String>()
+                Log.e("AirQuality", "Erreur API Google Forecast : ${response.status} - $errorBody")
+                null
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("AirQuality", "Exception lors de la récupération des prévisions d'air : ${e.message}")
+            null
+        }
+    }
+
+    suspend fun getCityNameFromCoords(latitude: Double, longitude: Double, context: Context): String? {
+        val url = "https://maps.googleapis.com/maps/api/geocode/json"
+        val sha1 = getSigningSha1(context) ?: return null
+        return try {
+            val response = client.get(url) {
+                parameter("latlng", "$latitude,$longitude")
+                parameter("key", BuildConfig.MAPS_API_KEY)
+                parameter("language", java.util.Locale.getDefault().language)
+                parameter("result_type", "locality|sublocality|administrative_area_level_1|administrative_area_level_2")
+                header("X-Android-Package", context.packageName)
+                header("X-Android-Cert", sha1)
+            }
+            if (response.status.value == 200) {
+                val geocodingResponse = response.body<GoogleGeocodingResponse>()
+                if (geocodingResponse.status == "OK" && geocodingResponse.results.isNotEmpty()) {
+                    val components = geocodingResponse.results.first().addressComponents
+                    components.find { "locality" in it.types }?.longName
+                        ?: components.find { "sublocality" in it.types }?.longName
+                        ?: components.find { "administrative_area_level_2" in it.types }?.longName
+                        ?: components.find { "administrative_area_level_1" in it.types }?.longName
+                } else null
+            } else null
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
             telemetryManager?.logException(e)
             null
         }
@@ -309,6 +399,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("PollenAPI", "Exception lors de la récupération des données pollen : ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -370,6 +461,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             try {
                                 OffsetDateTime.parse(it.endTime).isAfter(now)
                             } catch (e: Exception) {
+            if (e is CancellationException) throw e
                                 true
                             }
                         }.sortedBy { it.beginTime }
@@ -400,6 +492,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherService", "Exception lors de la récupération de la carte vigilance", e)
             telemetryManager?.logException(e)
             null
@@ -434,6 +527,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     // Si la liste est vide, la boucle continue et réduit la précision
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e("WeatherService", "Erreur Geocoding à la précision $precision : ${e.message}")
                 telemetryManager?.logException(e)
                 // En cas d'erreur réseau, on peut choisir d'arrêter ou de continuer
@@ -493,6 +587,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("getCurrentWeather", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
             telemetryManager?.logException(e)
             return null
@@ -543,6 +638,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("getForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -633,10 +729,10 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         windDirection = windDir
                     ),
                     skyInfo = SkyInfoData(
-                        cloudcoverTotal = hourStats["cloudcover"]?.avg?.toInt() ?: 0,
-                        cloudcoverLow = 0,
-                        cloudcoverMid = 0,
-                        cloudcoverHigh = 0,
+                        cloudcoverTotal = hourStats["cloudcover"]?.avg?.toInt(),
+                        cloudcoverLow = null,
+                        cloudcoverMid = null,
+                        cloudcoverHigh = null,
                         shortwaveRadiation = shortwaveRadiation,
                         directRadiation = directRadiation,
                         diffuseRadiation = diffuseRadiation,
@@ -644,10 +740,10 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         uvIndex = null,
                         visibility = hourStats["visibility"]?.avg?.toInt()
                     ),
-                    pressure = hourStats["pressure_msl"]?.avg?.toInt() ?: 0,
-                    humidity = hourStats["relative_humidity_2m"]?.avg?.toInt() ?: 0,
+                    pressure = hourStats["pressure_msl"]?.avg?.toInt(),
+                    humidity = hourStats["relative_humidity_2m"]?.avg?.toInt(),
                     dewpoint = hourStats["dewpoint_2m"]?.avg,
-                    wmo = wmoStats?.getOrNull(index)?.worst ?: 0, 
+                    wmo = wmoStats?.getOrNull(index)?.worst,
                     ensembleStats = hourStats,
                     wmoEnsemble = wmoStats?.getOrNull(index)
                 )
@@ -662,18 +758,22 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     )
                 } else null
 
+                val dailyPrecip = if (hourlyList.any { it.precipitationData.precipitation != null }) {
+                    hourlyList.mapNotNull { it.precipitationData.precipitation }.sum()
+                } else null
+
                 DailyReading(
                     date = date,
                     maxTemperature = hourlyList.mapNotNull { it.temperature }.maxOrNull(),
                     minTemperature = hourlyList.mapNotNull { it.temperature }.minOrNull(),
-                    precipitation = hourlyList.mapNotNull { it.precipitationData.precipitation }.sum(),
+                    precipitation = dailyPrecip,
                     maxWind = WindData(
                         windspeed = hourlyList.mapNotNull { it.wind.windspeed }.maxOrNull(),
                         windGusts = null,
-                        windDirection = hourlyList.firstOrNull { it.wind.windspeed == hourlyList.mapNotNull { h -> h.wind.windspeed }.maxOrNull() }?.wind?.windDirection ?: 0.0
+                        windDirection = hourlyList.firstOrNull { it.wind.windspeed == hourlyList.mapNotNull { h -> h.wind.windspeed }.maxOrNull() }?.wind?.windDirection
                     ),
                     maxUvIndex = null,
-                    wmo = dailyWmoEnsemble?.worst ?: 0,
+                    wmo = dailyWmoEnsemble?.worst,
                     sunset = "",
                     sunrise = "",
                     wmoEnsemble = dailyWmoEnsemble
@@ -683,6 +783,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             Pair(mergedHourly, dailyReadings)
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("getEnsembleForecast", "Error fetching ensemble forecast: ${e.message}")
             telemetryManager?.logException(e)
             null
@@ -751,15 +852,15 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         precipitationData = PrecipitationData(
                             precipitation = (precip?.getOrNull(i) as? Double).nanToNull(),
                             precipitationProbability = (precipProb?.getOrNull(i) as? Double).safeToInt(),
-                            rain = ((rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0)).nanToNull(),
+                            rain = if (rain?.getOrNull(i) == null && showers?.getOrNull(i) == null) null else ((rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0)).nanToNull(),
                             snowfall = (snowfall?.getOrNull(i) as? Double).nanToNull(),
                             snowDepth = ((snowDepth?.getOrNull(i) as? Double)?.times(100)).safeToInt()
                         ),
                         skyInfo = SkyInfoData(
-                            cloudcoverTotal = (cloud?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                            cloudcoverLow = (cloudLow?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                            cloudcoverMid = (cloudMid?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                            cloudcoverHigh = (cloudHigh?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                            cloudcoverTotal = (cloud?.getOrNull(i) as? Double).safeToInt(),
+                            cloudcoverLow = (cloudLow?.getOrNull(i) as? Double).safeToInt(),
+                            cloudcoverMid = (cloudMid?.getOrNull(i) as? Double).safeToInt(),
+                            cloudcoverHigh = (cloudHigh?.getOrNull(i) as? Double).safeToInt(),
                             shortwaveRadiation = (ghi?.getOrNull(i) as? Double).nanToNull(),
                             directRadiation = (dsi?.getOrNull(i) as? Double).nanToNull(),
                             diffuseRadiation = (dhi?.getOrNull(i) as? Double).nanToNull(),
@@ -772,17 +873,19 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             windGusts = (wgust?.getOrNull(i) as? Double).nanToNull(),
                             windDirection = (windDir?.getOrNull(i) as? Double).nanToNull()
                         ),
-                        pressure = (pressure?.getOrNull(i) as? Double).safeToInt() ?: 0,
-                        humidity = (humidity?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                        pressure = (pressure?.getOrNull(i) as? Double).safeToInt(),
+                        humidity = (humidity?.getOrNull(i) as? Double).safeToInt(),
                         dewpoint = (dewpoint?.getOrNull(i) as? Double).nanToNull(),
-                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0
+                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt()
                     )
                 } catch (e: Exception) {
+            if (e is CancellationException) throw e
                     telemetryManager?.logException(e)
                     null
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             telemetryManager?.logException(e)
             return null
         }
@@ -823,16 +926,18 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             windDirection = (windDirection?.getOrNull(i) as? Double).nanToNull()
                         ),
                         maxUvIndex = (uvIndex?.getOrNull(i) as? Double).safeToInt(),
-                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt() ?: 0,
+                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt(),
                         sunset = sunset?.getOrNull(i) as? String ?: "",
                         sunrise = sunrise?.getOrNull(i) as? String ?: ""
                     )
                 } catch (e: Exception) {
+            if (e is CancellationException) throw e
                     telemetryManager?.logException(e)
                     null
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données journalières", e)
             telemetryManager?.logException(e)
             return null
@@ -852,6 +957,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
             return result
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("WeatherServiceParser", "Erreur lors du parsing des données actuelles", e)
             telemetryManager?.logException(e)
             return null
@@ -860,5 +966,28 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     fun close() {
         client.close()
+    }
+
+    suspend fun getPolicyUpdateInfo(): PolicyUpdateInfo? {
+        return try {
+            val responseText = client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").bodyAsText()
+            jsonParser.decodeFromString<PolicyUpdateInfo>(responseText)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Error fetching policy updates: ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
+    }
+
+    suspend fun getTermsOfUse(): String? {
+        return try {
+            client.get("https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html").body<String>()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Error fetching terms of use: ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
     }
 }

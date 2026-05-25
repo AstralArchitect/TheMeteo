@@ -1,12 +1,20 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo.utilsActivities
-
 
 import android.content.Intent
 import android.os.Bundle
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,73 +22,151 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import fr.matthstudio.themeteo.BuildConfig
+import fr.matthstudio.themeteo.LocationIdentifier
+import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
+import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-
 
 class LauncherActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val container = (application as TheMeteo).container
-        val userSettings = container.userSettingsRepository
-        val telemetryManager = container.telemetryManager
+        val app = (application as TheMeteo)
+        val container = app.container
+        val userSettingsRepo = container.userSettingsRepository
+        val weatherCache = app.weatherCache
 
-        if (BuildConfig.FIREBASE_ENABLED) {
-            val consent = runBlocking { userSettings.firebaseConsent.first() }
-            if (consent == "PENDING") {
+        lifecycleScope.launch {
+            val isGcuAccepted = userSettingsRepo.gcuAccepted.first()
+            if (!isGcuAccepted) {
+                // Si c'est la première fois que l'utilisateur ouvre l'application, alors on met la position à Paris et on met Paris par défaut temporairement
+                val location = LocationIdentifier.Saved(
+                    SavedLocation(
+                        "Paris",
+                        48.8566,
+                        2.3,
+                        "France"
+                    )
+                )
+                weatherCache.addLocation(location.location)
+                weatherCache.setCurrentLocation(location)
+                userSettingsRepo.updateDefaultLocation(location)
+                
                 setContent {
-                    ConsentDialog(
-                        onAccept = {
-                            lifecycleScope.launch {
-                                userSettings.updateFirebaseConsent("GRANTED")
-                                telemetryManager.setConsentGranted(true)
-                                navigateToNextScreen()
-                            }
-                        },
-                        onDecline = {
-                            lifecycleScope.launch {
-                                userSettings.updateFirebaseConsent("DENIED")
-                                telemetryManager.setConsentGranted(false)
-                                navigateToNextScreen()
+                    val settings by weatherCache.userSettings.collectAsState()
+                    val currentWmo = remember { mutableStateOf<Int?>(null) }
+
+                    LaunchedEffect(weatherCache.selectedLocation) {
+                        weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                            currentWmo.value = when (state) {
+                                is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                                is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                                else -> null
                             }
                         }
-                    )
+                    }
+
+                    TheMeteoTheme(
+                        themeMode = settings.themeMode,
+                        currentWmoCode = currentWmo.value,
+                        isNight = false
+                    ) {
+                        GcuDialog(
+                            onAccept = {
+                                lifecycleScope.launch {
+                                    userSettingsRepo.updateGcuAccepted(true)
+                                    checkFirebaseConsent(userSettingsRepo)
+                                }
+                            },
+                            onDecline = {
+                                finish()
+                            }
+                        )
+                    }
                 }
-                return
-            } else if (consent == "GRANTED") {
-                telemetryManager.setConsentGranted(true)
+            } else {
+                checkFirebaseConsent(userSettingsRepo)
             }
         }
+    }
 
+    private suspend fun checkFirebaseConsent(userSettingsRepo: UserSettingsRepository) {
+        val weatherCache = (application as TheMeteo).weatherCache
+        if (BuildConfig.FIREBASE_ENABLED) {
+            val consent = userSettingsRepo.firebaseConsent.first()
+            if (consent == "PENDING") {
+                setContent {
+                    val settings by weatherCache.userSettings.collectAsState()
+                    val currentWmo = remember { mutableStateOf<Int?>(null) }
+
+                    LaunchedEffect(weatherCache.selectedLocation) {
+                        weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                            currentWmo.value = when (state) {
+                                is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                                is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                                else -> null
+                            }
+                        }
+                    }
+
+                    TheMeteoTheme(
+                        themeMode = settings.themeMode,
+                        currentWmoCode = currentWmo.value,
+                        isNight = false
+                    ) {
+                        ConsentDialog(
+                            onAccept = {
+                                lifecycleScope.launch {
+                                    userSettingsRepo.updateFirebaseConsent("GRANTED")
+                                    navigateToNextScreen()
+                                }
+                            },
+                            onDecline = {
+                                lifecycleScope.launch {
+                                    userSettingsRepo.updateFirebaseConsent("DENIED")
+                                    navigateToNextScreen()
+                                }
+                            }
+                        )
+                    }
+                }
+                return
+            }
+        }
         navigateToNextScreen()
     }
 
     private fun navigateToNextScreen() {
-        val userSettings = (this.application as TheMeteo).container.userSettingsRepository
-        val currentScreen = runBlocking { userSettings.defaultScreen.first() }
+        val userSettingsRepo = (this.application as TheMeteo).container.userSettingsRepository
+        val currentScreen = runBlocking { userSettingsRepo.defaultScreen.first() }
             ?: fr.matthstudio.themeteo.DefaultScreen.FORECAST_MAIN
+            
         val intent = if (currentScreen == fr.matthstudio.themeteo.DefaultScreen.DAY_CHOSER) {
             Intent(this, DayChooserActivity::class.java).apply {
                 putExtra("LAUNCHER", true)
@@ -179,4 +265,117 @@ fun ServiceSection(title: String, description: String) {
         Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(description, fontSize = 14.sp)
     }
+}
+
+@Composable
+fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
+    var isLoading by remember { mutableStateOf(true) }
+    var hasError by remember { mutableStateOf(false) }
+    var hasScrolledToBottom by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    val gcuUrl = "https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html"
+
+    AlertDialog(
+        onDismissRequest = { },
+        title = { Text(stringResource(R.string.gcu_title)) },
+        text = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp)
+                ) {
+                    AndroidView(
+                        factory = { context ->
+                            WebView(context).apply {
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageStarted(
+                                        view: WebView?,
+                                        url: String?,
+                                        favicon: android.graphics.Bitmap?
+                                    ) {
+                                        super.onPageStarted(view, url, favicon)
+                                        isLoading = true
+                                        hasError = false
+                                        hasScrolledToBottom = false
+                                    }
+
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        isLoading = false
+                                    }
+
+                                    override fun onReceivedError(
+                                        view: WebView?,
+                                        request: android.webkit.WebResourceRequest?,
+                                        error: android.webkit.WebResourceError?
+                                    ) {
+                                        super.onReceivedError(view, request, error)
+                                        isLoading = false
+                                        hasError = true
+                                    }
+                                }
+                                setOnScrollChangeListener { v, scrollX, scrollY, oldScrollX, oldScrollY ->
+                                    if (!canScrollVertically(1)) {
+                                        hasScrolledToBottom = true
+                                    }
+                                }
+                                loadUrl(gcuUrl)
+                            }
+                        },
+                        update = { webView ->
+                            if (refreshTrigger > 0) {
+                                webView.loadUrl(gcuUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+
+                    if (hasError) {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                stringResource(R.string.gcu_content_error),
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            Button(onClick = { refreshTrigger++ }) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        }
+                    }
+                }
+
+                if (!hasScrolledToBottom && !isLoading && !hasError) {
+                    Text(
+                        text = stringResource(R.string.gcu_scroll_to_bottom),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAccept,
+                enabled = !isLoading && !hasError && hasScrolledToBottom
+            ) {
+                Text(stringResource(R.string.accept))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDecline) {
+                Text(stringResource(R.string.decline))
+            }
+        }
+    )
 }

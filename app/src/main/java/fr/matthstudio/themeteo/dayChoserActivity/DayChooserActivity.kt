@@ -1,12 +1,16 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo.dayChoserActivity
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,9 +30,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -51,7 +57,6 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -59,126 +64,29 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import coil.compose.AsyncImage
-import android.view.MotionEvent
-import android.view.ViewGroup
-import android.webkit.WebView
 import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
+import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.forecastMainActivity.AddLocationDialog
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
-import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivityScreen
 import fr.matthstudio.themeteo.forecastMainActivity.LocationManagementSheet
+import fr.matthstudio.themeteo.forecastMainActivity.LottieWeatherIcon
+import fr.matthstudio.themeteo.forecastMainActivity.ResponsiveText
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
+import fr.matthstudio.themeteo.forecastMainActivity.getLottieIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
-import fr.matthstudio.themeteo.data.WeatherModelRegistry
-import fr.matthstudio.themeteo.dayGraphsActivity.toSmartString
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
-import kotlin.math.roundToInt
-
-fun getWeatherIconPath(word: SimpleWeatherWord): String {
-    val folder = "file:///android_asset/icons/weather/"
-    return folder + when (word) {
-        SimpleWeatherWord.SUNNY -> "clear-day.svg"
-        SimpleWeatherWord.SUNNY_CLOUDY -> "cloudy-1-day.svg"
-        SimpleWeatherWord.CLOUDY -> "cloudy.svg"
-        SimpleWeatherWord.FOGGY -> "fog.svg"
-        SimpleWeatherWord.HAZE -> "haze.svg"
-        SimpleWeatherWord.DUST -> "dust.svg"
-        SimpleWeatherWord.DRIZZLY -> "rainy-1.svg"
-        SimpleWeatherWord.RAINY1 -> "rainy-2.svg"
-        SimpleWeatherWord.RAINY2 -> "rainy-3.svg"
-        SimpleWeatherWord.HAIL -> "hail.svg"
-        SimpleWeatherWord.SNOWY1 -> "snowy-1.svg"
-        SimpleWeatherWord.SNOWY2 -> "snowy-2.svg"
-        SimpleWeatherWord.SNOWY3 -> "snowy-3.svg"
-        SimpleWeatherWord.SNOWY_MIX -> "rain-and-snow-mix.svg"
-        SimpleWeatherWord.STORMY -> "thunderstorms.svg"
-    }
-}
-
-@Composable
-fun AnimatedSvgIcon(iconPath: String, modifier: Modifier = Modifier) {
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
-    
-    // Filtre CSS pour adapter les couleurs au thème clair
-    val filterStyle = if (!isDark) {
-        "filter: brightness(0.9) saturate(1.1) drop-shadow(0px 0px 1px rgba(0,0,0,0.2));"
-    } else ""
-
-    Box(modifier = modifier) {
-        AndroidView(
-            factory = { context ->
-                object : WebView(context) {
-                    override fun onTouchEvent(event: MotionEvent): Boolean {
-                        return false
-                    }
-                }.apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    settings.javaScriptEnabled = true
-                    setBackgroundColor(0)
-                    isVerticalScrollBarEnabled = false
-                    isHorizontalScrollBarEnabled = false
-                    settings.loadWithOverviewMode = false
-                    settings.useWideViewPort = false
-                    
-                    // Désactiver TOUTES les interactions pour laisser passer le clic au parent
-                    isEnabled = false
-                    isClickable = false
-                    isLongClickable = false
-                    isFocusable = false
-                    isFocusableInTouchMode = false
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-            update = { webView ->
-                val html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                        <style>
-                            * { 
-                                pointer-events: none !important; 
-                                -webkit-tap-highlight-color: transparent;
-                                user-select: none;
-                            }
-                            html, body { 
-                                margin: 0; padding: 0; width: 100%; height: 100%; 
-                                overflow: hidden; background: transparent; 
-                                display: flex; align-items: center; justify-content: center;
-                            }
-                            img { 
-                                width: 100%; height: 100%; 
-                                object-fit: contain; 
-                                $filterStyle
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <img src="$iconPath">
-                    </body>
-                    </html>
-                """.trimIndent()
-                webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
-            }
-        )
-        // Pas besoin d'overlay si la WebView est bien inerte
-    }
-}
 
 class DayChooserActivity : ComponentActivity() {
 
@@ -194,11 +102,22 @@ class DayChooserActivity : ComponentActivity() {
         weatherViewModel = WeatherViewModel(app.weatherCache, app.container.telemetryManager)
         enableEdgeToEdge()
         setContent {
-            TheMeteoTheme {
+            val userSettings by weatherViewModel.userSettings.collectAsState()
+            val isNight by weatherViewModel.isNight.collectAsState()
+            val currentWmo by weatherViewModel.currentWmo.collectAsState()
+
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo,
+                isNight = isNight
+            ) {
                 Surface(
                     modifier = Modifier
                         .fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = if (!isSystemInDarkTheme())
+                        MaterialTheme.colorScheme.surfaceVariant
+                    else
+                        MaterialTheme.colorScheme.background
                 ) {
                     DayChooser(weatherViewModel = weatherViewModel, isLauncherActivity)
                 }
@@ -233,17 +152,17 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         val savedLocations by weatherViewModel.savedLocations.collectAsState()
         val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
         val currentWeathers by weatherViewModel.currentWeather.collectAsState()
-        val defaultLocation = weatherViewModel.defaultLocation
         val isPermissionGranted by weatherViewModel.isLocationPermissionGranted.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
             selectedLocation = selectedLocation,
             currentWeathers = currentWeathers,
-            defaultLocation = defaultLocation,
+            userSettings = weatherViewModel.userSettings.collectAsState().value,
             isPermissionGranted = isPermissionGranted,
             onSelectLocation = { weatherViewModel.selectLocation(it) },
             onRemoveLocation = { weatherViewModel.removeLocation(it) },
+            onRenameLocation = { location, newName -> weatherViewModel.renameLocation(location, newName) },
             onReorderLocations = { weatherViewModel.reorderLocations(it) },
             onSetDefaultLocation = { weatherViewModel.setDefaultLocation(it) },
             onDismiss = { showLocationSheet = false },
@@ -262,6 +181,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         AddLocationDialog(
             searchResults = searchResults,
             userLocation = userLocation,
+            weatherService = weatherViewModel.weatherService,
             onSearch = { weatherViewModel.searchCity(it) },
             onLocationSelected = { weatherViewModel.selectLocation(it) },
             onAddLocation = { weatherViewModel.addLocation(it) },
@@ -346,7 +266,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                 }
             }
 
-            Text(
+            ResponsiveText(
                 text = stringResource(
                     R.string.next_days_temperature_forecast,
                     (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.size ?: 0
@@ -359,6 +279,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                 CircularProgressIndicator(modifier = Modifier.padding(16.dp))
             } else if (dailyForecast is WeatherDataState.Error || (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.isEmpty() == true) {
                 Text("Données non disponibles", modifier = Modifier.padding(16.dp))
+                Text("Erreur : ${(dailyForecast as? WeatherDataState.Error)?.message}", color = MaterialTheme.colorScheme.error)
             } else {
                 val data = (dailyForecast as WeatherDataState.SuccessDaily).data
 
@@ -393,7 +314,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                                         .fillMaxWidth(),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    // Icon first and bigger as requested
+                                    // Icon first and bigger
                                     Icon(
                                         imageVector = Icons.Rounded.AccessTime,
                                         contentDescription = "Icône météo",
@@ -403,7 +324,6 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                                         tint = Color.White
                                     )
 
-                                    val dateFormatter = DateTimeFormatter.ofPattern("dd MMM")
                                     Text(
                                         text = stringResource(R.string.currently),
                                         style = MaterialTheme.typography.labelLarge
@@ -415,6 +335,50 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                            }
+                        }
+                    }
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                                    alpha = 0.6f
+                                )
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .clickable {
+                                        val intent = Intent(
+                                            context,
+                                            DayGraphsActivity::class.java
+                                        ).apply {
+                                            putExtra("START_DATE_TIME", LocalDate.now().atStartOfDay())
+                                            putExtra("SELECTED_LOCATION", weatherViewModel.selectedLocation.value)
+                                            putExtra("FULL_PERIOD", true)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                    .padding(8.dp)
+                                    .fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AccessTime,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .padding(4.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+
+                                Text(
+                                    text = stringResource(R.string.full_period_forecast),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
                             }
                         }
                     }
@@ -447,20 +411,12 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
 
 @Composable
 fun EnsembleIcon(wmo: Int, animated: Boolean, filter: ColorFilter?) {
-    if (animated) {
-        AnimatedSvgIcon(
-            iconPath = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
-            modifier = Modifier.size(55.dp)
-        )
-    } else {
-        AsyncImage(
-            model = getWeatherIconPath(weatherCodeToSimpleWord(wmo)),
-            contentDescription = null,
-            modifier = Modifier.size(55.dp),
-            contentScale = ContentScale.Fit,
-            colorFilter = filter
-        )
-    }
+    LottieWeatherIcon(
+        // Since WMO is never null, we can safely use the !! operator
+        iconPath = getLottieIconPath(weatherCodeToSimpleWord(wmo)!!),
+        animate = animated,
+        modifier = Modifier.size(55.dp)
+    )
 }
 
 /**
@@ -510,10 +466,10 @@ fun SingleDailyForecastCard(
         SimpleWeatherWord.SNOWY3 -> snowy3IconPath
         SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
         SimpleWeatherWord.STORMY -> stormyIconPath
+        null -> Icons.Default.NotInterested
     }
 
-    val maxTemp = dayReading.maxTemperature?.roundToInt()
-    val minTemp = dayReading.minTemperature?.roundToInt()
+    val userSettings by viewModel.userSettings.collectAsState()
     val totalPrecipitation = dayReading.precipitation
 
     // Build annotated string for bold and colored temperatures and precipitation
@@ -524,7 +480,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
             )
         ) {
-            append("${maxTemp ?: "--"}°")
+            append(UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true))
         }
         append(" / ")
         withStyle(
@@ -533,7 +489,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
             )
         ) {
-            append("${minTemp ?: "--"}°")
+            append(UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true))
         }
     }
     val precipitationText = buildAnnotatedString {
@@ -551,16 +507,22 @@ fun SingleDailyForecastCard(
                 fontWeight = FontWeight.Bold
             )
         ) {
-            append("${dayReading.maxWind.windspeed?.toSmartString() ?: "--"} kph")
+            append(UnitConverter.formatWind(dayReading.maxWind.windspeed, userSettings.windUnit))
         }
     }
 
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.small
+        shape = MaterialTheme.shapes.small,
+        colors = CardDefaults.cardColors(
+            containerColor = if (!isSystemInDarkTheme())
+                MaterialTheme.colorScheme.background.copy(alpha = 0.4f)
+            else
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        )
     ) {
-        val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+        val isDark = isSystemInDarkTheme()
         val weatherIconFilter = remember(isDark) {
             if (!isDark) {
                 ColorFilter.colorMatrix(ColorMatrix().apply {
@@ -609,22 +571,13 @@ fun SingleDailyForecastCard(
                         }
                     }
                 } else {
-                    if (animated) {
-                        AnimatedSvgIcon(
-                            iconPath = fileName,
+                    if (weatherWord != null) {
+                        LottieWeatherIcon(
+                            iconPath = getLottieIconPath(weatherWord),
+                            animate = animated,
                             modifier = Modifier
                                 .size(85.dp)
                                 .padding(bottom = 4.dp)
-                        )
-                    } else {
-                        AsyncImage(
-                            model = fileName,
-                            contentDescription = "Icône météo",
-                            modifier = Modifier
-                                .size(85.dp)
-                                .padding(bottom = 4.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
                         )
                     }
                 }

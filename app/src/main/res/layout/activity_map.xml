@@ -16,7 +16,24 @@
         android:orientation="horizontal"
         app:layout_constraintGuide_percent="0.75" />
 
+    <TextView
+        android:id="@+id/map_attribution"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="8dp"
+        android:text="Satellite data © EUMETSAT 2026"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:shadowColor="#000000"
+        android:shadowDx="1"
+        android:shadowDy="1"
+        android:shadowRadius="2"
+        app:layout_constraintBottom_toTopOf="@id/card_view"
+        app:layout_constraintStart_toStartOf="@id/card_view" />
+
     <androidx.cardview.widget.CardView
+        android:id="@+id/card_view"
         android:layout_width="339dp"
         android:layout_height="79dp"
         app:cardCornerRadius="16dp"

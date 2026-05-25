@@ -1,3 +1,7 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo.telemetry
 
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -10,7 +14,7 @@ class TelemetryManagerImpl(context: Context) : TelemetryManager {
 
     init {
         // Only exceptions via Crashlytics are supported.
-        crashlytics?.setCrashlyticsCollectionEnabled(false)
+        crashlytics?.isCrashlyticsCollectionEnabled = false
     }
 
     override fun setConsentGranted(granted: Boolean) {

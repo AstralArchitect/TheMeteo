@@ -1,5 +1,10 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo.utilsActivities
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
@@ -16,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,8 +38,12 @@ import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.data.ForecastType
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.GpsCoordinates
+import fr.matthstudio.themeteo.data.getDisplayName
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.launch
 
@@ -46,7 +56,26 @@ class SettingsActivity : ComponentActivity() {
         val weatherCache = (application as TheMeteo).weatherCache
 
         setContent {
-            TheMeteoTheme {
+            val userSettings by weatherCache.userSettings.collectAsState()
+            // Pour le mode météo, on peut tenter de récupérer le code WMO actuel si dispo
+            // On peut s'abonner au flux du cache
+            val currentWmo = remember { mutableStateOf<Int?>(null) }
+            
+            LaunchedEffect(weatherCache.selectedLocation, weatherCache.userSettings) {
+                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
+                    currentWmo.value = when (state) {
+                        is fr.matthstudio.themeteo.WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
+                        is fr.matthstudio.themeteo.WeatherDataState.Error -> (state.staleData as? fr.matthstudio.themeteo.WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
+                        else -> null
+                    }
+                }
+            }
+            
+            TheMeteoTheme(
+                themeMode = userSettings.themeMode,
+                currentWmoCode = currentWmo.value,
+                isNight = false
+            ) {
                 // On passe le cache à l'écran des paramètres
                 SettingsScreen(cache = weatherCache)
             }
@@ -72,6 +101,7 @@ fun SettingsScreen(cache: WeatherCache) {
     // On a besoin d'une coroutine scope pour appeler les fonctions suspend du repository
     val scope = rememberCoroutineScope()
     var showEnsembleDialog by remember { mutableStateOf(false) }
+    var showCrashlyticsDialog by remember { mutableStateOf(false) }
 
     if (showEnsembleDialog) {
         AlertDialog(
@@ -82,7 +112,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 TextButton(onClick = {
                     scope.launch {
                         cache.userSettingsRepository.updateForecastType(ForecastType.ENSEMBLE)
-                        cache.userSettingsRepository.updateModel("ecmwf_ifs025")
+                        cache.userSettingsRepository.updateModel("ecmwf_ifs025_ensemble")
                     }
                     showEnsembleDialog = false
                 }) {
@@ -91,6 +121,29 @@ fun SettingsScreen(cache: WeatherCache) {
             },
             dismissButton = {
                 TextButton(onClick = { showEnsembleDialog = false }) {
+                    Text(stringResource(R.string.ensemble_warning_cancel))
+                }
+            }
+        )
+    }
+
+    if (showCrashlyticsDialog) {
+        AlertDialog(
+            onDismissRequest = { showCrashlyticsDialog = false },
+            title = { Text(stringResource(R.string.firebase_crashlytics_dialog_title)) },
+            text = { Text(stringResource(R.string.firebase_crashlytics_dialog_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        cache.userSettingsRepository.updateFirebaseConsent("GRANTED")
+                    }
+                    showCrashlyticsDialog = false
+                }) {
+                    Text(stringResource(R.string.ensemble_warning_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCrashlyticsDialog = false }) {
                     Text(stringResource(R.string.ensemble_warning_cancel))
                 }
             }
@@ -119,22 +172,6 @@ fun SettingsScreen(cache: WeatherCache) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            ForecastTypeSetting(
-                currentType = userSettings.forecastType,
-                onTypeSelected = { newType ->
-                    if (newType == ForecastType.ENSEMBLE && userSettings.forecastType == ForecastType.DETERMINISTIC) {
-                        showEnsembleDialog = true
-                    } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
-                        scope.launch {
-                            cache.userSettingsRepository.updateForecastType(newType)
-                            cache.userSettingsRepository.updateModel("best_match")
-                        }
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
             ModelSelectionSetting(
                 currentModel = userSettings.model,
                 availableModels = if (currentCoords != null) 
@@ -145,6 +182,17 @@ fun SettingsScreen(cache: WeatherCache) {
                     scope.launch {
                         // On met à jour via le repository contenu dans le cache
                         cache.userSettingsRepository.updateModel(newModel)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ThemeModeSetting(
+                currentMode = userSettings.themeMode,
+                onModeSelected = { newMode ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateThemeMode(newMode)
                     }
                 }
             )
@@ -165,6 +213,7 @@ fun SettingsScreen(cache: WeatherCache) {
 
             ModelFallbackSetting(
                 isChecked = userSettings.enableModelFallback,
+                enabled = userSettings.forecastType != ForecastType.ENSEMBLE,
                 onCheckedChange = { enabled ->
                     scope.launch {
                         cache.userSettingsRepository.updateEnableModelFallback(enabled)
@@ -185,10 +234,55 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text (
-                text = stringResource(R.string.app_focus),
-                style = MaterialTheme.typography.titleMedium,
+            TemperatureUnitSetting(
+                currentUnit = userSettings.temperatureUnit,
+                onUnitSelected = { newUnit ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateTemperatureUnit(newUnit)
+                    }
+                }
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            AirQualityIndexSetting(
+                useEurAqi = userSettings.useEurAqi,
+                onSettingChange = { useEurAqi ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateUseEurAqi(useEurAqi)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            WindUnitSetting(
+                currentUnit = userSettings.windUnit,
+                onUnitSelected = { newUnit ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateWindUnit(newUnit)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ForecastTypeSetting(
+                currentType = userSettings.forecastType,
+                onTypeSelected = { newType ->
+                    if (newType == ForecastType.ENSEMBLE && userSettings.forecastType == ForecastType.DETERMINISTIC) {
+                        showEnsembleDialog = true
+                    } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
+                        scope.launch {
+                            cache.userSettingsRepository.updateForecastType(newType)
+                            cache.userSettingsRepository.updateModel("best_match")
+                        }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             DefaultScreenSetting(
                 isOn = userSettings.defaultScreen == DefaultScreen.FORECAST_MAIN,
                 onSettingChange = { isOn ->
@@ -197,7 +291,7 @@ fun SettingsScreen(cache: WeatherCache) {
                         cache.userSettingsRepository.updateDefaultActivity(if (isOn) DefaultScreen.FORECAST_MAIN else DefaultScreen.DAY_CHOSER)
                         
                         // 2. Attendre 1 seconde
-                        kotlinx.coroutines.delay(1000)
+                        kotlinx.coroutines.delay(500)
                         
                         // 3. Relancer l'application
                         val packageManager = activity?.packageManager
@@ -211,6 +305,34 @@ fun SettingsScreen(cache: WeatherCache) {
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            FirebaseCrashlyticsSetting(
+                isChecked = userSettings.firebaseConsent == "GRANTED",
+                onCheckedChange = { granted ->
+                    if (granted) {
+                        showCrashlyticsDialog = true
+                    } else {
+                        scope.launch {
+                            cache.userSettingsRepository.updateFirebaseConsent("DENIED")
+                        }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            FilledTonalButton(
+                onClick = {
+                    val intent = android.content.Intent(activity, CreditActivity::class.java)
+                    activity?.startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text (
+                    text = stringResource(R.string.credits_sources_legal_mentions),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
 
             Text (
                 text = "Version Name: ${BuildConfig.VERSION_NAME}",
@@ -232,6 +354,110 @@ fun SettingsScreen(cache: WeatherCache) {
 }
 
 @Composable
+fun ThemeModeSetting(
+    currentMode: ThemeMode,
+    onModeSelected: (ThemeMode) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val isSPlus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    Column {
+        Text(stringResource(R.string.theme_mode_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.theme_mode_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.theme_fixed),
+                isSelected = currentMode == ThemeMode.FIXED,
+                modifier = Modifier.weight(1f),
+                onClick = { onModeSelected(ThemeMode.FIXED) }
+            )
+            
+            if (isSPlus) {
+                Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.White.copy(alpha = 0.5f)))
+                SegmentItem(
+                    label = stringResource(R.string.theme_system),
+                    isSelected = currentMode == ThemeMode.SYSTEM,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onModeSelected(ThemeMode.SYSTEM) }
+                )
+            }
+            
+            Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.theme_weather),
+                isSelected = currentMode == ThemeMode.WEATHER,
+                modifier = Modifier.weight(1f),
+                onClick = { onModeSelected(ThemeMode.WEATHER) }
+            )
+        }
+    }
+}
+
+@Composable
+fun AirQualityIndexSetting(
+    useEurAqi: Boolean,
+    onSettingChange: (Boolean) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val selectedIndex = if (useEurAqi) 0 else 1
+
+    Column {
+        Text(stringResource(R.string.aqi_index_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.aqi_index_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.european_index),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { onSettingChange(true) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.universal_index),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { onSettingChange(false) }
+            )
+        }
+    }
+}
+
+@Composable
 fun ForecastTypeSetting(
     currentType: ForecastType,
     onTypeSelected: (ForecastType) -> Unit
@@ -244,12 +470,14 @@ fun ForecastTypeSetting(
         Text(
             stringResource(R.string.forecast_type_desc),
             style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp)
+                .height(80.dp)
+                .padding(16.dp)
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
@@ -263,7 +491,10 @@ fun ForecastTypeSetting(
                 modifier = Modifier.weight(1f),
                 onClick = { onTypeSelected(ForecastType.DETERMINISTIC) }
             )
-            Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.White.copy(alpha = 0.5f)))
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
             SegmentItem(
                 label = stringResource(R.string.ensemble),
                 isSelected = selectedIndex == 1,
@@ -295,14 +526,15 @@ fun ModelSelectionSetting(
             expanded = expanded,
             onExpandedChange = { expanded = !expanded }
         ) {
+            val selectedModel = availableModels.firstOrNull { it.apiName == currentModel }
             OutlinedTextField(
-                value = availableModels.firstOrNull { it.apiName == currentModel }?.settingName ?: currentModel,
+                value = selectedModel?.getDisplayName() ?: currentModel,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Selected Model") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier
-                    .menuAnchor(MenuAnchorType.PrimaryEditable, true)
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, true)
                     .fillMaxWidth()
             )
             ExposedDropdownMenu(
@@ -311,7 +543,7 @@ fun ModelSelectionSetting(
             ) {
                 availableModels.forEach { model ->
                     DropdownMenuItem(
-                        text = { Text(model.settingName) },
+                        text = { Text(model.getDisplayName()) },
                         onClick = {
                             onModelSelected(model.apiName)
                             expanded = false
@@ -341,7 +573,8 @@ fun RoundTemperatureSetting(
             Text(
                 stringResource(R.string.round_values_desc),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
@@ -360,39 +593,51 @@ fun DefaultScreenSetting(
     var selectedIndex = if (isOn) 0 else 1
     val shape = RoundedCornerShape(40.dp) // Forme pilule
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp)
-            .padding(16.dp)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                shape = shape
+    Column {
+        Text(
+            text = stringResource(R.string.app_focus),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            stringResource(R.string.app_focus_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.curent_weather),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { selectedIndex = 0; onSettingChange(true) }
             )
-            .clip(shape)
-    ) {
-        // Bouton "Tous allumés"
-        SegmentItem(
-            label = stringResource(R.string.curent_weather),
-            isSelected = selectedIndex == 0,
-            modifier = Modifier.weight(1f),
-            onClick = { selectedIndex = 0 ; onSettingChange(true)}
-        )
 
-        // Ligne de séparation fine (optionnelle, selon le design précis)
-        Box(modifier = Modifier
-            .fillMaxHeight()
-            .width(1.dp)
-            .background(Color.White.copy(alpha = 0.5f)))
+            // Ligne de séparation fine
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .background(Color.White.copy(alpha = 0.5f))
+            )
 
-        // Bouton "Tous éteints"
-        SegmentItem(
-            label = stringResource(R.string.daily_forecast_setting),
-            isSelected = selectedIndex == 1,
-            modifier = Modifier.weight(1f),
-            onClick = { selectedIndex = 1 ; onSettingChange(false)}
-        )
+            SegmentItem(
+                label = stringResource(R.string.daily_forecast_setting),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { selectedIndex = 1; onSettingChange(false) }
+            )
+        }
     }
 }
 
@@ -450,7 +695,8 @@ fun AnimatedIconsSetting(
             Text(
                 stringResource(R.string.animated_icons_desc),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
@@ -463,6 +709,100 @@ fun AnimatedIconsSetting(
 @Composable
 fun ModelFallbackSetting(
     isChecked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val alpha = if (enabled) 1f else 0.5f
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.fill_missing_vars_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+            )
+            Text(
+                stringResource(R.string.fill_missing_vars_desc),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
+            )
+        }
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
+fun TemperatureUnitSetting(
+    currentUnit: TemperatureUnit,
+    onUnitSelected: (TemperatureUnit) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val selectedIndex = currentUnit.ordinal
+
+    Column {
+        Text(stringResource(R.string.temperature_unit_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.temperature_unit_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.celsius),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(TemperatureUnit.CELSIUS) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.fahrenheit),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(TemperatureUnit.FAHRENHEIT) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.kelvin),
+                isSelected = selectedIndex == 2,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(TemperatureUnit.KELVIN) }
+            )
+        }
+    }
+}
+
+@Composable
+fun FirebaseCrashlyticsSetting(
+    isChecked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -474,16 +814,83 @@ fun ModelFallbackSetting(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.fill_missing_vars_title), style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.firebase_crashlytics_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "IMPORTANT",
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
             Text(
-                stringResource(R.string.fill_missing_vars_desc),
+                stringResource(R.string.firebase_crashlytics_desc),
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
             checked = isChecked,
             onCheckedChange = onCheckedChange
         )
+    }
+}
+
+@Composable
+fun WindUnitSetting(
+    currentUnit: WindUnit,
+    onUnitSelected: (WindUnit) -> Unit
+) {
+    val shape = RoundedCornerShape(40.dp)
+    val selectedIndex = currentUnit.ordinal
+
+    Column {
+        Text(stringResource(R.string.wind_unit_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.wind_unit_desc),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(16.dp)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = shape
+                )
+                .clip(shape)
+        ) {
+            SegmentItem(
+                label = stringResource(R.string.kph),
+                isSelected = selectedIndex == 0,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(WindUnit.KPH) }
+            )
+            Box(modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(Color.White.copy(alpha = 0.5f)))
+            SegmentItem(
+                label = stringResource(R.string.mph),
+                isSelected = selectedIndex == 1,
+                modifier = Modifier.weight(1f),
+                onClick = { onUnitSelected(WindUnit.MPH) }
+            )
+        }
     }
 }

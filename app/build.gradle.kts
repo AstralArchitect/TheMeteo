@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.0" // Utilisez la même version que votre Kotlin
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.20" // Utilisez la même version que votre Kotlin
     id("kotlin-parcelize")
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     alias(libs.plugins.google.services)
@@ -22,14 +22,14 @@ fun getBuildDate(): String {
 
 android {
     namespace = "fr.matthstudio.themeteo"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 16
-        versionName = "2.1.0"
+        targetSdk = 37
+        versionCode = 48
+        versionName = "2.4.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,7 +37,7 @@ android {
     buildTypes {
         // Configuration pour le build de débogage
         debug {
-            // Le suffixe sera ajouté au nom de l'application (ex: Themeteo-Alpha)
+            // Le suffixe sera ajouté au nom du package de l'application.
             applicationIdSuffix = ".debug"
             // Le suffixe sera ajouté au nom de la version.
             versionNameSuffix = "-${getBuildDate()}"
@@ -68,8 +68,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
@@ -96,7 +96,7 @@ android {
 }
 
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -116,6 +116,7 @@ dependencies {
     // Dépendance de base pour Coil
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
+    implementation(libs.lottie.compose)
 
     // Ktor pour les requêtes réseau
     implementation(libs.ktor.client.core)
@@ -160,6 +161,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.compose.material.core)
     implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.room.external.antlr)
+    implementation(libs.androidx.ui.graphics)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 

@@ -1,3 +1,7 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo
 
 import android.app.Application
@@ -8,22 +12,33 @@ import android.content.IntentFilter
 import android.os.Parcelable
 import android.os.PowerManager
 import android.util.Log
+import androidx.glance.appwidget.updateAll
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import fr.matthstudio.themeteo.data.LocationProvider
 import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.data.UserLocationsRepository
 import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.data.WindUnit
+import fr.matthstudio.themeteo.utilClasses.AirQualityForecastResponse
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
+import fr.matthstudio.themeteo.utilClasses.DailyMoonEvents
+import fr.matthstudio.themeteo.utilClasses.FullSunCalculator
+import fr.matthstudio.themeteo.utilClasses.FullSunData
+import fr.matthstudio.themeteo.utilClasses.MoonCalculator
+import fr.matthstudio.themeteo.utilClasses.MoonData
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,6 +50,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.KSerializer
@@ -74,10 +91,18 @@ data class UserSettings(
     val defaultScreen: DefaultScreen,
     val enableModelFallback: Boolean,
     val enableAnimatedIcons: Boolean,
-    val forecastType: ForecastType
+    val forecastType: ForecastType,
+    val temperatureUnit: TemperatureUnit,
+    val windUnit: WindUnit,
+    val firebaseConsent: String,
+    val gcuAccepted: Boolean,
+    val lastGcuUpdate: String?,
+    val lastPrivacyPolicyUpdate: String?,
+    val hasOpenedAppOnce: Boolean,
+    val useEurAqi: Boolean,
+    val backgroundLocationAsked: Boolean,
+    val themeMode: ThemeMode
 )
-
-private data class LocationKey(val latitude: Double, val longitude: Double)
 
 /**
  * Serializer générique pour TreeMap afin de garantir le support de kotlinx.serialization
@@ -114,9 +139,15 @@ data class ModelDataCache(
     @Serializable
     var airQualityInfo: AirQualityInfo? = null,
     @Serializable
+    var airQualityForecast: AirQualityForecastResponse? = null,
+    @Serializable
     var pollenInfo: PollenResponse? = null,
     @Serializable(with = LocalDateTimeSerializer::class)
     var lastAirQualityFetch: LocalDateTime = LocalDateTime.MIN,
+    @Serializable
+    var vigilanceInfo: VigilanceInfos? = null,
+    @Serializable(with = LocalDateTimeSerializer::class)
+    var lastVigilanceFetch: LocalDateTime = LocalDateTime.MIN,
 
     )
 
@@ -130,18 +161,20 @@ class WeatherCache(
     val userLocationsRepository: UserLocationsRepository,
     val userSettingsRepository: UserSettingsRepository,
     private val applicationScope: CoroutineScope,
-    private val locationProvider: LocationProvider,
+    val locationProvider: LocationProvider,
     private val cache: MutableMap<LocationIdentifier, MutableMap<String, ModelDataCache>> = mutableMapOf(),
     private val applicationContext: Application
 ) {
     private val weatherService = WeatherService((applicationContext as TheMeteo).container.telemetryManager)
+    private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
     val selectedLocation: StateFlow<LocationIdentifier> = _selectedLocation.asStateFlow()
+
     val savedLocations: StateFlow<List<SavedLocation>> = userLocationsRepository.savedLocations
         .stateIn(
             scope = applicationScope,
@@ -152,14 +185,85 @@ class WeatherCache(
     // --- StateFlow pour la position GPS réelle ---
     private val _currentGpsPosition = MutableStateFlow<GpsCoordinates?>(null)
     val currentGpsPosition: StateFlow<GpsCoordinates?> = _currentGpsPosition.asStateFlow()
+    private val lastGpsPosFetch = MutableStateFlow<LocalDateTime?>(null)
     private val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val _isBatterySaverActive = MutableStateFlow(powerManager.isPowerSaveMode)
     val isBatterySaverActive: StateFlow<Boolean> = _isBatterySaverActive.asStateFlow()
 
     private val _isLocationPermissionGranted = MutableStateFlow(locationProvider.checkLocationPermission())
     val isLocationPermissionGranted: StateFlow<Boolean> = _isLocationPermissionGranted.asStateFlow()
+
+    private val _isGpsEnabled = MutableStateFlow(true)
+
+    // --- Flux centralisés pour les coordonnées, le soleil et la lune ---
+
+    /**
+     * Coordonnées effectives basées sur la localisation sélectionnée.
+     * C'est l'unique source de vérité pour le lieu actuel.
+     */
+    val effectiveCoordinates: StateFlow<GpsCoordinates?> = combine(
+        selectedLocation,
+        currentGpsPosition
+    ) { location, gps ->
+        when (location) {
+            is LocationIdentifier.CurrentUserLocation -> gps
+            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
+        }
+    }.stateIn(applicationScope, SharingStarted.Eagerly, null)
+
+    private val ticker = flow {
+        while (true) {
+            emit(Unit)
+            delay(1000)
+        }
+    }
+
+    /**
+     * Données solaires calculées centralement.
+     */
+    val sunData: StateFlow<FullSunData?> = combine(effectiveCoordinates, ticker) { coords, _ ->
+        coords?.let {
+            FullSunCalculator(it.latitude, it.longitude).getCompleteSunData()
+        }
+    }.stateIn(applicationScope, SharingStarted.WhileSubscribed(5000), null)
+
+    private var cachedDailyMoonEvents: DailyMoonEvents? = null
+    private var lastMoonCoords: GpsCoordinates? = null
+    private var lastMoonDay: LocalDate? = null
+
+    /**
+     * Données lunaires calculées centralement.
+     */
+    val moonData: StateFlow<MoonData?> = combine(effectiveCoordinates, ticker) { coords, _ ->
+        coords?.let {
+            val calc = MoonCalculator(it.latitude, it.longitude)
+            val now = LocalDateTime.now()
+            val today = now.toLocalDate()
+
+            if (lastMoonCoords != it || lastMoonDay != today || cachedDailyMoonEvents == null) {
+                cachedDailyMoonEvents = calc.getDailyEvents(today)
+                lastMoonCoords = it
+                lastMoonDay = today
+            }
+
+            MoonData(
+                dailyEvents = cachedDailyMoonEvents!!,
+                currentPosition = calc.getMoonPosition(now)
+            )
+        }
+    }.stateIn(applicationScope, SharingStarted.WhileSubscribed(5000), null)
     
     init {
+        // Initialiser la localisation sélectionnée avec la valeur par défaut sauvegardée
+        applicationScope.launch {
+            userSettingsRepository.defaultLocation.collect { defaultLoc ->
+                // On ne met à jour que si c'est l'initialisation ou si on est déjà sur une position par défaut
+                if (_selectedLocation.value == LocationIdentifier.CurrentUserLocation || _selectedLocation.value == defaultLoc) {
+                    _selectedLocation.value = defaultLoc ?: LocationIdentifier.CurrentUserLocation
+                }
+            }
+        }
+
         // Monitor Battery Saver
         val filter = IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         val receiver = object : BroadcastReceiver() {
@@ -178,7 +282,17 @@ class WeatherCache(
                 userSettingsRepository.defaultScreen,
                 userSettingsRepository.enableModelFallback,
                 userSettingsRepository.enableAnimatedIcons,
-                userSettingsRepository.forecastType
+                userSettingsRepository.forecastType,
+                userSettingsRepository.temperatureUnit,
+                userSettingsRepository.windUnit,
+                userSettingsRepository.firebaseConsent,
+                userSettingsRepository.gcuAccepted,
+                userSettingsRepository.lastGcuUpdate,
+                userSettingsRepository.lastPrivacyPolicyUpdate,
+                userSettingsRepository.hasOpenedAppOnce,
+                userSettingsRepository.useEurAqi,
+                userSettingsRepository.backgroundLocationAsked,
+                userSettingsRepository.themeMode
             ) { values ->
                 val model = values[0] as String?
                 val round = values[1] as Boolean
@@ -187,6 +301,16 @@ class WeatherCache(
                 val fallback = values[4] as Boolean
                 val animated = values[5] as Boolean
                 val type = values[6] as ForecastType?
+                val unit = values[7] as TemperatureUnit?
+                val wUnit = values[8] as WindUnit?
+                val consent = values[9] as String
+                val gcu = values[10] as Boolean
+                val lastGcu = values[11] as String?
+                val lastPrivacy = values[12] as String?
+                val hasOpened = values[13] as Boolean
+                val useEurAqi = values[14] as Boolean
+                val backgroundAsked = values[15] as Boolean
+                val themeMode = values[16] as ThemeMode
                         
                 UserSettings(
                     model ?: "best_match",
@@ -195,20 +319,26 @@ class WeatherCache(
                     screen ?: DefaultScreen.FORECAST_MAIN,
                     fallback,
                     animated,
-                    type ?: ForecastType.DETERMINISTIC
+                    type ?: ForecastType.DETERMINISTIC,
+                    unit ?: TemperatureUnit.CELSIUS,
+                    wUnit ?: WindUnit.KPH,
+                    consent,
+                    gcu,
+                    lastGcu,
+                    lastPrivacy,
+                    hasOpened,
+                    useEurAqi,
+                    backgroundAsked,
+                    themeMode
                 )
             }.collect { settings ->
                 _userSettings.value = settings
-            }
-        }
-
-        // Gère la mise à jour unique de la position GPS
-        applicationScope.launch {
-            selectedLocation.collect { identifier ->
-                if (identifier is LocationIdentifier.CurrentUserLocation) {
-                    refreshCurrentLocation()
-                } else {
-                    _currentGpsPosition.value = null
+                // Update telemetry consent
+                (applicationContext as? TheMeteo)?.container?.telemetryManager?.setConsentGranted(settings.firebaseConsent == "GRANTED")
+                // Trigger widget update on any setting change
+                applicationScope.launch {
+                    fr.matthstudio.themeteo.widget.WeatherWidget().updateAll(applicationContext)
+                    fr.matthstudio.themeteo.widget.DailyWeatherWidget().updateAll(applicationContext)
                 }
             }
         }
@@ -252,6 +382,15 @@ class WeatherCache(
     }
 
     /**
+     * Renomme une localisation existante.
+     */
+    fun renameLocation(location: SavedLocation, newName: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            userLocationsRepository.renameLocation(location, newName)
+        }
+    }
+
+    /**
      * Définition de la position par défaut
      */
     fun setDefaultLocation(location: LocationIdentifier) {
@@ -260,216 +399,352 @@ class WeatherCache(
         }
     }
 
-    /**
-     * Récupère les données météo. La fonction est asynchrone et retourne un Flow d'états.
-     * @param startTime La date et l'heure de début de la période.
-     * @param hours Le nombre d'heures à récupérer.
-     */
-    fun get(
-        startTime: LocalDateTime,
-        hours: Int
-    ): Flow<WeatherDataState> = flow {
-        val currentSettings = userSettings.value
-        val currentLocationIdentifier = selectedLocation.value
-
-        // RÉCUPÉRATION DES COORDONNÉES POUR VÉRIFICATION DU MODÈLE
-        val coords = when (currentLocationIdentifier) {
-            is LocationIdentifier.CurrentUserLocation -> _currentGpsPosition.value ?: run {
-                withTimeoutOrNull(15000) { currentGpsPosition.filterNotNull().first() }
+    private suspend fun resolveCoordinates(identifier: LocationIdentifier): GpsCoordinates? {
+        return when (identifier) {
+            is LocationIdentifier.CurrentUserLocation -> {
+                // On attend que la position GPS soit disponible (non nulle)
+                currentGpsPosition.filterNotNull().first()
             }
-            is LocationIdentifier.Saved -> GpsCoordinates(currentLocationIdentifier.location.latitude, currentLocationIdentifier.location.longitude)
+            is LocationIdentifier.Saved -> GpsCoordinates(identifier.location.latitude, identifier.location.longitude)
         }
+    }
 
-        // LOGIQUE DE FALLBACK/RESET SI MODÈLE INDISPONIBLE
+    private fun getEffectiveModel(currentSettings: UserSettings, coords: GpsCoordinates?): String {
         var effectiveModel = currentSettings.model
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
-        
         if (coords != null) {
             val modelInfo = WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode)
             if (!modelInfo.isAvailableAt(coords.latitude, coords.longitude)) {
                 effectiveModel = "best_match"
-                // On réinitialise dans le repository pour que le changement soit définitif
                 applicationScope.launch(Dispatchers.IO) {
                     userSettingsRepository.updateModel("best_match")
                     userSettingsRepository.updateForecastType(ForecastType.DETERMINISTIC)
                 }
             }
         }
+        return effectiveModel
+    }
 
+    /**
+     * Récupère les données météo horaires.
+     */
+    fun get(startTime: LocalDateTime, hours: Int, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
+        val currentSettings = userSettings.value
+        val currentLocationIdentifier = locationOverride ?: selectedLocation.value
+        val coords = resolveCoordinates(currentLocationIdentifier)
+        val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
+        val effectiveModel = getEffectiveModel(currentSettings, coords)
+        
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
             .plusDays(WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays.toLong())
             .toLocalDate()
         var endTime = startTime.plusHours(hours.toLong())
-
-        // Si l'heure de fin dépasse la date max autorisée par l'API
         if (endTime.toLocalDate().isAfter(maxAllowedDate)) {
             endTime = maxAllowedDate.atTime(23, 59)
         }
 
-        val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(effectiveModel) { ModelDataCache() }
-
-        // 1. Tentative de récupération depuis le cache (Modèle primaire)
-        var primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
-
-        // 2. Gestion du fallback (Meilleur Modèle)
-        var fallbackData: List<AllHourlyVarsReading>? = null
-        if (currentSettings.enableModelFallback && effectiveModel != "best_match" && !isEnsembleMode) {
-            val fallbackCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
-            fallbackData = getHourlyFromCache(fallbackCache, startTime, endTime)
+        // --- 1. Construction de la chaîne de modèles ---
+        val modelChain = mutableListOf<String>()
+        modelChain.add(effectiveModel)
+        
+        if (currentSettings.enableModelFallback && !isEnsembleMode) {
+            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
+            while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
+                modelChain.add(currentM.secondaryModelApiName)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName, false)
+            }
+            // Sécurité : s'assurer que best_match est à la fin si pas déjà présent.
+            if (!modelChain.contains("best_match")) {
+                modelChain.add("best_match")
+            }
+            if (modelChain.size > 3) Log.w("WeatherCache", "Model chain is too long: $modelChain")
         }
 
-        // Émission initiale si on a des données (éventuellement fusionnées)
-        if (!primaryData.isNullOrEmpty()) {
-            if (fallbackData != null) {
-                emit(WeatherDataState.SuccessHourly(mergeHourly(primaryData, fallbackData)))
-            } else {
-                emit(WeatherDataState.SuccessHourly(primaryData))
+        // --- 2. Récupération depuis le cache et fusion ---
+        val cachedDataByModel = mutableMapOf<String, List<AllHourlyVarsReading>>()
+        for (model in modelChain) {
+            val modelCache = cacheMutex.withLock { 
+                cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                     .getOrPut(model) { ModelDataCache() } 
             }
+            val data = getHourlyFromCache(modelCache, startTime, endTime)
+            if (data != null) cachedDataByModel[model] = data
+        }
+
+        var mergedData: List<AllHourlyVarsReading>? = null
+        if (cachedDataByModel.containsKey(effectiveModel)) {
+            mergedData = cachedDataByModel[effectiveModel]
+            // Fusionner avec les modèles secondaires dans l'ordre de la chaîne
+            for (i in 1 until modelChain.size) {
+                val secondaryModel = modelChain[i]
+                val secondaryData = cachedDataByModel[secondaryModel]
+                if (mergedData != null && secondaryData != null) {
+                    mergedData = mergeHourly(mergedData, secondaryData)
+                }
+            }
+        }
+
+        if (!mergedData.isNullOrEmpty()) {
+            emit(WeatherDataState.SuccessHourly(mergedData))
         } else {
             emit(WeatherDataState.Loading)
         }
 
-        // 3. Calcul de la nécessité de fetch
-        val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
-
-        val startDay = startTime.toLocalDate()
-        val endDay = endTime.toLocalDate()
-        var isAnyHourlyMissing = false
-        var currentD = startDay
-        while (!currentD.isAfter(endDay)) {
-            val block = primaryCache.dailyBlocks[currentD]
-            if (block == null || block.first.isEmpty()) {
-                isAnyHourlyMissing = true
-                break
-            }
-            currentD = currentD.plusDays(1)
+        // --- 3. Vérification du besoin de mise à jour (Fetch) ---
+        var needsFetch = false
+        val primaryCache = cacheMutex.withLock { 
+            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                 .getOrPut(effectiveModel) { ModelDataCache() } 
         }
-
-        // Si fallback activé, on vérifie aussi s'il manque des données au fallback
-        var isFallbackMissing = false
-        if (currentSettings.enableModelFallback && currentSettings.model != "best_match") {
-            val fallbackCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
-            var d = startDay
-            while (!d.isAfter(endDay)) {
-                val block = fallbackCache.dailyBlocks[d]
-                if (block == null || block.first.isEmpty()) {
-                    isFallbackMissing = true
+        
+        val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
+        val firstDayLoaded = primaryCache.dailyBlocks.firstKeyOrNull()
+        val isFirstDayStale = firstDayLoaded != null && firstDayLoaded != LocalDate.now()
+        
+        if (isDataObsolete || isFirstDayStale) {
+            needsFetch = true
+        } else {
+            // Vérifier si des données sont manquantes dans l'un des modèles de la chaîne
+            for (model in modelChain) {
+                val modelCache = cacheMutex.withLock { 
+                    cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                         .getOrPut(model) { ModelDataCache() } 
+                }
+                if (checkHourlyMissing(modelCache, startTime.toLocalDate(), endTime.toLocalDate())) {
+                    needsFetch = true
                     break
                 }
-                d = d.plusDays(1)
             }
         }
 
-        val firstDayLoaded = primaryCache.dailyBlocks.firstEntry()?.key
-        val needsFetch = isDataObsolete || isAnyHourlyMissing || isFallbackMissing ||
-                (firstDayLoaded != null && !firstDayLoaded.isEqual(LocalDate.now()))
-
-        // 4. Exécution du fetch si nécessaire
         if (needsFetch) {
-            if (primaryData.isNullOrEmpty()) {
-                emit(WeatherDataState.Loading)
-            }
-
-            val locationKey = when (currentLocationIdentifier) {
-                is LocationIdentifier.CurrentUserLocation -> {
-                    val gpsPos = _currentGpsPosition.value ?: run {
-                        emit(WeatherDataState.Loading)
-                        withTimeoutOrNull(15000) {
-                            currentGpsPosition.filterNotNull().first()
-                        }
-                    }
-
-                    if (gpsPos != null) {
-                        LocationKey(gpsPos.latitude, gpsPos.longitude)
-                    } else {
-                        emit(WeatherDataState.Error("Cannot get GPS position, please ensure that you authorized the app"))
-                        return@flow
-                    }
-                }
-                is LocationIdentifier.Saved -> LocationKey(
-                    currentLocationIdentifier.location.latitude,
-                    currentLocationIdentifier.location.longitude
-                )
+            if (coords == null) {
+                val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
+                emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessHourly(it) }))
+                return@flow
             }
 
             if (isEnsembleMode) {
-                val freshData = weatherService.getEnsembleForecast(
-                    locationKey.latitude, locationKey.longitude,
-                    effectiveModel, startTime.toLocalDate(), endTime.toLocalDate()
-                )
+                val freshData = weatherService.getEnsembleForecast(coords.latitude, coords.longitude, effectiveModel, startTime.toLocalDate(), endTime.toLocalDate())
                 if (freshData != null) {
-                    val modelCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(effectiveModel) { ModelDataCache() }
-                    if (isDataObsolete || (firstDayLoaded != null && !firstDayLoaded.isEqual(LocalDate.now()))) {
-                        modelCache.dailyBlocks.clear()
-                    }
-                    val hourlyByDate = freshData.first.groupBy { it.time.toLocalDate() }
-                    val dailyByDate = freshData.second.associateBy { it.date }
-                    val allDates = hourlyByDate.keys + dailyByDate.keys
-                    allDates.forEach { date ->
-                        val hourly = hourlyByDate[date]
-                        val daily = dailyByDate[date]
-                        if (hourly != null && daily != null) {
-                            modelCache.dailyBlocks[date] = Pair(hourly, daily)
-                        }
-                    }
-                    modelCache.lastFullFetch = LocalDateTime.now()
-                    primaryData = getHourlyFromCache(modelCache, startTime, endTime)
+                    updateCache(currentLocationIdentifier, effectiveModel, freshData, isDataObsolete || isFirstDayStale)
+                    val primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
                     if (primaryData != null) emit(WeatherDataState.SuccessHourly(primaryData))
+                } else if (mergedData.isNullOrEmpty()) {
+                    emit(WeatherDataState.Error("Failed to fetch ensemble forecast from $effectiveModel"))
                 }
             } else {
-                val modelsToFetch = mutableListOf(effectiveModel)
-                if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
-                    modelsToFetch.add("best_match")
-                }
-
-                val freshDataMap = weatherService.getForecast(
-                    locationKey.latitude, locationKey.longitude,
-                    modelsToFetch, startTime.toLocalDate(), endTime.toLocalDate()
-                )
-
+                val freshDataMap = weatherService.getForecast(coords.latitude, coords.longitude, modelChain, startTime.toLocalDate(), endDate = endTime.toLocalDate())
                 if (freshDataMap != null) {
-                    // Mise à jour de chaque modèle dans le cache
                     freshDataMap.forEach { (modelName, freshData) ->
-                        val modelCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(modelName) { ModelDataCache() }
-
-                        if (isDataObsolete || (firstDayLoaded != null && !firstDayLoaded.isEqual(LocalDate.now()))) {
-                            modelCache.dailyBlocks.clear()
+                        updateCache(currentLocationIdentifier, modelName, freshData, isDataObsolete || isFirstDayStale)
+                    }
+                    
+                    // Re-récupérer et fusionner après le fetch
+                    val finalDataByModel = mutableMapOf<String, List<AllHourlyVarsReading>>()
+                    for (model in modelChain) {
+                        val mCache = cacheMutex.withLock { 
+                            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                                 .getOrPut(model) { ModelDataCache() } 
                         }
-
-                        val hourlyByDate = freshData.first.groupBy { it.time.toLocalDate() }
-                        val dailyByDate = freshData.second.associateBy { it.date }
-                        val allDates = hourlyByDate.keys + dailyByDate.keys
-
-                        allDates.forEach { date ->
-                            val hourly = hourlyByDate[date]
-                            val daily = dailyByDate[date]
-                            if (hourly == null || daily == null){
-                                emit(WeatherDataState.Error(""))
-                                return@flow
-                            }
-                            modelCache.dailyBlocks[date] = Pair(hourly, daily)
+                        getHourlyFromCache(mCache, startTime, endTime)?.let { finalDataByModel[model] = it }
+                    }
+                    
+                    var finalMerged = finalDataByModel[effectiveModel]
+                    for (i in 1 until modelChain.size) {
+                        val secondaryModel = modelChain[i]
+                        val secondaryData = finalDataByModel[secondaryModel]
+                        if (finalMerged != null && secondaryData != null) {
+                            finalMerged = mergeHourly(finalMerged, secondaryData)
                         }
-                        modelCache.lastFullFetch = LocalDateTime.now()
                     }
 
-                    // Ré-extraction et fusion finale
-                    primaryData = getHourlyFromCache(primaryCache, startTime, endTime)
-                    if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
-                        val fbCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
-                        fallbackData = getHourlyFromCache(fbCache, startTime, endTime)
-                    }
-
-                    if (!primaryData.isNullOrEmpty()) {
-                        if (fallbackData != null) {
-                            emit(WeatherDataState.SuccessHourly(mergeHourly(primaryData, fallbackData)))
-                        } else {
-                            emit(WeatherDataState.SuccessHourly(primaryData))
-                        }
+                    if (!finalMerged.isNullOrEmpty()) {
+                        emit(WeatherDataState.SuccessHourly(finalMerged))
                     } else {
-                        emit(WeatherDataState.Error("Error"))
+                        emit(WeatherDataState.Error("Weather data unavailable after fetch.", mergedData?.let { WeatherDataState.SuccessHourly(it) }))
                     }
-                } else if (primaryCache.dailyBlocks.isEmpty()) {
-                    emit(WeatherDataState.Error("Error"))
+                } else {
+                    emit(WeatherDataState.Error("Network error: Unable to reach weather service.", mergedData?.let { WeatherDataState.SuccessHourly(it) }))
+                }
+            }
+        }
+    }
+
+    private fun <K, V> TreeMap<K, V>.firstKeyOrNull(): K? = try { firstKey() } catch (e: Exception) { null }
+
+    private fun checkHourlyMissing(modelCache: ModelDataCache, startDay: LocalDate, endDay: LocalDate): Boolean {
+        var currentD = startDay
+        while (!currentD.isAfter(endDay)) {
+            val block = modelCache.dailyBlocks[currentD]
+            if (block == null || block.first.isEmpty()) return true
+            currentD = currentD.plusDays(1)
+        }
+        return false
+    }
+
+    private fun checkDailyMissing(modelCache: ModelDataCache, startDay: LocalDate, endDay: LocalDate): Boolean {
+        var currentD = startDay
+        while (!currentD.isAfter(endDay)) {
+            val block = modelCache.dailyBlocks[currentD]
+            if (block == null || block.second.sunset == "") return true
+            currentD = currentD.plusDays(1)
+        }
+        return false
+    }
+
+    private suspend fun updateCache(identifier: LocationIdentifier, modelName: String, data: Pair<List<AllHourlyVarsReading>, List<DailyReading>>, clearOld: Boolean) {
+        cacheMutex.withLock {
+            val modelCache = cache.getOrPut(identifier) { mutableMapOf() }.getOrPut(modelName) { ModelDataCache() }
+            if (clearOld) modelCache.dailyBlocks.clear()
+            
+            val hourlyByDate = data.first.groupBy { it.time.toLocalDate() }
+            val dailyByDate = data.second.associateBy { it.date }
+            (hourlyByDate.keys + dailyByDate.keys).forEach { date ->
+                val h = hourlyByDate[date]
+                val d = dailyByDate[date]
+                if (h != null && d != null) modelCache.dailyBlocks[date] = Pair(h, d)
+            }
+            modelCache.lastFullFetch = LocalDateTime.now()
+        }
+    }
+
+    /**
+     * Récupère les données météo journalières.
+     */
+    fun get(date: LocalDate, days: Long, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
+        val currentSettings = userSettings.value
+        val currentLocationIdentifier = locationOverride ?: selectedLocation.value
+        val coords = resolveCoordinates(currentLocationIdentifier)
+        val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
+        val effectiveModel = getEffectiveModel(currentSettings, coords)
+
+        val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
+            .plusDays(WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays.toLong())
+            .toLocalDate()
+        var endDate = date.plusDays(days)
+        if (endDate.isAfter(maxAllowedDate)) endDate = maxAllowedDate
+
+        // --- 1. Construction de la chaîne de modèles ---
+        val modelChain = mutableListOf<String>()
+        modelChain.add(effectiveModel)
+        
+        if (currentSettings.enableModelFallback && !isEnsembleMode) {
+            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
+            while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
+                modelChain.add(currentM.secondaryModelApiName!!)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
+            }
+            if (!modelChain.contains("best_match")) {
+                modelChain.add("best_match")
+            }
+        }
+
+        // --- 2. Récupération depuis le cache et fusion ---
+        val cachedDataByModel = mutableMapOf<String, List<DailyReading>>()
+        for (model in modelChain) {
+            val modelCache = cacheMutex.withLock { 
+                cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                     .getOrPut(model) { ModelDataCache() } 
+            }
+            val data = getDailyFromCache(modelCache, date, endDate)
+            if (data != null) cachedDataByModel[model] = data
+        }
+
+        var mergedData: List<DailyReading>? = null
+        if (cachedDataByModel.containsKey(effectiveModel)) {
+            mergedData = cachedDataByModel[effectiveModel]
+            for (i in 1 until modelChain.size) {
+                val secondaryModel = modelChain[i]
+                val secondaryData = cachedDataByModel[secondaryModel]
+                if (mergedData != null && secondaryData != null) {
+                    mergedData = mergeDaily(mergedData, secondaryData)
+                }
+            }
+        }
+
+        if (!mergedData.isNullOrEmpty()) {
+            emit(WeatherDataState.SuccessDaily(mergedData))
+        } else {
+            emit(WeatherDataState.Loading)
+        }
+
+        // --- 3. Vérification du besoin de mise à jour (Fetch) ---
+        var needsFetch = false
+        val primaryCache = cacheMutex.withLock { 
+            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                 .getOrPut(effectiveModel) { ModelDataCache() } 
+        }
+        
+        val firstDayLoaded = primaryCache.dailyBlocks.firstKeyOrNull()
+        val isFirstDayStale = firstDayLoaded != null && firstDayLoaded != LocalDate.now()
+        val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
+        
+        if (isDataObsolete || isFirstDayStale) {
+            needsFetch = true
+        } else {
+            for (model in modelChain) {
+                val modelCache = cacheMutex.withLock { 
+                    cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                         .getOrPut(model) { ModelDataCache() } 
+                }
+                if (checkDailyMissing(modelCache, date, endDate)) {
+                    needsFetch = true
+                    break
+                }
+            }
+        }
+
+        if (needsFetch) {
+            if (coords == null) {
+                val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
+                emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessDaily(it) }))
+                return@flow
+            }
+
+            if (isEnsembleMode) {
+                val freshData = weatherService.getEnsembleForecast(coords.latitude, coords.longitude, effectiveModel, date, endDate)
+                if (freshData != null) {
+                    updateCache(currentLocationIdentifier, effectiveModel, freshData, isDataObsolete || isFirstDayStale)
+                    val primaryData = getDailyFromCache(primaryCache, date, endDate)
+                    if (primaryData != null) emit(WeatherDataState.SuccessDaily(primaryData))
+                } else {
+                    emit(WeatherDataState.Error("Failed to fetch daily ensemble forecast.", mergedData?.let { WeatherDataState.SuccessDaily(it) }))
+                }
+            } else {
+                val freshDataMap = weatherService.getForecast(coords.latitude, coords.longitude, modelChain, date, endDate)
+                if (freshDataMap != null) {
+                    freshDataMap.forEach { (modelName, freshData) ->
+                        updateCache(currentLocationIdentifier, modelName, freshData, isDataObsolete || isFirstDayStale)
+                    }
+                    
+                    val finalDataByModel = mutableMapOf<String, List<DailyReading>>()
+                    for (model in modelChain) {
+                        val mCache = cacheMutex.withLock { 
+                            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
+                                 .getOrPut(model) { ModelDataCache() } 
+                        }
+                        getDailyFromCache(mCache, date, endDate)?.let { finalDataByModel[model] = it }
+                    }
+                    
+                    var finalMerged = finalDataByModel[effectiveModel]
+                    for (i in 1 until modelChain.size) {
+                        val secondaryModel = modelChain[i]
+                        val secondaryData = finalDataByModel[secondaryModel]
+                        if (finalMerged != null && secondaryData != null) {
+                            finalMerged = mergeDaily(finalMerged, secondaryData)
+                        }
+                    }
+
+                    if (!finalMerged.isNullOrEmpty()) {
+                        emit(WeatherDataState.SuccessDaily(finalMerged))
+                    } else {
+                        emit(WeatherDataState.Error("Daily weather data unavailable after fetch.", mergedData?.let { WeatherDataState.SuccessDaily(it) }))
+                    }
+                } else {
+                    emit(WeatherDataState.Error("Network error during daily forecast fetch.", mergedData?.let { WeatherDataState.SuccessDaily(it) }))
                 }
             }
         }
@@ -483,8 +758,8 @@ class WeatherCache(
             val mergedPrecipitationData = p.precipitationData.copy(
                 precipitation = p.precipitationData.precipitation.nanToNull() ?: f.precipitationData.precipitation.nanToNull(),
                 precipitationProbability = p.precipitationData.precipitationProbability ?: f.precipitationData.precipitationProbability,
-                rain = (if (p.precipitationData.rain.nanToNull() == null || (p.precipitationData.rain == 0.0 && f.precipitationData.rain != 0.0 && f.precipitationData.rain.nanToNull() != null)) f.precipitationData.rain else p.precipitationData.rain).nanToNull(),
-                snowfall = (if (p.precipitationData.snowfall.nanToNull() == null || (p.precipitationData.snowfall == 0.0 && f.precipitationData.snowfall != 0.0 && f.precipitationData.snowfall.nanToNull() != null)) f.precipitationData.snowfall else p.precipitationData.snowfall).nanToNull(),
+                rain = p.precipitationData.rain.nanToNull() ?: f.precipitationData.rain.nanToNull(),
+                snowfall = p.precipitationData.snowfall.nanToNull() ?: f.precipitationData.snowfall.nanToNull(),
                 snowDepth = p.precipitationData.snowDepth ?: f.precipitationData.snowDepth
             )
 
@@ -497,18 +772,17 @@ class WeatherCache(
             val mergedGhi = p.skyInfo.shortwaveRadiation.nanToNull() ?: f.skyInfo.shortwaveRadiation.nanToNull()
             val mergedDhi = p.skyInfo.diffuseRadiation.nanToNull() ?: f.skyInfo.diffuseRadiation.nanToNull()
             
-            // Recalculer l'opacité si on a fusionné les radiations
             val mergedOpacity = if (mergedGhi != null && mergedDhi != null && mergedGhi != 0.0) {
-                (kotlin.math.max(0.0, kotlin.math.min(1.0, mergedDhi / mergedGhi)) * 100.0).toInt()
+                ((mergedDhi / mergedGhi).coerceIn(0.0, 1.0) * 100.0).toInt()
             } else {
                 p.skyInfo.opacity ?: f.skyInfo.opacity
             }
 
             val mergedSkyInfo = p.skyInfo.copy(
-                cloudcoverTotal = if ((p.skyInfo.cloudcoverTotal == 0) && f.skyInfo.cloudcoverTotal != 0) f.skyInfo.cloudcoverTotal else p.skyInfo.cloudcoverTotal,
-                cloudcoverLow = if ((p.skyInfo.cloudcoverLow == 0) && f.skyInfo.cloudcoverLow != 0) f.skyInfo.cloudcoverLow else p.skyInfo.cloudcoverLow,
-                cloudcoverMid = if ((p.skyInfo.cloudcoverMid == 0) && f.skyInfo.cloudcoverMid != 0) f.skyInfo.cloudcoverMid else p.skyInfo.cloudcoverMid,
-                cloudcoverHigh = if ((p.skyInfo.cloudcoverHigh == 0) && f.skyInfo.cloudcoverHigh != 0) f.skyInfo.cloudcoverHigh else p.skyInfo.cloudcoverHigh,
+                cloudcoverTotal = p.skyInfo.cloudcoverTotal ?: f.skyInfo.cloudcoverTotal,
+                cloudcoverLow = p.skyInfo.cloudcoverLow ?: f.skyInfo.cloudcoverLow,
+                cloudcoverMid = p.skyInfo.cloudcoverMid ?: f.skyInfo.cloudcoverMid,
+                cloudcoverHigh = p.skyInfo.cloudcoverHigh ?: f.skyInfo.cloudcoverHigh,
                 shortwaveRadiation = mergedGhi,
                 directRadiation = p.skyInfo.directRadiation.nanToNull() ?: f.skyInfo.directRadiation.nanToNull(),
                 diffuseRadiation = mergedDhi,
@@ -524,9 +798,9 @@ class WeatherCache(
                 skyInfo = mergedSkyInfo,
                 wind = mergedWindData,
                 dewpoint = p.dewpoint.nanToNull() ?: f.dewpoint.nanToNull(),
-                pressure = if (p.pressure == 0) f.pressure else p.pressure,
-                humidity = if (p.humidity == 0) f.humidity else p.humidity,
-                wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo
+                pressure = p.pressure ?: f.pressure,
+                humidity = p.humidity ?: f.humidity,
+                wmo = p.wmo ?: f.wmo
             )
         }
     }
@@ -540,314 +814,44 @@ class WeatherCache(
                 minTemperature = p.minTemperature.nanToNull() ?: f.minTemperature.nanToNull(),
                 precipitation = p.precipitation.nanToNull() ?: f.precipitation.nanToNull(),
                 maxUvIndex = p.maxUvIndex ?: f.maxUvIndex,
-                wmo = if (p.wmo == 0 && f.wmo != 0) f.wmo else p.wmo,
+                wmo = p.wmo ?: f.wmo,
                 sunset = p.sunset.ifEmpty { f.sunset },
                 sunrise = p.sunrise.ifEmpty { f.sunrise }
             )
         }
     }
 
-    /**
-     * Récupère les données météo. La fonction est asynchrone et retourne un Flow d'états.
-     * @param date La date de début de la période.
-     * @param days Le nombre de jours à récupérer.
-     */
-    fun get(
-        date: LocalDate,
-        days: Long
-    ): Flow<WeatherDataState> = flow {
-        val currentSettings = userSettings.value
-        val currentLocationIdentifier = selectedLocation.value
-
-        // RÉCUPÉRATION DES COORDONNÉES POUR VÉRIFICATION DU MODÈLE
-        val coords = when (currentLocationIdentifier) {
-            is LocationIdentifier.CurrentUserLocation -> _currentGpsPosition.value ?: run {
-                withTimeoutOrNull(15000) { currentGpsPosition.filterNotNull().first() }
-            }
-            is LocationIdentifier.Saved -> GpsCoordinates(currentLocationIdentifier.location.latitude, currentLocationIdentifier.location.longitude)
-        }
-
-        // LOGIQUE DE FALLBACK/RESET SI MODÈLE INDISPONIBLE
-        var effectiveModel = currentSettings.model
-        val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
-        
-        if (coords != null) {
-            val modelInfo = WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode)
-            if (!modelInfo.isAvailableAt(coords.latitude, coords.longitude)) {
-                effectiveModel = "best_match"
-                applicationScope.launch(Dispatchers.IO) {
-                    userSettingsRepository.updateModel("best_match")
-                    userSettingsRepository.updateForecastType(ForecastType.DETERMINISTIC)
-                }
-            }
-        }
-
-        val primaryCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(effectiveModel) { ModelDataCache() }
-        // CALCUL SÉCURISÉ
-        val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
-            .plusDays(WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays.toLong())
-            .toLocalDate()
-        var endDate = date.plusDays(days)
-
-        if (endDate.isAfter(maxAllowedDate)) {
-            endDate = maxAllowedDate
-        }
-
-        // 1. Tentative de récupération depuis le cache (Modèle primaire)
-        var primaryData = getDailyFromCache(primaryCache, date, endDate)
-
-        // 2. Gestion du fallback (Meilleur Modèle)
-        var fallbackData: List<DailyReading>? = null
-        if (currentSettings.enableModelFallback && effectiveModel != "best_match" && !isEnsembleMode) {
-            val fallbackCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
-            fallbackData = getDailyFromCache(fallbackCache, date, endDate)
-        }
-
-        // Émission initiale si on a des données (éventuellement fusionnées)
-        if (!primaryData.isNullOrEmpty()) {
-            if (fallbackData != null) {
-                emit(WeatherDataState.SuccessDaily(mergeDaily(primaryData, fallbackData)))
-            } else {
-                emit(WeatherDataState.SuccessDaily(primaryData))
-            }
-        } else {
-            emit(WeatherDataState.Loading)
-        }
-
-        // 3. Calcul de la nécessité de fetch
-        val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
-
-        var isAnyDailyMissing = false
-        var currentD = date
-        while (currentD.isBefore(endDate)) {
-            val block = primaryCache.dailyBlocks[currentD]
-            // Un bloc est incomplet pour le "Daily" si le weatherCode est vide (dummy object)
-            if (block == null || block.second.sunset == "") {
-                isAnyDailyMissing = true
-                break
-            }
-            currentD = currentD.plusDays(1)
-        }
-
-        // Si fallback activé, on vérifie aussi s'il manque des données au fallback
-        var isFallbackMissing = false
-        if (currentSettings.enableModelFallback && effectiveModel != "best_match" && !isEnsembleMode) {
-            val fallbackCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut("best_match") { ModelDataCache() }
-            var d = date
-            while (d.isBefore(endDate)) {
-                val block = fallbackCache.dailyBlocks[d]
-                if (block == null || block.second.sunset == "") {
-                    isFallbackMissing = true
-                    break
-                }
-                d = d.plusDays(1)
-            }
-        }
-
-        val firstDayLoaded = primaryCache.dailyBlocks.firstEntry()?.key
-        val needsFetch = isDataObsolete || isAnyDailyMissing || isFallbackMissing ||
-                (firstDayLoaded != null && !firstDayLoaded.isEqual(LocalDate.now()))
-
-        // 4. Exécution du fetch si nécessaire
-        if (needsFetch) {
-            if (primaryData.isNullOrEmpty()) {
-                emit(WeatherDataState.Loading)
-            }
-            val locationKey = when (currentLocationIdentifier) {
-                is LocationIdentifier.CurrentUserLocation -> {
-                    val gpsPos = _currentGpsPosition.value ?: run {
-                        emit(WeatherDataState.Loading)
-                        withTimeoutOrNull(15000) {
-                            currentGpsPosition.filterNotNull().first()
-                        }
-                    }
-
-                    if (gpsPos != null) {
-                        LocationKey(gpsPos.latitude, gpsPos.longitude)
-                    } else {
-                        emit(WeatherDataState.Error("Cannot get GPS position, please ensure that you athorized the app"))
-                        return@flow
-                    }
-                }
-
-                is LocationIdentifier.Saved -> LocationKey(
-                    currentLocationIdentifier.location.latitude,
-                    currentLocationIdentifier.location.longitude
-                )
-            }
-
-            if (isEnsembleMode) {
-                val freshData = weatherService.getEnsembleForecast(
-                    locationKey.latitude, locationKey.longitude,
-                    effectiveModel, date, endDate
-                )
-                if (freshData != null) {
-                    val modelCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-                        .getOrPut(effectiveModel) { ModelDataCache() }
-                    if (isDataObsolete || (firstDayLoaded != null && !firstDayLoaded.isEqual(
-                            LocalDate.now()
-                        ))
-                    ) {
-                        modelCache.dailyBlocks.clear()
-                    }
-                    val hourlyByDate = freshData.first.groupBy { it.time.toLocalDate() }
-                    val dailyByDate = freshData.second.associateBy { it.date }
-                    val allDates = hourlyByDate.keys + dailyByDate.keys
-                    allDates.forEach { date ->
-                        val hourly = hourlyByDate[date]
-                        val daily = dailyByDate[date]
-                        if (hourly != null && daily != null) {
-                            modelCache.dailyBlocks[date] = Pair(hourly, daily)
-                        }
-                    }
-                    modelCache.lastFullFetch = LocalDateTime.now()
-                    primaryData = getDailyFromCache(modelCache, date, endDate)
-                    if (primaryData != null) emit(WeatherDataState.SuccessDaily(primaryData))
-                }
-            } else {
-                val modelsToFetch = mutableListOf(effectiveModel)
-                if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
-                    modelsToFetch.add("best_match")
-                }
-
-                val freshDataMap = weatherService.getForecast(
-                    locationKey.latitude, locationKey.longitude,
-                    modelsToFetch, date, endDate
-                )
-
-                if (freshDataMap != null) {
-                    // Mise à jour de chaque modèle dans le cache
-                    freshDataMap.forEach { (modelName, freshData) ->
-                        val modelCache =
-                            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-                                .getOrPut(modelName) { ModelDataCache() }
-
-                        if (isDataObsolete || (firstDayLoaded != null && !firstDayLoaded.isEqual(
-                                LocalDate.now()
-                            ))
-                        ) {
-                            modelCache.dailyBlocks.clear()
-                        }
-
-                        // Mise à jour atomique du cache (Hourly + Daily)
-                        val hourlyByDate = freshData.first.groupBy { it.time.toLocalDate() }
-                        val dailyByDate = freshData.second.associateBy { it.date }
-
-                        // On récupère toutes les dates uniques des deux listes
-                        val allDates = hourlyByDate.keys + dailyByDate.keys
-
-                        allDates.forEach { date ->
-                            val hourly = hourlyByDate[date]
-                            val daily = dailyByDate[date]
-                            if (hourly == null || daily == null) {
-                                emit(WeatherDataState.Error(""))
-                                return@flow
-                            }
-                            modelCache.dailyBlocks[date] = Pair(hourly, daily)
-                        }
-                        modelCache.lastFullFetch = LocalDateTime.now()
-                    }
-
-                    // Ré-extraction et fusion finale
-                    primaryData = getDailyFromCache(primaryCache, date, endDate)
-                    if (currentSettings.enableModelFallback && effectiveModel != "best_match") {
-                        val fbCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-                            .getOrPut("best_match") { ModelDataCache() }
-                        fallbackData = getDailyFromCache(fbCache, date, endDate)
-                    }
-
-                    if (primaryData != null && primaryData.isNotEmpty()) {
-                        if (fallbackData != null) {
-                            emit(
-                                WeatherDataState.SuccessDaily(
-                                    mergeDaily(
-                                        primaryData,
-                                        fallbackData
-                                    )
-                                )
-                            )
-                        } else {
-                            emit(WeatherDataState.SuccessDaily(primaryData))
-                        }
-                    } else {
-                        emit(WeatherDataState.Error("Erreur"))
-                    }
-                } else if (primaryCache.dailyBlocks.isEmpty()) {
-                    emit(WeatherDataState.Error("Erreur"))
-                }
-            }
-        }
-    }
-
-    /**
-     * Fonctions helper privées pour extraire les données du cache et vérifier leur complétude.
-     * Retourne null si les données sont incomplètes pour la période demandée.
-     */
-    private fun getHourlyFromCache(
-        modelCache: ModelDataCache,
-        startTime: LocalDateTime,
-        endTime: LocalDateTime
-    ): List<AllHourlyVarsReading>? {
+    private fun getHourlyFromCache(modelCache: ModelDataCache, startTime: LocalDateTime, endTime: LocalDateTime): List<AllHourlyVarsReading>? {
         if (modelCache.dailyBlocks.isEmpty()) return null
-
+        // Ensure all time are hours
+        val startTime = startTime.withNano(0).withSecond(0).withMinute(0)
+        val endTime = endTime.withNano(0).withSecond(0).withMinute(0)
         val requiredDays = modelCache.dailyBlocks.subMap(startTime.toLocalDate(), true, endTime.toLocalDate(), true)
-
-        // Vérification de la couverture des jours
-        val startDay = startTime.toLocalDate()
-        val endDay = endTime.toLocalDate()
-        if (requiredDays.isEmpty() || requiredDays.firstKey() > startDay || requiredDays.lastKey() < endDay) {
-            return null // Données manquantes
-        }
-
-        val consolidatedData = requiredDays.values.flatMap { it.first }
-        val filteredData = consolidatedData.filter {
-            !it.time.isBefore(startTime) && it.time.isBefore(endTime)
-        }
-
-        // On retourne les données seulement si on a le nombre exact d'heures demandées
-        return filteredData
+        if (requiredDays.isEmpty() || requiredDays.firstKey() > startTime.toLocalDate() || requiredDays.lastKey() < endTime.toLocalDate()) return null
+        val returnValue = requiredDays.values.flatMap { it.first }.filter { !it.time.isBefore(startTime) && it.time.isBefore(endTime) }
+        return returnValue
     }
 
-    private fun getDailyFromCache(
-        modelCache: ModelDataCache,
-        startDate: LocalDate,
-        endDate: LocalDate
-    ): List<DailyReading>? {
+    private fun getDailyFromCache(modelCache: ModelDataCache, startDate: LocalDate, endDate: LocalDate): List<DailyReading>? {
         if (modelCache.dailyBlocks.isEmpty()) return null
-
         val requiredDays = modelCache.dailyBlocks.subMap(startDate, true, endDate, true)
-
-        // Vérification de la couverture des jours
-        val startDay = startDate
-        if (requiredDays.isEmpty() || requiredDays.firstKey() > startDay || requiredDays.lastKey() < endDate) {
-            return null // Données manquantes
-        }
-
-        val consolidatedData = requiredDays.values.map { it.second }
-        val filteredData = consolidatedData.filter {
-            !it.date.isBefore(startDate) && it.date.isBefore(endDate)
-        }
-
-        return filteredData
+        if (requiredDays.isEmpty() || requiredDays.firstKey() > startDate || requiredDays.lastKey() < endDate) return null
+        return requiredDays.values.map { it.second }.filter { !it.date.isBefore(startDate) && it.date.isBefore(endDate) }
     }
 
     fun getCurrentWeatherForSavedLocations(): Flow<WeatherDataState> = flow {
         emit(WeatherDataState.Loading)
-
         val locations = userLocationsRepository.savedLocations.first()
         val currentModel = userSettings.value.model
         val now = LocalDateTime.now()
 
-        // 1. Préparation des données du cache
         val cachedResults = mutableMapOf<Pair<Double, Double>, CurrentWeatherReading>()
         var isCacheIncompleteOrObsolete = false
 
         for (loc in locations) {
             val identifier = LocationIdentifier.Saved(loc)
-            val modelCache = cache[identifier]?.get(currentModel)
-            val lastFetch = modelCache?.lastFullFetch // Ou utilisez un champ spécifique pour current si existant
-
-            val isExpired = lastFetch == null || Duration.between(lastFetch, now).toMinutes() >= 15
+            val modelCache = cacheMutex.withLock { cache[identifier]?.get(currentModel) }
+            val isExpired = modelCache?.lastFullFetch == null || Duration.between(modelCache.lastFullFetch, now).toMinutes() >= 15
             val cachedReading = modelCache?.currentWeatherReading
 
             if (cachedReading != null && !isExpired) {
@@ -857,185 +861,190 @@ class WeatherCache(
             }
         }
 
-        // 2. Émission du cache si on a des données (même partielles, ou seulement si complet selon votre choix)
-        // Ici, on émet si le cache contient au moins toutes les locations demandées
-        if (cachedResults.size == locations.size) {
-            emit(WeatherDataState.SuccessCurrent(cachedResults))
-        }
+        if (cachedResults.size == locations.size) emit(WeatherDataState.SuccessCurrent(cachedResults))
 
-        // 3. Recharge si nécessaire
         if (isCacheIncompleteOrObsolete || cachedResults.size < locations.size) {
-            val positions = locations.map { Pair(it.latitude, it.longitude) }
-            val freshData = weatherService.getCurrentWeather(positions)
-
+            val freshData = weatherService.getCurrentWeather(locations.map { Pair(it.latitude, it.longitude) })
             if (freshData != null) {
-                // Mise à jour du cache interne pour chaque location reçue
                 freshData.forEach { (coords, reading) ->
-                    // On retrouve la location correspondante pour mettre à jour le bon ModelDataCache
                     val matchingLoc = locations.find { it.latitude == coords.first && it.longitude == coords.second }
                     if (matchingLoc != null) {
-                        val identifier = LocationIdentifier.Saved(matchingLoc)
-                        val modelMap = cache.getOrPut(identifier) { mutableMapOf() }
-                        val modelCache = modelMap.getOrPut(currentModel) { ModelDataCache() }
-
-                        modelCache.currentWeatherReading = reading
-                        modelCache.lastFullFetch = now // On marque le temps du rafraîchissement
+                        cacheMutex.withLock {
+                            val modelCache = cache.getOrPut(LocationIdentifier.Saved(matchingLoc)) { mutableMapOf() }.getOrPut(currentModel) { ModelDataCache() }
+                            modelCache.currentWeatherReading = reading
+                            modelCache.lastFullFetch = now
+                        }
                     }
                 }
                 emit(WeatherDataState.SuccessCurrent(freshData))
-            } else {
-                // Si on n'a rien du tout (pas de cache et échec réseau).
-                if (cachedResults.isEmpty()) {
-                    emit(WeatherDataState.Error("Error: Unable to fetch current weather"))
-                }
+            } else if (cachedResults.isEmpty()) {
+                emit(WeatherDataState.Error("Unable to fetch current weather for saved locations."))
             }
         }
     }
 
     fun getAirQuality(): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
         val currentLocationIdentifier = selectedLocation.value
+        val coords = resolveCoordinates(currentLocationIdentifier)
         val currentModel = userSettings.value.model
         val now = LocalDateTime.now()
 
-        // 1. Récupération du cache
-        val modelCache = cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }
-            .getOrPut(currentModel) { ModelDataCache() }
-
-        val cachedAirQuality = modelCache.airQualityInfo
-        val cachedPollen = modelCache.pollenInfo
-        val lastFetch = modelCache.lastAirQualityFetch
-
-        // On considère le cache valide s'il a moins de 30 minutes (le pollen change peu)
-        val isCacheValid = cachedAirQuality != null &&
-                Duration.between(lastFetch, now).toMinutes() < 30
-
-        // 2. Émettre le cache immédiatement s'il est valide
-        if (isCacheValid) {
-            emit(WeatherDataState.SuccessAirQuality(Pair(cachedAirQuality, cachedPollen)))
-            return@flow
+        val modelCache = cacheMutex.withLock { 
+            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentModel) { ModelDataCache() } 
         }
 
-        emit(WeatherDataState.Loading)
-
-        // 3. Détermination des coordonnées
-        val locationKey = when (currentLocationIdentifier) {
-            is LocationIdentifier.CurrentUserLocation -> {
-                val gpsPos = _currentGpsPosition.value ?: run {
-                    withTimeoutOrNull(15000) { currentGpsPosition.filterNotNull().first() }
-                }
-                if (gpsPos != null) LocationKey(gpsPos.latitude, gpsPos.longitude) else null
+        // Emit cache immediately if available, regardless of expiration
+        if (modelCache.airQualityInfo != null) {
+            emit(WeatherDataState.SuccessAirQuality(Triple(modelCache.airQualityInfo!!, modelCache.airQualityForecast, modelCache.pollenInfo)))
+            
+            // If it's fresh enough (< 30 minutes), we stop here
+            if (Duration.between(modelCache.lastAirQualityFetch, now).toMinutes() < 30) {
+                return@flow
             }
-            is LocationIdentifier.Saved -> LocationKey(
-                currentLocationIdentifier.location.latitude,
-                currentLocationIdentifier.location.longitude
-            )
         }
-
-        if (locationKey == null) {
-            emit(WeatherDataState.Error("Position GPS non disponible"))
+        if (coords == null) {
+            // If we already emitted cache, don't override it with an error
+            if (modelCache.airQualityInfo == null) {
+                emit(WeatherDataState.Error("GPS position unavailable for air quality check."))
+            }
             return@flow
         }
 
-        // 4. Appels réseau en parallèle
         coroutineScope {
-            val airQualityDeferred = async {
-                weatherService.getAirQuality(locationKey.latitude, locationKey.longitude, applicationContext)
-            }
-            val pollenDeferred = async {
-                weatherService.getPollenForecast(locationKey.latitude, locationKey.longitude, applicationContext)
-            }
+            val airQualityDeferred = async { weatherService.getAirQuality(coords.latitude, coords.longitude, applicationContext) }
+            val airQualityForecastDeferred = async { weatherService.getAirQualityForecast(coords.latitude, coords.longitude, applicationContext) }
+            val pollenDeferred = async { weatherService.getPollenForecast(coords.latitude, coords.longitude, applicationContext) }
 
             val airQualityResponse = airQualityDeferred.await()
+            val airQualityForecastResponse = airQualityForecastDeferred.await()
             val pollenResponse = pollenDeferred.await()
 
-            if (airQualityResponse != null) {
-                // Mise à jour du cache
-                modelCache.airQualityInfo = airQualityResponse
-                modelCache.pollenInfo = pollenResponse
-                modelCache.lastAirQualityFetch = now
-
-                emit(WeatherDataState.SuccessAirQuality(Pair(airQualityResponse, pollenResponse)))
-            } else {
-                if (cachedAirQuality != null) {
-                    // Si l'appel échoue mais qu'on a un cache, on l'émet quand même
-                    emit(WeatherDataState.SuccessAirQuality(Pair(cachedAirQuality, cachedPollen)))
-                } else {
-                    emit(WeatherDataState.Error("Impossible de récupérer les données environnementales"))
+            if (airQualityResponse != null || airQualityForecastResponse != null || pollenResponse != null) {
+                cacheMutex.withLock {
+                    if (airQualityResponse != null) modelCache.airQualityInfo = airQualityResponse
+                    if (airQualityForecastResponse != null) modelCache.airQualityForecast = airQualityForecastResponse
+                    if (pollenResponse != null) modelCache.pollenInfo = pollenResponse
+                    
+                    // On ne met à jour la date de rafraîchissement globale que si l'AQI principal est récupéré
+                    if (airQualityResponse != null) {
+                        modelCache.lastAirQualityFetch = now
+                    }
                 }
+                
+                // Return what we have (even if it's a mix of fresh and old data)
+                val finalAir = airQualityResponse ?: modelCache.airQualityInfo
+                if (finalAir != null) {
+                    emit(WeatherDataState.SuccessAirQuality(Triple(finalAir, airQualityForecastResponse ?: modelCache.airQualityForecast, pollenResponse ?: modelCache.pollenInfo)))
+                } else if (modelCache.airQualityInfo == null) {
+                    emit(WeatherDataState.Error("Failed to fetch primary air quality data."))
+                }
+            } else if (modelCache.airQualityInfo == null) {
+                emit(WeatherDataState.Error("Failed to fetch air quality data."))
             }
         }
     }
 
     fun getLocalVigilance(): Flow<WeatherDataState> = flow {
         emit(WeatherDataState.Loading)
+        val currentLocationIdentifier = selectedLocation.value
+        val coords = resolveCoordinates(currentLocationIdentifier)
+        val currentModel = userSettings.value.model
+        val now = LocalDateTime.now()
 
-        val locationKey = when (val currentLoc = selectedLocation.value) {
-            is LocationIdentifier.CurrentUserLocation -> {
-                val gpsPos = _currentGpsPosition.value ?: run {
-                    // On n'émet pas Loading ici car déjà fait au début du flow
-                    withTimeoutOrNull(15000) {
-                        currentGpsPosition.filterNotNull().first()
-                    }
-                }
+        val modelCache = cacheMutex.withLock {
+            cache.getOrPut(currentLocationIdentifier) { mutableMapOf() }.getOrPut(currentModel) { ModelDataCache() }
+        }
 
-                if (gpsPos != null) {
-                    LocationKey(gpsPos.latitude, gpsPos.longitude)
-                } else {
-                    emit(WeatherDataState.Error("Cannot get GPS position, please ensure that you authorized the app"))
-                    return@flow
-                }
+        // Emit cache immediately if available
+        if (modelCache.vigilanceInfo != null) {
+            emit(WeatherDataState.SuccessVigilance(modelCache.vigilanceInfo!!))
+            
+            // If it's fresh enough (< 1 hour), we stop here
+            if (Duration.between(modelCache.lastVigilanceFetch, now).toHours() < 1) {
+                return@flow
             }
-            is LocationIdentifier.Saved -> LocationKey(
-                currentLoc.location.latitude,
-                currentLoc.location.longitude
-            )
+        }
+        if (coords == null) {
+            if (modelCache.vigilanceInfo == null) {
+                emit(WeatherDataState.Error("GPS position unavailable for vigilance alerts."))
+            }
+            return@flow
         }
 
-        // Appel de la nouvelle fonction basée sur la carte (J et J+1)
-        val vigilance = weatherService.getVigilanceForLocation(locationKey.latitude, locationKey.longitude)
-
-        if (vigilance != null) {
-            emit(WeatherDataState.SuccessVigilance(vigilance))
-        } else {
-            // Optionnel : Vous pouvez mettre un message plus précis
-            emit(WeatherDataState.Error("Impossible de récupérer les données de vigilance"))
+        val freshVigilance = weatherService.getVigilanceForLocation(coords.latitude, coords.longitude)
+        if (freshVigilance != null) {
+            cacheMutex.withLock {
+                modelCache.vigilanceInfo = freshVigilance
+                modelCache.lastVigilanceFetch = now
+            }
+            emit(WeatherDataState.SuccessVigilance(freshVigilance))
+        } else if (modelCache.vigilanceInfo == null) {
+            emit(WeatherDataState.Error("Météo-France vigilance data unavailable."))
         }
     }
 
-    fun getRawCache(): MutableMap<LocationIdentifier, MutableMap<String, ModelDataCache>> {
-        return cache
-    }
+    fun getRawCache(): MutableMap<LocationIdentifier, MutableMap<String, ModelDataCache>> = cache
 
     fun invalidateCache() {
-        cache.clear()
-        File(applicationContext.cacheDir, "weather_cache_data.json").delete()
-
-        // Forcer le rafraîchissement des flows en ré-émettant la localisation
-        val current = _selectedLocation.value
-        _selectedLocation.value = current
+        applicationScope.launch(Dispatchers.IO) {
+            cacheMutex.withLock { cache.clear() }
+            File(applicationContext.cacheDir, "weather_cache_data.json").delete()
+            _selectedLocation.value = _selectedLocation.value
+        }
     }
 
-    fun refreshCurrentLocation() {
-        val identifier = _selectedLocation.value
+    suspend fun rmCacheLoc(location: LocationIdentifier) {
+        cacheMutex.withLock {
+            cache.remove(location)
+        }
+    }
+
+    fun refreshCurrentLocation(force: Boolean = false) {
         _isLocationPermissionGranted.value = locationProvider.checkLocationPermission()
-        if (identifier is LocationIdentifier.CurrentUserLocation) {
+
+        // Vérifier si le GPS est activé au niveau système
+        locationProvider.checkLocationSettings { enabled, _ ->
+            _isGpsEnabled.value = enabled
+        }
+
+        if (selectedLocation.value is LocationIdentifier.CurrentUserLocation || force) {
             applicationScope.launch {
                 val newCoordinates = locationProvider.getCurrentLocation()
-                if (newCoordinates != null) {
-                    Log.d("WeatherCache", "One-time GPS update: $newCoordinates")
-                    _currentGpsPosition.value = newCoordinates
-                }
+                if (newCoordinates != null) _currentGpsPosition.value = newCoordinates
             }
+        }
+    }
+
+    suspend fun refreshCurrentLocationSuspend() {
+        _isLocationPermissionGranted.value = locationProvider.checkLocationPermission()
+
+        // On attend la position (getCurrentLocation est déjà suspend)
+        val newCoordinates = locationProvider.getCurrentLocation()
+        if (newCoordinates != null) {
+            _currentGpsPosition.value = newCoordinates
         }
     }
 }
 
-    sealed class WeatherDataState {
+sealed class WeatherDataState {
     object Loading : WeatherDataState()
     data class SuccessHourly(val data: List<AllHourlyVarsReading>) : WeatherDataState()
     data class SuccessDaily(val data: List<DailyReading>) : WeatherDataState()
     data class SuccessCurrent(val data: Map<Pair<Double, Double>, CurrentWeatherReading>) : WeatherDataState()
-    data class SuccessAirQuality(val data: Pair<AirQualityInfo, PollenResponse?>) : WeatherDataState()
+    data class SuccessAirQuality(val data: Triple<AirQualityInfo, AirQualityForecastResponse?, PollenResponse?>) : WeatherDataState()
     data class SuccessVigilance(val data: VigilanceInfos) : WeatherDataState()
-    data class Error(val message: String) : WeatherDataState()
+    data class Error(val message: String, val staleData: WeatherDataState? = null) : WeatherDataState()
+}
+
+fun WeatherDataState.getHourlyData(): List<AllHourlyVarsReading>? = when(this) {
+    is WeatherDataState.SuccessHourly -> data
+    is WeatherDataState.Error -> (staleData as? WeatherDataState.SuccessHourly)?.data
+    else -> null
+}
+
+fun WeatherDataState.getDailyData(): List<DailyReading>? = when(this) {
+    is WeatherDataState.SuccessDaily -> data
+    is WeatherDataState.Error -> (staleData as? WeatherDataState.SuccessDaily)?.data
+    else -> null
 }

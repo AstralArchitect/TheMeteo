@@ -1,3 +1,7 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo.data
 
 import androidx.datastore.core.DataStore
@@ -10,12 +14,29 @@ import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.LocationIdentifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlin.io.encoding.Base64
 
 enum class ForecastType {
     DETERMINISTIC,
     ENSEMBLE
+}
+
+enum class TemperatureUnit {
+    CELSIUS,
+    FAHRENHEIT,
+    KELVIN
+}
+
+enum class WindUnit {
+    KPH,
+    MPH
+}
+
+enum class ThemeMode {
+    FIXED,
+    SYSTEM,
+    WEATHER
 }
 
 class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
@@ -29,10 +50,77 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val ENABLE_MODEL_FALLBACK = booleanPreferencesKey("enable_model_fallback")
         val ENABLE_ANIMATED_ICONS = booleanPreferencesKey("enable_animated_icons")
         val FIREBASE_CONSENT = stringPreferencesKey("firebase_consent")
+        val GCU_CONSENT = booleanPreferencesKey("gcu_consent")
+        val LAST_GCU_UPDATE = stringPreferencesKey("last_gcu_update")
+        val LAST_PRIVACY_POLICY_UPDATE = stringPreferencesKey("last_privacy_policy_update")
+        val HAS_OPENED_APP_ONCE = booleanPreferencesKey("has_opened_app_once")
         val FORECAST_TYPE = intPreferencesKey("forecast_type")
+        val TEMPERATURE_UNIT = intPreferencesKey("temperature_unit")
+        val WIND_UNIT = intPreferencesKey("wind_unit")
+        val BENTO_CARDS_ORDER = stringPreferencesKey("bento_cards_order")
+        val USE_EUR_AQI = booleanPreferencesKey("use_eur_aqi")
+        val BACKGROUND_LOCATION_ASKED = booleanPreferencesKey("background_location_asked")
+        val THEME_MODE = intPreferencesKey("theme_mode")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
+
+    /**
+     * Flow pour savoir si la permission de localisation en arrière-plan a déjà été demandée.
+     */
+    val backgroundLocationAsked: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.BACKGROUND_LOCATION_ASKED] ?: false
+    }
+
+    /**
+     * Flow pour le mode de thème (FIXED, SYSTEM, WEATHER).
+     */
+    val themeMode: Flow<ThemeMode> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.THEME_MODE]?.let { index ->
+            ThemeMode.entries.getOrNull(index)
+        } ?: ThemeMode.FIXED
+    }
+
+    /**
+     * Flow pour l'utilisation de l'indice européen (EUR_AQI) ou l'indice universel (UAQI).
+     */
+    val useEurAqi: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.USE_EUR_AQI] ?: true
+    }
+
+    /**
+     * Flow pour l'ordre des cartes Bento.
+     */
+    val bentoCardsOrder: Flow<List<BentoCardType>> = dataStore.data.map { preferences ->
+        val data = preferences[PreferencesKeys.BENTO_CARDS_ORDER]
+        if (data != null) {
+            try {
+                Json.decodeFromString<List<BentoCardType>>(data)
+            } catch (e: Exception) {
+                BentoCardType.entries
+            }
+        } else {
+            BentoCardType.entries
+        }
+    }
+
+    /**
+     * Flow pour l'unité de température (CELSIUS, FAHRENHEIT, KELVIN).
+     */
+    val temperatureUnit: Flow<TemperatureUnit> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.TEMPERATURE_UNIT]?.let { index ->
+            TemperatureUnit.entries.getOrNull(index)
+        } ?: TemperatureUnit.CELSIUS
+    }
+
+    /**
+     * Flow pour l'unité de vent (KPH, MPH).
+     */
+    val windUnit: Flow<WindUnit> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.WIND_UNIT]?.let { index ->
+            WindUnit.entries.getOrNull(index)
+        } ?: WindUnit.KPH
+    }
 
     /**
      * Flow pour le type de prévision (DETERMINISTIC ou ENSEMBLE).
@@ -48,6 +136,34 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
      */
     val firebaseConsent: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.FIREBASE_CONSENT] ?: "PENDING"
+    }
+
+    /**
+     * Flow pour l'acceptation des CGU.
+     */
+    val gcuAccepted: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.GCU_CONSENT] ?: false
+    }
+
+    /**
+     * Flow pour la date de la dernière mise à jour des CGU acceptée.
+     */
+    val lastGcuUpdate: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_GCU_UPDATE]
+    }
+
+    /**
+     * Flow pour la date de la dernière mise à jour de la politique de confidentialité.
+     */
+    val lastPrivacyPolicyUpdate: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_PRIVACY_POLICY_UPDATE]
+    }
+
+    /**
+     * Flow pour savoir si l'application a déjà été ouverte une fois.
+     */
+    val hasOpenedAppOnce: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.HAS_OPENED_APP_ONCE] ?: false
     }
 
     /**
@@ -157,6 +273,42 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /**
+     * Met à jour l'acceptation des CGU.
+     */
+    suspend fun updateGcuAccepted(accepted: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GCU_CONSENT] = accepted
+        }
+    }
+
+    /**
+     * Met à jour la date de la dernière mise à jour des CGU.
+     */
+    suspend fun updateLastGcuUpdate(date: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_GCU_UPDATE] = date
+        }
+    }
+
+    /**
+     * Met à jour la date de la dernière mise à jour de la politique de confidentialité.
+     */
+    suspend fun updateLastPrivacyPolicyUpdate(date: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_PRIVACY_POLICY_UPDATE] = date
+        }
+    }
+
+    /**
+     * Met à jour le flag indiquant si l'application a déjà été ouverte une fois.
+     */
+    suspend fun updateHasOpenedAppOnce(hasOpened: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HAS_OPENED_APP_ONCE] = hasOpened
+        }
+    }
+
+    /**
      * Met à jour l'activité par défaut.
      */
     suspend fun updateDefaultActivity(newScreen: DefaultScreen) {
@@ -171,6 +323,60 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateForecastType(type: ForecastType) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.FORECAST_TYPE] = type.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'unité de température.
+     */
+    suspend fun updateTemperatureUnit(unit: TemperatureUnit) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.TEMPERATURE_UNIT] = unit.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'unité de vent.
+     */
+    suspend fun updateWindUnit(unit: WindUnit) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WIND_UNIT] = unit.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'utilisation de l'indice européen.
+     */
+    suspend fun updateUseEurAqi(useEurAqi: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.USE_EUR_AQI] = useEurAqi
+        }
+    }
+
+    /**
+     * Met à jour le flag indiquant si la permission de localisation en arrière-plan a été demandée.
+     */
+    suspend fun updateBackgroundLocationAsked(asked: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.BACKGROUND_LOCATION_ASKED] = asked
+        }
+    }
+
+    /**
+     * Met à jour le mode de thème.
+     */
+    suspend fun updateThemeMode(mode: ThemeMode) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.THEME_MODE] = mode.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'ordre des cartes Bento.
+     */
+    suspend fun updateBentoCardsOrder(newOrder: List<BentoCardType>) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.BENTO_CARDS_ORDER] = Json.encodeToString(newOrder)
         }
     }
 }

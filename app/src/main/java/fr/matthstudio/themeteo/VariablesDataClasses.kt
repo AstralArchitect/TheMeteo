@@ -1,3 +1,7 @@
+/*
+TheMeteo - A modern weather app.
+Copyright (C) 2026  AstralArchitect
+ */
 package fr.matthstudio.themeteo
 
 import android.os.Parcelable
@@ -240,3 +244,22 @@ fun WeatherApiResponse.getCurrentWeatherData(variableName: String): Any? {
         null
     }
 }
+
+@Serializable
+data class GoogleGeocodingResponse(
+    val results: List<GoogleGeocodingResult>,
+    val status: String
+)
+
+@Serializable
+data class GoogleGeocodingResult(
+    @SerialName("address_components") val addressComponents: List<AddressComponent>,
+    @SerialName("formatted_address") val formattedAddress: String
+)
+
+@Serializable
+data class AddressComponent(
+    @SerialName("long_name") val longName: String,
+    @SerialName("short_name") val shortName: String,
+    val types: List<String>
+)
