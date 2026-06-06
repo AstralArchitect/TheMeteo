@@ -480,7 +480,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
             )
         ) {
-            append(UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true))
+            append(UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false))
         }
         append(" / ")
         withStyle(
@@ -489,7 +489,7 @@ fun SingleDailyForecastCard(
                 color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
             )
         ) {
-            append(UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true))
+            append(UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false))
         }
     }
     val precipitationText = buildAnnotatedString {
@@ -562,7 +562,7 @@ fun SingleDailyForecastCard(
                 val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
 
                 if (dayReading.wmoEnsemble != null) {
-                    Box(modifier = Modifier.size(85.dp)) {
+                    Box(modifier = Modifier.size(110.dp)) {
                         Box(modifier = Modifier.align(Alignment.TopStart)) {
                             EnsembleIcon(dayReading.wmoEnsemble.best, animated, weatherIconFilter)
                         }
@@ -576,7 +576,7 @@ fun SingleDailyForecastCard(
                             iconPath = getLottieIconPath(weatherWord),
                             animate = animated,
                             modifier = Modifier
-                                .size(85.dp)
+                                .size(110.dp)
                                 .padding(bottom = 4.dp)
                         )
                     }

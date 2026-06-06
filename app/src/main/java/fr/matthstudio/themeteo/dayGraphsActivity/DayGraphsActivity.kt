@@ -217,10 +217,10 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
                 // Icons graph with transparent background
                 if ((forecast as? WeatherDataState.SuccessHourly)?.data?.first()?.wmo != null) {
                     WeatherIconGraph(
+                        modifier = Modifier.padding(top = 8.dp),
                         viewModel,
                         scrollState = scrollState,
                         contentWidth = contentWidth,
-                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
@@ -1029,7 +1029,7 @@ fun WeatherIconGraphGlobal(
     val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
     val hourlyData = (forecast as? WeatherDataState.SuccessHourly)?.data
 
-    val iconsSize = 40.dp
+    val iconsSize = 55.dp
     val density = LocalDensity.current
     val xPaddingPx = 40f
     val daySeparatorColor = Color.Gray.copy(alpha = 0.7f)
@@ -1102,10 +1102,10 @@ fun WeatherIconGraphGlobal(
 
 @Composable
 fun WeatherIconGraph(
+    modifier: Modifier = Modifier,
     viewModel: WeatherViewModel,
     scrollState: ScrollState = rememberScrollState(),
-    contentWidth: Dp = 1000.dp,
-    modifier: Modifier = Modifier
+    contentWidth: Dp = 1000.dp
 ) {
     // Get the forecast
     val forecast by viewModel.hourlyForecast.collectAsState()

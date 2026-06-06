@@ -70,7 +70,13 @@ class DailyWeatherWidget : GlanceAppWidget() {
             val prefs = currentState<Preferences>()
             val userSettings = weatherCache.userSettings.collectAsState().value
             val selectedLocation = userSettings.defaultLocation
-            val dailyState = weatherCache.get(LocalDate.now(), 5, selectedLocation).collectAsState(initial = WeatherDataState.Loading).value
+
+            // Stable key for the flow: current day
+            val today = LocalDate.now()
+
+            val dailyState = androidx.compose.runtime.remember(today, selectedLocation) {
+                weatherCache.get(today, 5, selectedLocation)
+            }.collectAsState(initial = WeatherDataState.Loading).value
 
             val locationName = when (selectedLocation) {
                 is LocationIdentifier.CurrentUserLocation -> context.getString(R.string.current_location)

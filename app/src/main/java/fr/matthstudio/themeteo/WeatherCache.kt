@@ -66,6 +66,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.TreeMap
+import kotlin.time.Duration.Companion.milliseconds
 
 @Parcelize
 @Serializable
@@ -151,6 +152,9 @@ data class ModelDataCache(
 
     )
 
+// Liste des updates de l'API
+val updateHoursList = listOf(0, 3, 6, 9, 12, 15, 18, 21)
+
 
 /**
  * Gère un cache en mémoire pour les données de prévisions météo, structuré par jour.
@@ -167,6 +171,7 @@ class WeatherCache(
 ) {
     private val weatherService = WeatherService((applicationContext as TheMeteo).container.telemetryManager)
     private val cacheMutex = Mutex()
+    private val getMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
     private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED))
@@ -411,7 +416,7 @@ class WeatherCache(
         return when (identifier) {
             is LocationIdentifier.CurrentUserLocation -> {
                 run {
-                    withTimeoutOrNull(10_000) {
+                    withTimeoutOrNull(10_000.milliseconds) {
                         // On attend que la position GPS soit disponible
                         currentGpsPosition.filterNotNull().first()
                     }
@@ -442,12 +447,14 @@ class WeatherCache(
      */
     fun get(startTime: LocalDateTime, hours: Int, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
         emit(WeatherDataState.Loading)
+        getMutex.lock()
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null)
         {
             emit(WeatherDataState.Error("Unable to get GPS position"))
+            getMutex.unlock()
             return@flow
         }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
@@ -539,6 +546,7 @@ class WeatherCache(
             if (coords == null) {
                 val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
                 emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessHourly(it) }))
+                getMutex.unlock()
                 return@flow
             }
 
@@ -587,6 +595,7 @@ class WeatherCache(
                 }
             }
         }
+        getMutex.unlock()
     }
 
     private fun <K, V> TreeMap<K, V>.firstKeyOrNull(): K? = try { firstKey() } catch (e: Exception) { null }
@@ -632,12 +641,14 @@ class WeatherCache(
      */
     fun get(date: LocalDate, days: Long, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
         emit(WeatherDataState.Loading)
+        getMutex.lock()
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null)
         {
             emit(WeatherDataState.Error("Unable to get GPS position"))
+            getMutex.unlock()
             return@flow
         }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
@@ -702,7 +713,13 @@ class WeatherCache(
         
         val firstDayLoaded = primaryCache.dailyBlocks.firstKeyOrNull()
         val isFirstDayStale = firstDayLoaded != null && firstDayLoaded != LocalDate.now()
-        val isDataObsolete = Duration.between(primaryCache.lastFullFetch, LocalDateTime.now()).toHours() >= 1
+        
+        val now = LocalDateTime.now()
+        val lastFetch = primaryCache.lastFullFetch
+        val currentHourWindow = updateHoursList.lastOrNull { it <= now.hour } ?: 0
+        val lastFetchHourWindow = updateHoursList.lastOrNull { it <= lastFetch.hour } ?: 0
+        
+        val isDataObsolete = lastFetch.toLocalDate() != now.toLocalDate() || currentHourWindow != lastFetchHourWindow
         
         if (isDataObsolete || isFirstDayStale) {
             needsFetch = true
@@ -723,6 +740,7 @@ class WeatherCache(
             if (coords == null) {
                 val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
                 emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessDaily(it) }))
+                getMutex.unlock()
                 return@flow
             }
 
@@ -770,6 +788,7 @@ class WeatherCache(
                 }
             }
         }
+        getMutex.unlock()
     }
 
     private fun mergeHourly(primary: List<AllHourlyVarsReading>, fallback: List<AllHourlyVarsReading>): List<AllHourlyVarsReading> {

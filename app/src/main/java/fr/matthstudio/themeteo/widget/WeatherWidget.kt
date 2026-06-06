@@ -72,7 +72,13 @@ class WeatherWidget : GlanceAppWidget() {
             val userSettings = weatherCache.userSettings.collectAsState().value
             val selectedLocation = userSettings.defaultLocation
             
-            val forecastState = weatherCache.get(LocalDateTime.now(), 1, selectedLocation).collectAsState(initial = WeatherDataState.Loading).value
+            // Stable key for the flow: current hour
+            val now = LocalDateTime.now()
+            val stableTime = now.withMinute(0).withSecond(0).withNano(0)
+            
+            val forecastState = androidx.compose.runtime.remember(stableTime, selectedLocation) {
+                weatherCache.get(stableTime, 1, selectedLocation)
+            }.collectAsState(initial = WeatherDataState.Loading).value
 
             val locationName = when (selectedLocation) {
                 is LocationIdentifier.CurrentUserLocation -> context.getString(R.string.current_location)

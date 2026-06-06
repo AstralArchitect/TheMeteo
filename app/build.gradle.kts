@@ -28,8 +28,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 50
-        versionName = "2.4.2"
+        versionCode = 52
+        versionName = "2.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,10 +47,6 @@ android {
 
         // Configuration pour le build de production
         release {
-            // Ajout du suffixe pour la version de release
-            // Note : Pas de suffixe pour l'applicationID en release
-            versionNameSuffix = "-${getBuildDate()}"
-
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
