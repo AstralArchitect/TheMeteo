@@ -158,14 +158,13 @@ fun BentoCardContent(
     context: android.content.Context,
     isLauncherActivity: Boolean,
     onShowSunMoonDetails: () -> Unit,
-    onShowDetails: () -> Unit,
     onShowAirQuality: () -> Unit,
     onShowVigilance: () -> Unit
 ) {
     when (cardType) {
         BentoCardType.VIGILANCE -> VigilanceCard(viewModel, onCardClick = onShowVigilance)
         BentoCardType.HOURLY_FORECAST -> HourlyForecastCard(hourlyForecast, context = context, viewModel = viewModel)
-        BentoCardType.SUN_DETAILS -> SunAndDetails(viewModel, context, onShowSunMoonDetails = onShowSunMoonDetails, onShowDetails = onShowDetails)
+        BentoCardType.SUN_DETAILS -> Sun(viewModel, onShowSunMoonDetails = onShowSunMoonDetails)
         BentoCardType.DAILY_FORECAST -> if (isLauncherActivity) DailyForecastCard(viewModel, context)
         BentoCardType.AIR_QUALITY -> {
             val environmentalData by viewModel.environmentalData.collectAsState()
@@ -260,7 +259,6 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val bentoCardsOrder by viewModel.bentoCardsOrder.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
     var showAddLocationDialog by remember { mutableStateOf(false) }
-    var showDetailsDialog by remember { mutableStateOf(false) }
     var showAirQualityDialog by remember { mutableStateOf(false) }
     var showVigilanceDialog by remember { mutableStateOf(false) }
     var showSunMoonDialog by remember { mutableStateOf(false) }
@@ -323,7 +321,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         val dynamicBlur by remember {
             derivedStateOf {
                 if (!showLocationSheet) {
-                    if (showDetailsDialog || showAirQualityDialog || showVigilanceDialog || showSunMoonDialog)
+                    if (showAirQualityDialog || showVigilanceDialog || showSunMoonDialog)
                         10.dp
                     else 0.dp
                 } else {
@@ -677,16 +675,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 context,
                                 isLauncherActivity,
                                 { showSunMoonDialog = true },
-                                { showDetailsDialog = true },
                                 { showAirQualityDialog = true },
                                 { showVigilanceDialog = true }
                             )
                         }
                     }
-                }
-
-                if (showDetailsDialog) {
-                    WeatherDetailsDialog(viewModel, onDismiss = { showDetailsDialog = false })
                 }
 
                 if (showAirQualityDialog) {

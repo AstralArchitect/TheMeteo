@@ -461,7 +461,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             try {
                                 OffsetDateTime.parse(it.endTime).isAfter(now)
                             } catch (e: Exception) {
-            if (e is CancellationException) throw e
+                            if (e is CancellationException) throw e
                                 true
                             }
                         }.sortedBy { it.beginTime }

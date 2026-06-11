@@ -68,6 +68,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -87,14 +90,20 @@ import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
 import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.utilClasses.AirQualityUI
+import fr.matthstudio.themeteo.utilClasses.FullSunData
 import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import java.nio.file.WatchEvent
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
@@ -387,7 +396,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
 // --- Sun & Details ---
 // Main Component
 @Composable
-fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDetails: () -> Unit, onShowDetails: () -> Unit) {
+fun Sun(viewModel: WeatherViewModel, onShowSunMoonDetails: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val sunData by viewModel.sunData.collectAsState()
         if (sunData == null)
@@ -491,112 +500,179 @@ fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDe
                 event1 = displayEvent1,
                 event2 = displayEvent2,
                 text,
+                sunData = sunData!!,
                 onClick = onShowSunMoonDetails
             )
         }
-
-        // La card regroupée (Détails)
-        SummaryDetailsCard(
-            modifier = Modifier.weight(1f),
-            onClick = { onShowDetails() }
-        )
     }
 }
 
 // Sun Card
 @Composable
-fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunEvent?, text: String, onClick: () -> Unit) {
+fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunEvent?, text: String, sunData: FullSunData, onClick: () -> Unit) {
     // Helper function to format the time string required (HH:mm)
     fun LocalDateTime.formatTime(): String {
         return String.format(Locale.getDefault(), "%02d:%02d", this.hour, this.minute)
     }
 
     BentoCard(modifier = modifier.height(140.dp), onClick = onClick) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.sun), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            ResponsiveText(
-                text = text,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-
-            // Next event (Event 1)
-            Column {
-                val time1 = event1.dateTime.formatTime()
-
-                val label1 = if (event1.dayLabel == stringResource(R.string.today)) {
-                    stringResource(R.string.sun_event_format, event1.type, time1)
-                } else {
-                    stringResource(R.string.sun_event_day_format, event1.type, event1.dayLabel, time1)
-                }
-
-                ResponsiveText(
-                    label1,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
-
-                // Second next event (Event 2)
-                event2?.let { event ->
-                    val time2 = event.dateTime.formatTime()
-                    val label2 = if (event.dayLabel == stringResource(R.string.today)) {
-                        stringResource(R.string.sun_event_format, event.type, time2)
-                    } else {
-                        stringResource(R.string.sun_event_day_format, event.type, event.dayLabel, time2)
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.sun), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     ResponsiveText(
-                        label2,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        text = text,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
                     )
+
+                    // Next event (Event 1)
+                    Column {
+                        val time1 = event1.dateTime.formatTime()
+
+                        val label1 = if (event1.dayLabel == stringResource(R.string.today)) {
+                            stringResource(R.string.sun_event_format, event1.type, time1)
+                        } else {
+                            stringResource(R.string.sun_event_day_format, event1.type, event1.dayLabel, time1)
+                        }
+
+                        ResponsiveText(
+                            label1,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // Second next event (Event 2)
+                        event2?.let { event ->
+                            val time2 = event.dateTime.formatTime()
+                            val label2 = if (event.dayLabel == stringResource(R.string.today)) {
+                                stringResource(R.string.sun_event_format, event.type, time2)
+                            } else {
+                                stringResource(R.string.sun_event_day_format, event.type, event.dayLabel, time2)
+                            }
+
+                            ResponsiveText(
+                                label2,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
                 }
+
+                // Background Visualization
+                SunGraph(
+                    data = sunData,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                )
             }
         }
     }
 }
 
-// Details Card
 @Composable
-fun SummaryDetailsCard(modifier: Modifier, onClick: () -> Unit) {
-    BentoCard(
-        modifier = modifier
-            .height(140.dp)
-            .clickable { onClick() }
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.AddCircleOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.details), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                // Icons from previous cards to hint content
-                Icon(Icons.Rounded.Air, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                Icon(Icons.Rounded.WaterDrop, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                Icon(Icons.Rounded.Compress, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-            }
-            Text(stringResource(R.string.show_more), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+fun SunGraph(data: FullSunData, modifier: Modifier = Modifier) {
+    val isDarkTheme = isSystemInDarkTheme()
+    val totalSecondsDay = 24 * 3600f
+    val now = LocalDateTime.now()
+    val currentSeconds = now.hour * 3600f + now.minute * 60f + now.second
+
+    val today = data.dailyData.getOrNull(1)
+    val tomorrow = data.dailyData.getOrNull(2)
+
+    val sr0 = today?.sunrise?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (6f * 3600f)
+    val ss0 = today?.sunset?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (18f * 3600f)
+
+    val isShifted = ss0 < sr0
+
+    val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
+        val ss1Shifted = ss1 + totalSecondsDay
+        val noon = (sr0 + ss1Shifted) / 2f
+        listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
+    } else {
+        val ss0Fixed = if (ss0 < sr0) ss0 + totalSecondsDay else ss0
+        listOf(sr0, ss0Fixed, 0f, totalSecondsDay)
+    }
+
+    val noonSecs = (srUsed + ssUsed) / 2f
+
+    var sunSecs = currentSeconds
+    while (sunSecs < windowStart) sunSecs += totalSecondsDay
+    while (sunSecs > windowEnd) sunSecs -= totalSecondsDay
+    val sunProgress = (sunSecs - windowStart) / totalSecondsDay
+
+    Canvas(modifier = modifier) {
+        val strokeWidth = 1.dp.toPx()
+        val horizonY = size.height * 0.7f
+
+        val crossingCos = cos(2.0 * PI * (srUsed - noonSecs) / totalSecondsDay).toFloat()
+        val scaleY = (size.height * 0.4f) / (1f + abs(crossingCos))
+
+        val path = Path()
+        val segments = 60
+        for (i in 0..segments) {
+            val tSecs = windowStart + (i.toFloat() / segments) * totalSecondsDay
+            val x = (i.toFloat() / segments) * size.width
+            val yOffset = cos(2.0 * PI * (tSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+            val y = horizonY - yOffset * scaleY
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+
+        drawPath(
+            path = path,
+            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
+            style = Stroke(
+                width = strokeWidth,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+            )
+        )
+
+        drawLine(
+            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
+            start = Offset(0f, horizonY),
+            end = Offset(size.width, horizonY),
+            strokeWidth = 1.dp.toPx()
+        )
+
+        val currentYOffset = cos(2.0 * PI * (sunSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+        val sunY = horizonY - currentYOffset * scaleY
+
+        val isDay = currentYOffset > 0
+        val sunColor = if (isDay) Color(0xFFFFD700) else Color(0xFFB0C4DE)
+
+        drawCircle(
+            color = sunColor,
+            radius = 3.dp.toPx(),
+            center = Offset(sunProgress * size.width, sunY)
+        )
+        
+        if (isDay) {
+            drawCircle(
+                color = sunColor.copy(alpha = 0.3f),
+                radius = 6.dp.toPx(),
+                center = Offset(sunProgress * size.width, sunY)
+            )
         }
     }
 }

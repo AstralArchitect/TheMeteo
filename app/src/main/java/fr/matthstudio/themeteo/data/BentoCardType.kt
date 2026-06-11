@@ -10,9 +10,9 @@ import kotlinx.serialization.Serializable
 enum class BentoCardType {
     VIGILANCE,
     HOURLY_FORECAST,
-    SUN_DETAILS,
     DAILY_FORECAST,
     AIR_QUALITY,
     POLLEN,
+    SUN_DETAILS,
     ADDITIONAL_INFOS
 }
