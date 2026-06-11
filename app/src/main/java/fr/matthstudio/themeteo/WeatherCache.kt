@@ -171,7 +171,6 @@ class WeatherCache(
 ) {
     private val weatherService = WeatherService((applicationContext as TheMeteo).container.telemetryManager)
     private val cacheMutex = Mutex()
-    private val getMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
     private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED))
@@ -447,14 +446,12 @@ class WeatherCache(
      */
     fun get(startTime: LocalDateTime, hours: Int, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
         emit(WeatherDataState.Loading)
-        getMutex.lock()
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null)
         {
             emit(WeatherDataState.Error("Unable to get GPS position"))
-            getMutex.unlock()
             return@flow
         }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
@@ -546,7 +543,6 @@ class WeatherCache(
             if (coords == null) {
                 val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
                 emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessHourly(it) }))
-                getMutex.unlock()
                 return@flow
             }
 
@@ -595,7 +591,6 @@ class WeatherCache(
                 }
             }
         }
-        getMutex.unlock()
     }
 
     private fun <K, V> TreeMap<K, V>.firstKeyOrNull(): K? = try { firstKey() } catch (e: Exception) { null }
@@ -641,14 +636,12 @@ class WeatherCache(
      */
     fun get(date: LocalDate, days: Long, locationOverride: LocationIdentifier? = null): Flow<WeatherDataState> = flow {
         emit(WeatherDataState.Loading)
-        getMutex.lock()
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
         val coords = resolveCoordinates(currentLocationIdentifier)
         if (coords == null)
         {
             emit(WeatherDataState.Error("Unable to get GPS position"))
-            getMutex.unlock()
             return@flow
         }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
@@ -740,7 +733,6 @@ class WeatherCache(
             if (coords == null) {
                 val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
                 emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessDaily(it) }))
-                getMutex.unlock()
                 return@flow
             }
 
@@ -788,7 +780,6 @@ class WeatherCache(
                 }
             }
         }
-        getMutex.unlock()
     }
 
     private fun mergeHourly(primary: List<AllHourlyVarsReading>, fallback: List<AllHourlyVarsReading>): List<AllHourlyVarsReading> {
