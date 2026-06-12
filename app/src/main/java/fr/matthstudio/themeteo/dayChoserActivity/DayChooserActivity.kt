@@ -573,7 +573,7 @@ fun SingleDailyForecastCard(
                 } else {
                     if (weatherWord != null) {
                         LottieWeatherIcon(
-                            iconPath = getLottieIconPath(weatherWord),
+                            iconPath = getLottieIconPath(weatherWord, darkTheme = isSystemInDarkTheme()),
                             animate = animated,
                             modifier = Modifier
                                 .size(110.dp)

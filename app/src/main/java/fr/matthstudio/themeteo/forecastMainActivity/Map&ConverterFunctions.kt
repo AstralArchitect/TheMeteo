@@ -5,6 +5,7 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.content.Context
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Cloud
@@ -47,15 +48,15 @@ fun getStateIconFromWord(word: SimpleWeatherWord): ImageVector {
     }
 }
 
-fun getLottieIconPath(word: SimpleWeatherWord, isNight: Boolean = false): String {
-    val baseFolder = "icons/weather/"
+fun getLottieIconPath(word: SimpleWeatherWord, isNight: Boolean = false, darkTheme: Boolean = false): String {
+    val baseFolder = if (darkTheme) "icons/weather/night/" else "icons/weather/day/"
     return baseFolder + when (word) {
         SimpleWeatherWord.SUNNY -> if (isNight) "clear-night.json" else "clear-day.json"
         SimpleWeatherWord.SUNNY_CLOUDY -> if (isNight) "partly-cloudy-night.json" else "partly-cloudy-day.json"
         SimpleWeatherWord.CLOUDY -> "cloudy.json"
         SimpleWeatherWord.FOGGY -> if (isNight) "fog-night.json" else "fog-day.json"
         SimpleWeatherWord.HAZE -> if (isNight) "haze-night.json" else "haze-day.json"
-        SimpleWeatherWord.DUST -> if (isNight) "dust-night.json" else "dust-day.json"
+        SimpleWeatherWord.DUST -> "dust.json"
         SimpleWeatherWord.DRIZZLY -> "drizzle.json"
         SimpleWeatherWord.RAINY1 -> "rain.json"
         SimpleWeatherWord.RAINY2 -> "extreme-rain.json"
@@ -64,7 +65,7 @@ fun getLottieIconPath(word: SimpleWeatherWord, isNight: Boolean = false): String
         SimpleWeatherWord.SNOWY2 -> "extreme-snow.json"
         SimpleWeatherWord.SNOWY3 -> "snow.json"
         SimpleWeatherWord.SNOWY_MIX -> "extreme-sleet.json"
-        SimpleWeatherWord.STORMY -> if (isNight) "thunderstorms-night.json" else "thunderstorms-day.json"
+        SimpleWeatherWord.STORMY -> "thunderstorms.json"
     }
 }
 

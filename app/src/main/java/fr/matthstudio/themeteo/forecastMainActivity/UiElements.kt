@@ -554,7 +554,7 @@ fun DailyForecastRow(
                     }
                 } else if (weatherWord != null) {
                     LottieWeatherIcon(
-                        iconPath = getLottieIconPath(weatherWord, false),
+                        iconPath = getLottieIconPath(weatherWord, false, isSystemInDarkTheme()),
                         animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
                         modifier = Modifier.size(32.dp)
                     )
@@ -637,7 +637,7 @@ fun EnsembleIconSmall(wmo: Int?, animated: Boolean, filter: ColorFilter?) {
     val weatherWord = weatherCodeToSimpleWord(wmo)!!
 
     LottieWeatherIcon(
-        iconPath = getLottieIconPath(weatherWord, false),
+        iconPath = getLottieIconPath(weatherWord, false, isSystemInDarkTheme()),
         animate = animated,
         modifier = Modifier.size(30.dp)
     )

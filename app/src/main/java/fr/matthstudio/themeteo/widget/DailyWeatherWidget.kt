@@ -240,7 +240,7 @@ class DailyWeatherWidget : GlanceAppWidget() {
             Spacer(modifier = GlanceModifier.width(8.dp))
 
             // Rain if any (Utilisation du textColorVariant)
-            if (day.precipitation != null && day.precipitation!! > 0.1) {
+            if (day.precipitation != null && day.precipitation > 0.1) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.width(45.dp)) {
                     Image(
                         provider = ImageProvider(R.drawable.rainy_1),

@@ -17,6 +17,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1066,7 +1067,8 @@ fun WeatherIconGraphGlobal(
                             LottieWeatherIcon(
                                 iconPath = getLottieIconPath(
                                     weatherCodeToSimpleWord(hourlyData[i].wmoEnsemble?.best)!!,
-                                    (isDay == false)
+                                    (isDay == false),
+                                    isSystemInDarkTheme()
                                 ),
                                 animate = animated,
                                 modifier = Modifier.size(20.dp)
@@ -1074,7 +1076,8 @@ fun WeatherIconGraphGlobal(
                             LottieWeatherIcon(
                                 iconPath = getLottieIconPath(
                                     weatherCodeToSimpleWord(hourlyData[i].wmoEnsemble?.worst)!!,
-                                    (isDay == false)
+                                    (isDay == false),
+                                    isSystemInDarkTheme()
                                 ),
                                 animate = animated,
                                 modifier = Modifier.size(20.dp)
@@ -1082,7 +1085,7 @@ fun WeatherIconGraphGlobal(
                         }
                     } else if (weatherWord != null) {
                         LottieWeatherIcon(
-                            iconPath = getLottieIconPath(weatherWord, (isDay == false)),
+                            iconPath = getLottieIconPath(weatherWord, (isDay == false), isSystemInDarkTheme()),
                             animate = animated,
                             modifier = Modifier.fillMaxSize()
                         )
