@@ -55,6 +55,7 @@ import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.utilsActivities.LauncherActivity
+import kotlinx.coroutines.flow.first
 import java.time.LocalDateTime
 
 val LocIdentKey = ActionParameters.Key<LocationIdentifier>("location_identifier")
@@ -64,21 +65,24 @@ class WeatherWidget : GlanceAppWidget() {
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val manager = WidgetCacheManager(context)
         val app = context.applicationContext as TheMeteo
         val weatherCache = app.weatherCache
+        val userSettings = weatherCache.userSettings.first()
+        val selectedLocation = userSettings.defaultLocation
+
+        // Rafraîchissement en arrière-plan si nécessaire
+        val data = manager.refreshIfNeeded(selectedLocation)
 
         provideContent {
             val prefs = currentState<Preferences>()
-            val userSettings = weatherCache.userSettings.collectAsState().value
-            val selectedLocation = userSettings.defaultLocation
             
             // Stable key for the flow: current hour
             val now = LocalDateTime.now()
             val stableTime = now.withMinute(0).withSecond(0).withNano(0)
             
-            val forecastState = androidx.compose.runtime.remember(stableTime, selectedLocation) {
-                weatherCache.get(stableTime, 1, selectedLocation)
-            }.collectAsState(initial = WeatherDataState.Loading).value
+            val forecastState = if (data?.hourly != null) WeatherDataState.SuccessHourly(data.hourly)
+                else WeatherDataState.Error("No data")
 
             val locationName = when (selectedLocation) {
                 is LocationIdentifier.CurrentUserLocation -> context.getString(R.string.current_location)
@@ -167,7 +171,6 @@ class WeatherWidget : GlanceAppWidget() {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Spacer(modifier = GlanceModifier.defaultWeight())
                     Text(
                         text = locationName,
                         style = TextStyle(
@@ -176,18 +179,6 @@ class WeatherWidget : GlanceAppWidget() {
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
-                    )
-                    Spacer(modifier = GlanceModifier.defaultWeight())
-                    // Refresh Button
-                    Image(
-                        provider = ImageProvider(R.drawable.ic_refresh),
-                        contentDescription = "Refresh",
-                        modifier = GlanceModifier
-                            .size(16.dp)
-                            .clickable(actionRunCallback<RefreshAction>(
-                                actionParametersOf(LocIdentKey to selectedLocation)
-                            )),
-                        colorFilter = ColorFilter.tint(textColorProvider)
                     )
                 }
 
@@ -275,27 +266,6 @@ class WeatherWidget : GlanceAppWidget() {
                     else -> {}
                 }
             }
-        }
-    }
-}
-
-class RefreshAction : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        val app = context.applicationContext as TheMeteo
-        val selectedLocation = parameters[LocIdentKey] ?: LocationIdentifier.CurrentUserLocation
-
-        if (selectedLocation !is LocationIdentifier.CurrentUserLocation) {
-            app.weatherCache.rmCacheLoc(selectedLocation)
-
-            WeatherWidget().updateAll(context)
-            DailyWeatherWidget().updateAll(context)
-        } else {
-            app.weatherCache.refreshCurrentLocationSuspend()
-
-            app.weatherCache.rmCacheLoc(selectedLocation)
-
-            WeatherWidget().updateAll(context)
-            DailyWeatherWidget().updateAll(context)
         }
     }
 }

@@ -516,25 +516,33 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
     }
 
     BentoCard(modifier = modifier.height(140.dp), onClick = onClick) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceBetween
+        Row() {
+            Column(
+                modifier = Modifier.fillMaxHeight().padding(16.dp),
+                verticalArrangement = Arrangement.Top
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.WbSunny,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.sun),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Column(
                     modifier = Modifier
-                        .padding(16.dp)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.sun), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
                     ResponsiveText(
                         text = text,
                         style = MaterialTheme.typography.titleMedium,
@@ -549,7 +557,12 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
                         val label1 = if (event1.dayLabel == stringResource(R.string.today)) {
                             stringResource(R.string.sun_event_format, event1.type, time1)
                         } else {
-                            stringResource(R.string.sun_event_day_format, event1.type, event1.dayLabel, time1)
+                            stringResource(
+                                R.string.sun_event_day_format,
+                                event1.type,
+                                event1.dayLabel,
+                                time1
+                            )
                         }
 
                         ResponsiveText(
@@ -565,7 +578,12 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
                             val label2 = if (event.dayLabel == stringResource(R.string.today)) {
                                 stringResource(R.string.sun_event_format, event.type, time2)
                             } else {
-                                stringResource(R.string.sun_event_day_format, event.type, event.dayLabel, time2)
+                                stringResource(
+                                    R.string.sun_event_day_format,
+                                    event.type,
+                                    event.dayLabel,
+                                    time2
+                                )
                             }
 
                             ResponsiveText(
@@ -576,102 +594,14 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
                         }
                     }
                 }
-
-                // Background Visualization
-                SunGraph(
-                    data = sunData,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                        .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
-                )
             }
-        }
-    }
-}
 
-@Composable
-fun SunGraph(data: FullSunData, modifier: Modifier = Modifier) {
-    val isDarkTheme = isSystemInDarkTheme()
-    val totalSecondsDay = 24 * 3600f
-    val now = LocalDateTime.now()
-    val currentSeconds = now.hour * 3600f + now.minute * 60f + now.second
-
-    val today = data.dailyData.getOrNull(1)
-    val tomorrow = data.dailyData.getOrNull(2)
-
-    val sr0 = today?.sunrise?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (6f * 3600f)
-    val ss0 = today?.sunset?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (18f * 3600f)
-
-    val isShifted = ss0 < sr0
-
-    val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
-        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
-        val ss1Shifted = ss1 + totalSecondsDay
-        val noon = (sr0 + ss1Shifted) / 2f
-        listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
-    } else {
-        val ss0Fixed = if (ss0 < sr0) ss0 + totalSecondsDay else ss0
-        listOf(sr0, ss0Fixed, 0f, totalSecondsDay)
-    }
-
-    val noonSecs = (srUsed + ssUsed) / 2f
-
-    var sunSecs = currentSeconds
-    while (sunSecs < windowStart) sunSecs += totalSecondsDay
-    while (sunSecs > windowEnd) sunSecs -= totalSecondsDay
-    val sunProgress = (sunSecs - windowStart) / totalSecondsDay
-
-    Canvas(modifier = modifier) {
-        val strokeWidth = 1.dp.toPx()
-        val horizonY = size.height * 0.7f
-
-        val crossingCos = cos(2.0 * PI * (srUsed - noonSecs) / totalSecondsDay).toFloat()
-        val scaleY = (size.height * 0.4f) / (1f + abs(crossingCos))
-
-        val path = Path()
-        val segments = 60
-        for (i in 0..segments) {
-            val tSecs = windowStart + (i.toFloat() / segments) * totalSecondsDay
-            val x = (i.toFloat() / segments) * size.width
-            val yOffset = cos(2.0 * PI * (tSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
-            val y = horizonY - yOffset * scaleY
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-
-        drawPath(
-            path = path,
-            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
-            style = Stroke(
-                width = strokeWidth,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-            )
-        )
-
-        drawLine(
-            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
-            start = Offset(0f, horizonY),
-            end = Offset(size.width, horizonY),
-            strokeWidth = 1.dp.toPx()
-        )
-
-        val currentYOffset = cos(2.0 * PI * (sunSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
-        val sunY = horizonY - currentYOffset * scaleY
-
-        val isDay = currentYOffset > 0
-        val sunColor = if (isDay) Color(0xFFFFD700) else Color(0xFFB0C4DE)
-
-        drawCircle(
-            color = sunColor,
-            radius = 3.dp.toPx(),
-            center = Offset(sunProgress * size.width, sunY)
-        )
-        
-        if (isDay) {
-            drawCircle(
-                color = sunColor.copy(alpha = 0.3f),
-                radius = 6.dp.toPx(),
-                center = Offset(sunProgress * size.width, sunY)
+            // Background Visualization
+            SunGraph(
+                data = sunData,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
             )
         }
     }

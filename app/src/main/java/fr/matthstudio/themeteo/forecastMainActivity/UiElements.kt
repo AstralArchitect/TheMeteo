@@ -111,6 +111,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -129,6 +130,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.net.toUri
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -155,10 +157,13 @@ import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
 import fr.matthstudio.themeteo.dayGraphsActivity.WeatherIconGraphGlobal
+import fr.matthstudio.themeteo.utilClasses.FullSunData
 import fr.matthstudio.themeteo.utilClasses.PhaseType
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.toSmartString
+import fr.matthstudio.themeteo.widget.DailyWeatherWidget
+import fr.matthstudio.themeteo.widget.WeatherWidget
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDate
@@ -1186,6 +1191,7 @@ fun MapPickerScreen(
 fun LocationPermissionHandler(
     viewModel: WeatherViewModel
 ) {
+    val context = LocalContext.current
     val locationPermissionState = rememberMultiplePermissionsState(
         listOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -1214,11 +1220,17 @@ fun LocationPermissionHandler(
     LaunchedEffect(anyForegroundGranted) {
         if (anyForegroundGranted) {
             viewModel.refreshLocation()
-            // Check if we should suggest background location for widgets
+
+            // Check if there are any widgets added
+            val hasWidgets = GlanceAppWidgetManager(context).getGlanceIds(WeatherWidget::class.java).isNotEmpty() ||
+                    GlanceAppWidgetManager(context).getGlanceIds(DailyWeatherWidget::class.java).isNotEmpty()
+
+            // Only suggest background location if widgets exist and we haven't asked yet
             val settings = viewModel.userSettings.value
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                 backgroundLocationPermissionState?.status?.isGranted == false &&
-                !settings.backgroundLocationAsked) {
+                !settings.backgroundLocationAsked &&
+                hasWidgets) {
                 showBackgroundRationale = true
             }
         }
@@ -1368,6 +1380,93 @@ fun EnvironmentalSectionHeader(title: String, icon: ImageVector, color: Color) {
     }
 }
 
+
+@Composable
+fun SunGraph(data: FullSunData, modifier: Modifier = Modifier) {
+    val isDarkTheme = isSystemInDarkTheme()
+    val totalSecondsDay = 24 * 3600f
+    val now = LocalDateTime.now()
+    val currentSeconds = now.hour * 3600f + now.minute * 60f + now.second
+
+    val today = data.dailyData.getOrNull(1)
+    val tomorrow = data.dailyData.getOrNull(2)
+
+    val sr0 = today?.sunrise?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (6f * 3600f)
+    val ss0 = today?.sunset?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (18f * 3600f)
+
+    val isShifted = ss0 < sr0
+
+    val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
+        val ss1Shifted = ss1 + totalSecondsDay
+        val noon = (sr0 + ss1Shifted) / 2f
+        listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
+    } else {
+        val ss0Fixed = if (ss0 < sr0) ss0 + totalSecondsDay else ss0
+        listOf(sr0, ss0Fixed, 0f, totalSecondsDay)
+    }
+
+    val noonSecs = (srUsed + ssUsed) / 2f
+
+    var sunSecs = currentSeconds
+    while (sunSecs < windowStart) sunSecs += totalSecondsDay
+    while (sunSecs > windowEnd) sunSecs -= totalSecondsDay
+    val sunProgress = (sunSecs - windowStart) / totalSecondsDay
+
+    Canvas(modifier = modifier) {
+        val strokeWidth = 1.dp.toPx()
+        val horizonY = size.height * 0.7f
+
+        val crossingCos = cos(2.0 * PI * (srUsed - noonSecs) / totalSecondsDay).toFloat()
+        val scaleY = (size.height * 0.4f) / (1f + abs(crossingCos))
+
+        val path = Path()
+        val segments = 60
+        for (i in 0..segments) {
+            val tSecs = windowStart + (i.toFloat() / segments) * totalSecondsDay
+            val x = (i.toFloat() / segments) * size.width
+            val yOffset = cos(2.0 * PI * (tSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+            val y = horizonY - yOffset * scaleY
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+
+        drawPath(
+            path = path,
+            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
+            style = Stroke(
+                width = strokeWidth,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+            )
+        )
+
+        drawLine(
+            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
+            start = Offset(0f, horizonY),
+            end = Offset(size.width, horizonY),
+            strokeWidth = 1.dp.toPx()
+        )
+
+        val currentYOffset = cos(2.0 * PI * (sunSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+        val sunY = horizonY - currentYOffset * scaleY
+
+        val isDay = currentYOffset > 0
+        val sunColor = if (isDay) Color(0xFFFFD700) else Color(0xFFB0C4DE)
+
+        drawCircle(
+            color = sunColor,
+            radius = 3.dp.toPx(),
+            center = Offset(sunProgress * size.width, sunY)
+        )
+
+        if (isDay) {
+            drawCircle(
+                color = sunColor.copy(alpha = 0.3f),
+                radius = 6.dp.toPx(),
+                center = Offset(sunProgress * size.width, sunY)
+            )
+        }
+    }
+}
 @Composable
 fun SunPathVisualization(viewModel: WeatherViewModel) {
     val sunData by viewModel.sunData.collectAsState()

@@ -28,7 +28,7 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 55
+        versionCode = 57
         versionName = "2.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

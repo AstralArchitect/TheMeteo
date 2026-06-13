@@ -54,6 +54,7 @@ import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.utilsActivities.LauncherActivity
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.format.TextStyle as JavaTextStyle
 import java.util.Locale
@@ -63,20 +64,20 @@ class DailyWeatherWidget : GlanceAppWidget() {
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val manager = WidgetCacheManager(context)
         val app = context.applicationContext as TheMeteo
         val weatherCache = app.weatherCache
+        val userSettings = weatherCache.userSettings.first()
+        val selectedLocation = userSettings.defaultLocation
+
+        // Rafraîchissement en arrière-plan si nécessaire
+        val data = manager.refreshIfNeeded(selectedLocation)
 
         provideContent {
             val prefs = currentState<Preferences>()
-            val userSettings = weatherCache.userSettings.collectAsState().value
-            val selectedLocation = userSettings.defaultLocation
 
-            // Stable key for the flow: current day
-            val today = LocalDate.now()
-
-            val dailyState = androidx.compose.runtime.remember(today, selectedLocation) {
-                weatherCache.get(today, 5, selectedLocation)
-            }.collectAsState(initial = WeatherDataState.Loading).value
+            val dailyState = if (data?.daily != null) WeatherDataState.SuccessDaily(data.daily)
+            else WeatherDataState.Error("No data")
 
             val locationName = when (selectedLocation) {
                 is LocationIdentifier.CurrentUserLocation -> context.getString(R.string.current_location)
@@ -168,18 +169,6 @@ class DailyWeatherWidget : GlanceAppWidget() {
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
-                    )
-                    Spacer(modifier = GlanceModifier.defaultWeight())
-                    // Refresh Button (Passe maintenant le paramètre de localisation)
-                    Image(
-                        provider = ImageProvider(R.drawable.ic_refresh),
-                        contentDescription = "Refresh",
-                        modifier = GlanceModifier
-                            .size(16.dp)
-                            .clickable(actionRunCallback<RefreshAction>(
-                                actionParametersOf(LocIdentKey to selectedLocation)
-                            )),
-                        colorFilter = ColorFilter.tint(textColorProvider)
                     )
                 }
 

@@ -123,7 +123,6 @@ class ForecastMainActivity : ComponentActivity() {
         setContent {
             val userSettings by weatherViewModel.userSettings.collectAsState()
             val hourlyForecast by weatherViewModel.hourlyForecast.collectAsState()
-            val dailyForecast by weatherViewModel.dailyForecast.collectAsState()
             val isNight by weatherViewModel.isNight.collectAsState()
 
             val currentWmo = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
@@ -213,15 +212,6 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                 // Ignore failure
             }
         }
-    }
-
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                // Assombrit légèrement les icônes statiques en mode clair
-                setToScale(0.8f, 0.8f, 0.8f, 1f)
-            })
-        } else null
     }
 
     // Demander les permissions
