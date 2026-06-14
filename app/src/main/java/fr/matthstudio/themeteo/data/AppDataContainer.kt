@@ -20,6 +20,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 interface AppContainer {
     val userLocationsRepository: UserLocationsRepository
     val userSettingsRepository: UserSettingsRepository
+    val alertStateRepository: AlertStateRepository
     val locationProvider: LocationProvider // Ajout du LocationProvider
     val telemetryManager: TelemetryManager
 }
@@ -30,6 +31,9 @@ class AppDataContainer(private val context: Context) : AppContainer {
     }
     override val userSettingsRepository: UserSettingsRepository by lazy {
         UserSettingsRepository(context.dataStore)
+    }
+    override val alertStateRepository: AlertStateRepository by lazy {
+        AlertStateRepository(context.dataStore)
     }
     // Ajout de l'instance du LocationProvider
     override val locationProvider: LocationProvider by lazy {

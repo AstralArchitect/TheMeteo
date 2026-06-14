@@ -59,7 +59,7 @@ class WidgetCacheManager(private val context: Context) {
         val current = getWidgetData().first()
         val now = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC)
 
-        // Efficacité : Ne rafraîchir que si nécessaire (ex: 1h)
+        // Efficacité : Ne rafraîchir que si nécessaire (ex: 2h)
         if (current != null && current.locationIdentifier == location && (now - current.lastUpdatedEpochSeconds) < CACHE_EXPIRATION_MINUTES * 120) {
             return current
         }

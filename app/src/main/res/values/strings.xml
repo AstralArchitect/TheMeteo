@@ -281,4 +281,12 @@
     <string name="theme_fixed">Fixed</string>
     <string name="theme_system">System</string>
     <string name="theme_weather">Weather</string>
+
+    <!-- Notifications -->
+    <string name="vigilance_channel_name">Weather Vigilance</string>
+    <string name="vigilance_channel_description">Notifications for weather alerts and warnings.</string>
+    <string name="rain_channel_name">Precipitations</string>
+    <string name="rain_channel_description">Notifications for upcoming rain or snow.</string>
+    <string name="vigilance_alert_title">Weather Alert: %1$s</string>
+    <string name="rain_alert_title">Rain Alert</string>
 </resources>

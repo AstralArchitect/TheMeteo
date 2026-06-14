@@ -423,13 +423,6 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             if (response.status.value == 200) {
                 val fullResponse = response.body<VigilanceMapResponse>()
 
-                // 1. On récupère les données du département pour toutes les périodes (J et J1)
-                val deptInPeriods = fullResponse.product.periods.mapNotNull { period ->
-                    period.timelaps.domainIds.find { it.domainId == departmentCode }
-                }
-
-                if (deptInPeriods.isEmpty()) return null
-
                 val now = OffsetDateTime.now()
 
                 // 1. On récupère les périodes qui contiennent notre département
@@ -475,10 +468,8 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         )
                     }
 
-                if (mergedAlerts.isEmpty()) return null
-
-                // 3. Déterminer le maxColorId global sur les alertes restantes
-                val globalMaxColor = mergedAlerts.maxOf { it.maxColorId }
+                // 3. Déterminer le maxColorId global sur les alertes restantes (1 par défaut si vide)
+                val globalMaxColor = mergedAlerts.maxOfOrNull { it.maxColorId } ?: 1
 
                 VigilanceInfos(
                     departmentCode = departmentCode,

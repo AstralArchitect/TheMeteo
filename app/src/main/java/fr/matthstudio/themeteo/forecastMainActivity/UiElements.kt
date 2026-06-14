@@ -1192,12 +1192,18 @@ fun LocationPermissionHandler(
     viewModel: WeatherViewModel
 ) {
     val context = LocalContext.current
-    val locationPermissionState = rememberMultiplePermissionsState(
-        listOf(
+    val permissions = remember {
+        val list = mutableListOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION
         )
-    )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        list
+    }
+
+    val locationPermissionState = rememberMultiplePermissionsState(permissions)
 
     // Background permission state (separate request as required by Android)
     val backgroundLocationPermissionState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

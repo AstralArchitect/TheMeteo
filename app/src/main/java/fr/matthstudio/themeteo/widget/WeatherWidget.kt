@@ -190,7 +190,8 @@ class WeatherWidget : GlanceAppWidget() {
                         Text(text = "Error", style = TextStyle(color = GlanceTheme.colors.error, fontSize = baseTextSize))
                     }
                     is WeatherDataState.SuccessHourly -> {
-                        val current = state.data.firstOrNull()
+                        val nowHour = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0)
+                        val current = state.data.find { it.time == nowHour } ?: state.data.firstOrNull()
                         if (current != null) {
                             val weatherWord = weatherCodeToSimpleWord(current.wmo)
                             val temp = current.temperature?.let { UnitConverter.formatTemperature(it, tempUnit, roundToInt = true) } ?: "--"

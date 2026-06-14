@@ -179,8 +179,9 @@ class DailyWeatherWidget : GlanceAppWidget() {
                         Text(text = "...", style = TextStyle(color = textColorProvider))
                     }
                     is WeatherDataState.SuccessDaily -> {
+                        val today = LocalDate.now()
                         Column(modifier = GlanceModifier.fillMaxWidth()) {
-                            state.data.take(5).forEach { day ->
+                            state.data.filter { !it.date.isBefore(today) }.take(5).forEach { day ->
                                 DailyRow(day, tempUnit, baseTextSize, textColorProvider, textColorVariantProvider)
                             }
                         }

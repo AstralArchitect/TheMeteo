@@ -258,4 +258,12 @@
     <string name="theme_fixed">Fixe</string>
     <string name="theme_system">Système</string>
     <string name="theme_weather">Météo</string>
+
+    <!-- Notifications -->
+    <string name="vigilance_channel_name">Vigilance Météo</string>
+    <string name="vigilance_channel_description">Notifications pour les alertes et vigilances météo.</string>
+    <string name="rain_channel_name">Précipitations</string>
+    <string name="rain_channel_description">Notifications pour la pluie ou la neige à venir.</string>
+    <string name="vigilance_alert_title">Alerte Météo : %1$s</string>
+    <string name="rain_alert_title">Alerte Pluie</string>
 </resources>
