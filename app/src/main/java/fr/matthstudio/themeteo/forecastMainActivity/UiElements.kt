@@ -2361,7 +2361,6 @@ fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit)
                                 alert.steps.forEach { step ->
                                     val start = OffsetDateTime.parse(step.beginTime)
                                     val end = OffsetDateTime.parse(step.endTime)
-                                    val isToday = start.toLocalDate() == LocalDate.now()
 
                                     val stepColor = when (step.colorId) {
                                         1 -> Color(0xFF4CAF50)
@@ -2380,7 +2379,8 @@ fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit)
                                             .background(stepColor, CircleShape))
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "${start.format(formatter)} - ${end.format(formatter)} ${if (!isToday) "(${start.format(dayFormatter)})" else ""}",
+                                            text = "${start.format(formatter)} ${if (start.toLocalDate() != LocalDate.now()) "(${start.format(dayFormatter)})" else ""} - " +
+                                                    "${end.format(formatter)} ${if (end.toLocalDate() != LocalDate.now()) "(${start.format(dayFormatter)})" else ""}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

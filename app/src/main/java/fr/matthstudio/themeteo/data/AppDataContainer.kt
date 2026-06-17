@@ -6,11 +6,12 @@ package fr.matthstudio.themeteo.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
-
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import fr.matthstudio.themeteo.telemetry.TelemetryManagerImpl
+import java.io.File
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -26,6 +27,15 @@ interface AppContainer {
 }
 
 class AppDataContainer(private val context: Context) : AppContainer {
+
+    private val alertDataStore: DataStore<Preferences> by lazy {
+        PreferenceDataStoreFactory.create(
+            produceFile = {
+                File(context.cacheDir, "datastore/alerts.preferences_pb")
+            }
+        )
+    }
+
     override val userLocationsRepository: UserLocationsRepository by lazy {
         UserLocationsRepository(context.dataStore)
     }
@@ -33,7 +43,7 @@ class AppDataContainer(private val context: Context) : AppContainer {
         UserSettingsRepository(context.dataStore)
     }
     override val alertStateRepository: AlertStateRepository by lazy {
-        AlertStateRepository(context.dataStore)
+        AlertStateRepository(alertDataStore)
     }
     // Ajout de l'instance du LocationProvider
     override val locationProvider: LocationProvider by lazy {

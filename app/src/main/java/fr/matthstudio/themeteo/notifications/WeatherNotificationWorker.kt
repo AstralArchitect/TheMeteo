@@ -19,6 +19,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 
 class WeatherNotificationWorker(
     context: Context,
@@ -67,13 +69,25 @@ class WeatherNotificationWorker(
             val lastLevel = lastLevels[locationKey] ?: 1
 
             if (vigilance.maxColorId > lastLevel && vigilance.maxColorId >= 1) {
-                val title = applicationContext.getString(R.string.vigilance_alert_title, getVigilanceLevelName(vigilance.maxColorId))
                 val mainAlert = vigilance.alerts.maxByOrNull { it.maxColorId }
-                val phenomenon = if (mainAlert != null) {
-                    applicationContext.getString(mapPhenomenonIdToName(mainAlert.phenomenonId))
+                val phenomenonName = applicationContext.getString(mapPhenomenonIdToName(mainAlert?.phenomenonId ?: ""))
+                val title = "${getVigilanceLevelName(vigilance.maxColorId, true).replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }} : ${phenomenonName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}"
+                
+                val relevantStep = mainAlert?.steps?.firstOrNull { it.colorId == vigilance.maxColorId }
+                    ?: mainAlert?.steps?.firstOrNull()
+                
+                val text = if (relevantStep != null) {
+                    try {
+                        val formatter = DateTimeFormatter.ofPattern("HH:mm")
+                        val start = OffsetDateTime.parse(relevantStep.beginTime).format(formatter)
+                        val end = OffsetDateTime.parse(relevantStep.endTime).format(formatter)
+                        applicationContext.getString(R.string.vigilance_duration, start, end)
+                    } catch (e: Exception) {
+                        ""
+                    }
                 } else ""
                 
-                notificationHelper.showVigilanceNotification(title, phenomenon)
+                notificationHelper.showVigilanceNotification(title, text, vigilance.maxColorId)
                 alertStateRepository.updateVigilanceLevel(locationKey, vigilance.maxColorId)
             } else if (vigilance.maxColorId < lastLevel) {
                 // Update state if level decreased
@@ -107,10 +121,10 @@ class WeatherNotificationWorker(
             // Fetch hourly forecast for the next 6 hours
             val models = listOf("best_match")
             val forecast = weatherService.getForecast(
-                coords.latitude, 
-                coords.longitude, 
-                models, 
-                LocalDate.now(), 
+                coords.latitude,
+                coords.longitude,
+                models,
+                LocalDate.now(),
                 LocalDate.now().plusDays(1)
             )
 
@@ -118,7 +132,7 @@ class WeatherNotificationWorker(
             if (hourlyData != null) {
                 val currentTime = LocalDateTime.now()
                 val nextRain = hourlyData.firstOrNull { 
-                    it.time.isAfter(currentTime.minusHours(1)) &&
+                    it.time.isAfter(currentTime) &&
                     it.time.isBefore(currentTime.plusHours(6)) && 
                     (it.precipitationData.precipitation ?: 0.0) > 0.1
                 }
@@ -133,13 +147,21 @@ class WeatherNotificationWorker(
         }
     }
 
-    private fun getVigilanceLevelName(level: Int): String {
-        return when (level) {
-            2 -> applicationContext.getString(R.string.weather_alert).lowercase()
-            3 -> applicationContext.getString(R.string.weather_warning).lowercase()
-            4 -> applicationContext.getString(R.string.severe_weather_warning).lowercase()
-            else -> ""
-        }
+    private fun getVigilanceLevelName(level: Int, lower: Boolean = false): String {
+        return if (lower)
+            when (level) {
+                2 -> applicationContext.getString(R.string.weather_alert)
+                3 -> applicationContext.getString(R.string.weather_warning)
+                4 -> applicationContext.getString(R.string.severe_weather_warning)
+                else -> ""
+            }.lowercase()
+        else
+            when (level) {
+                2 -> applicationContext.getString(R.string.weather_alert)
+                3 -> applicationContext.getString(R.string.weather_warning)
+                4 -> applicationContext.getString(R.string.severe_weather_warning)
+                else -> ""
+            }
     }
 
     private fun mapPhenomenonIdToName(id: String): Int {

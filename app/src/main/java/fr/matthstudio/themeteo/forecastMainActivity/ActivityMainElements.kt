@@ -1018,7 +1018,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     // Si l'alerte a un niveau strictement inférieur 2 (jaune) on n'affiche pas, car c'est vigilance verte (pas d'alerte).
     if (mainAlert.maxColorId < 2) return
 
-    // On récupère les heures de début et de fin (première et dernière étape > Vert)
+    // On récupère les heures de début et de fin (première et dernière étape > Vert).
     val activeSteps = mainAlert.steps.filter { it.colorId > 1 }
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
     val now = LocalDate.now()
@@ -1036,9 +1036,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     val showDate = startDateTime?.toLocalDate() != LocalDate.now() || endDateTime?.toLocalDate() != LocalDate.now()
 
     val startLabel = if (showDate && startDateTime != null) {
-        val label = if (startDateTime.toLocalDate() == now) stringResource(R.string.today_lower) else stringResource(
-            R.string.tomorrow_lower
-        )
+        val label = if (startDateTime.toLocalDate() == now) stringResource(R.string.today_lower) else stringResource(R.string.tomorrow_lower)
         " ($label)"
     } else ""
 
@@ -1157,58 +1155,6 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
                         color = contentColor.copy(alpha = 0.8f)
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun WeatherDetailCard(item: WeatherDetailItem) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(110.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(12.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        item.icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        item.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1
-                    )
-                }
-                Text(
-                    item.value,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-            }
-            item.subValue?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                    maxLines = 3,
-                    lineHeight = 14.sp
-                )
             }
         }
     }

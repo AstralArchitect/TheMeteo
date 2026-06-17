@@ -98,7 +98,7 @@ class TheMeteo : Application(), ImageLoaderFactory {
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "WeatherAlertWork",
-            ExistingPeriodicWorkPolicy.UPDATE, // Mettre à jour pour prendre en compte les changements
+            ExistingPeriodicWorkPolicy.KEEP, // Garder le travail existant pour ne pas réinitialiser le délai
             weatherWorkRequest
         )
     }
