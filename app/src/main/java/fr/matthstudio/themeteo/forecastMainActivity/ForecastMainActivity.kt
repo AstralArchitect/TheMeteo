@@ -186,10 +186,10 @@ fun BentoCardContent(
 fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: Boolean) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val isDark = isSystemInDarkTheme()
     val hourlyForecast by viewModel.hourlyForecast.collectAsState()
     val dailyForecast by viewModel.dailyForecast.collectAsState()
     val isNight by viewModel.isNight.collectAsState()
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     // --- LOGIQUE DE RÉSOLUTION DU GPS ---
     val locationSettingsException by viewModel.locationSettingsException.collectAsState()
@@ -310,7 +310,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         // Calculer le flou dynamiquement en fonction de l'offset de la sheet
         val dynamicBlur by remember {
             derivedStateOf {
-                if (!showLocationSheet) {
+                if (isBatterySaverActive) 0.dp
+                else if (!showLocationSheet) {
                     if (showAirQualityDialog || showVigilanceDialog || showSunMoonDialog)
                         10.dp
                     else 0.dp

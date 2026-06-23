@@ -205,7 +205,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            if (!fullPeriod) {
+            if (!fullPeriod && currentStartDateTime.hour == 0) {
                 DaySelector(viewModel)
             }
 

@@ -205,8 +205,9 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
             MaterialTheme.colorScheme.background
         )
     }
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || state == null) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || state == null || isBatterySaverActive) {
         // Dégradé simple pour les versions anciennes ou lorsque state est null
         Box(
             modifier = Modifier

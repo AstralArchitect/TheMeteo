@@ -712,6 +712,7 @@ fun LocationManagementSheet(
     var listState by remember(savedLocations) { mutableStateOf(savedLocations) }
     val lazyListState = rememberLazyListState()
     var renamingLocation by remember { mutableStateOf<SavedLocation?>(null) }
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     if (renamingLocation != null) {
         RenameLocationDialog(
@@ -727,8 +728,8 @@ fun LocationManagementSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MaterialTheme.colorScheme.secondaryContainer.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
-        scrimColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(alpha = 0.5f)
+        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) MaterialTheme.colorScheme.secondaryContainer.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
+        scrimColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(alpha = 0.5f)
     ) {
         Column(modifier = Modifier
             .fillMaxWidth()
@@ -2255,12 +2256,13 @@ fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit)
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
     val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
                     alpha = 0.6f
                 )
             )

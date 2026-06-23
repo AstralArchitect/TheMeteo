@@ -90,6 +90,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.strictmode.FragmentStrictMode
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
@@ -111,12 +112,12 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
     val currentDay = data.days.getOrNull(selectedDayIndex) ?: data.days.first()
 
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
                     alpha = 0.6f
                 )
             )
@@ -468,6 +469,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
 fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     // Animation state
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     fun animateAndDismiss() {
         visibleState.targetState = false
@@ -478,7 +480,7 @@ fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
                     alpha = 0.6f
                 )
             )
