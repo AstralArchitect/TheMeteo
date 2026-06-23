@@ -21,6 +21,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -34,6 +35,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -143,7 +146,7 @@ class DayGraphsActivity : ComponentActivity() {
                             .windowInsetsPadding(WindowInsets.safeDrawing),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        GraphsScreen(weatherViewModel, startDateTime, fullPeriod)
+                        GraphsScreen(weatherViewModel, fullPeriod)
                     }
                 }
             }
@@ -152,12 +155,13 @@ class DayGraphsActivity : ComponentActivity() {
 }
 
 @Composable
-fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, fullPeriod: Boolean = false) {
+fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
 
     val forecast by viewModel.hourlyForecast.collectAsState()
     val scrollState = rememberScrollState()
     val backgroundColor = MaterialTheme.colorScheme.background
     val userSettings by viewModel.userSettings.collectAsState()
+    val currentStartDateTime by viewModel.currentStartDateTime.collectAsState()
 
     val verticalScrollState = rememberScrollState()
     val showTemperatureDetailsGraphs = remember { mutableStateOf(false) }
@@ -171,6 +175,10 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
         (forecast as WeatherDataState.SuccessHourly).data.size * 42.dp
     } else {
         1000.dp
+    }
+
+    LaunchedEffect(currentStartDateTime) {
+        hasScrolled.value = false
     }
 
     LaunchedEffect(forecast) {
@@ -193,19 +201,28 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp),
+            modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            // Header with transparent background
-            Box(modifier = Modifier.fillMaxWidth()) {
+            if (!fullPeriod) {
+                DaySelector(viewModel)
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 16.dp, end = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Top
+            ) {
+                // Header with transparent background
+                Box(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = if (fullPeriod)
                         stringResource(R.string.full_period_forecast)
-                    else if (startDateTime.hour == 0)
-                        stringResource(R.string.forecast_for_the, startDateTime.format(DateTimeFormatter.ofPattern("dd MMMM yyyy")))
+                    else if (currentStartDateTime.hour == 0)
+                        stringResource(R.string.forecast_for_the, currentStartDateTime.format(DateTimeFormatter.ofPattern("dd MMMM yyyy")))
                     else
                         stringResource(R.string.next_24h_forecast),
                     style = MaterialTheme.typography.headlineSmall,
@@ -522,6 +539,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, startDateTime: LocalDateTime, full
         }
     }
 }
+}
 
 enum class GraphType {
     TEMP, A_TEMP,
@@ -533,10 +551,55 @@ enum class GraphType {
 }
 
 @Composable
+fun DaySelector(viewModel: WeatherViewModel) {
+    val availableDaysState by viewModel.availableDays.collectAsState()
+    val currentStartDate by viewModel.currentStartDateTime.collectAsState()
+
+    if (availableDaysState is WeatherDataState.SuccessDaily) {
+        val days = (availableDaysState as WeatherDataState.SuccessDaily).data
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp)
+        ) {
+            items(days) { dailyReading ->
+                val isSelected = dailyReading.date == currentStartDate.toLocalDate()
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                    tonalElevation = if (isSelected) 0.dp else 2.dp,
+                    modifier = Modifier.clickable {
+                        viewModel.updateStartDate(dailyReading.date.atStartOfDay())
+                    }
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = dailyReading.date.format(DateTimeFormatter.ofPattern("EEE")),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = dailyReading.date.dayOfMonth.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun BackgroundGrid(
     forecast: WeatherDataState,
-    contentWidth: Dp = 1000.dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentWidth: Dp = 1000.dp
 ) {
     if (forecast !is WeatherDataState.SuccessHourly) return
     val data = forecast.data

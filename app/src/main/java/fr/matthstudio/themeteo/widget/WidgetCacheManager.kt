@@ -5,6 +5,7 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.widget
 
 import android.content.Context
+import android.location.Geocoder
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -26,6 +27,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import java.util.Locale
 
 private val Context.widgetDataStore: DataStore<Preferences> by preferencesDataStore(name = "widget_cache")
 
@@ -59,7 +61,7 @@ class WidgetCacheManager(private val context: Context) {
         val current = getWidgetData().first()
         val now = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC)
 
-        // Efficacité : Ne rafraîchir que si nécessaire (ex: 2h)
+        // Ne rafraîchir que si nécessaire (2h)
         if (current != null && current.locationIdentifier == location && (now - current.lastUpdatedEpochSeconds) < CACHE_EXPIRATION_MINUTES * 120) {
             return current
         }

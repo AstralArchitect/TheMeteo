@@ -19,7 +19,6 @@ object WidgetUtils {
     val KEY_LOCATION = stringPreferencesKey("widget_location")
     val KEY_COLOR_THEME = stringPreferencesKey("widget_color_theme")
     val KEY_TRANSPARENCY = intPreferencesKey("transparency")
-    val KEY_TEXT_SIZE = intPreferencesKey("text_size")
 
     const val THEME_SYSTEM = "system"
     const val THEME_SYSTEM_INVERTED = "system_inverted"
@@ -45,22 +44,6 @@ object WidgetUtils {
             SimpleWeatherWord.SNOWY_MIX -> R.drawable.rainy_3
             SimpleWeatherWord.STORMY -> R.drawable.thunderstorms
             null -> R.drawable.clear_day // Fallback
-        }
-    }
-
-    fun getBaseTextSize(textSizeIndex: Int): TextUnit {
-        return when (textSizeIndex) {
-            0 -> 10.sp
-            1 -> 13.sp
-            else -> 16.sp
-        }
-    }
-
-    fun getBigTextSize(textSizeIndex: Int): TextUnit {
-        return when (textSizeIndex) {
-            0 -> 18.sp
-            1 -> 22.sp
-            else -> 28.sp
         }
     }
 

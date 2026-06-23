@@ -18,11 +18,13 @@ import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
+import androidx.glance.LocalSize
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.provideContent
@@ -63,6 +65,7 @@ val LocIdentKey = ActionParameters.Key<LocationIdentifier>("location_identifier"
 class WeatherWidget : GlanceAppWidget() {
 
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
+    override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val manager = WidgetCacheManager(context)
@@ -91,7 +94,6 @@ class WeatherWidget : GlanceAppWidget() {
 
             val colorTheme = prefs[WidgetUtils.KEY_COLOR_THEME] ?: WidgetUtils.THEME_SYSTEM
             val transparency = prefs[WidgetUtils.KEY_TRANSPARENCY] ?: 0
-            val textSize = prefs[WidgetUtils.KEY_TEXT_SIZE] ?: 1
 
             GlanceTheme {
                 WeatherWidgetContent(
@@ -101,7 +103,6 @@ class WeatherWidget : GlanceAppWidget() {
                     locationName = locationName,
                     selectedLocation = selectedLocation,
                     transparency = transparency,
-                    textSizeIndex = textSize,
                     theme = colorTheme
                 )
             }
@@ -117,13 +118,16 @@ class WeatherWidget : GlanceAppWidget() {
         locationName: String,
         selectedLocation: LocationIdentifier,
         transparency: Int,
-        textSizeIndex: Int,
         theme: String
     ) {
+        val size = LocalSize.current
         val alpha = (100 - transparency) / 100f
-        val baseTextSize = WidgetUtils.getBaseTextSize(textSizeIndex)
-        val bigTextSize = WidgetUtils.getBigTextSize(textSizeIndex)
         
+        // Dynamic sizing based on widget size
+        val baseTextSize = (size.width.value / 12f).sp
+        val bigTextSize = (size.width.value / 6.5f).sp
+        val smallTextSize = (baseTextSize.value - 2).sp
+
         val backgroundProvider = when(theme) {
             WidgetUtils.THEME_BLUE -> ColorProvider(Color(0xFFE3F2FD))
             WidgetUtils.THEME_GREEN -> ColorProvider(Color(0xFFE8F5E9))
@@ -175,7 +179,7 @@ class WeatherWidget : GlanceAppWidget() {
                         text = locationName,
                         style = TextStyle(
                             color = textColorProvider,
-                            fontSize = (baseTextSize.value - 2).sp,
+                            fontSize = smallTextSize,
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1

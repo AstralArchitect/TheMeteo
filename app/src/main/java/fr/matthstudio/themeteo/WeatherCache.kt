@@ -433,22 +433,6 @@ class WeatherCache(
         }
     }
 
-    private fun getEffectiveModel(currentSettings: UserSettings, coords: GpsCoordinates?): String {
-        var effectiveModel = currentSettings.model
-        val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
-        if (coords != null) {
-            val modelInfo = WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode)
-            if (!modelInfo.isAvailableAt(coords.latitude, coords.longitude)) {
-                effectiveModel = "best_match"
-                applicationScope.launch(Dispatchers.IO) {
-                    userSettingsRepository.updateModel("best_match")
-                    userSettingsRepository.updateForecastType(ForecastType.DETERMINISTIC)
-                }
-            }
-        }
-        return effectiveModel
-    }
-
     /**
      * Récupère les données météo horaires.
      */
@@ -456,14 +440,8 @@ class WeatherCache(
         emit(WeatherDataState.Loading)
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
-        val coords = resolveCoordinates(currentLocationIdentifier)
-        if (coords == null)
-        {
-            emit(WeatherDataState.Error("Unable to get GPS position"))
-            return@flow
-        }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
-        val effectiveModel = getEffectiveModel(currentSettings, coords)
+        var effectiveModel = currentSettings.model
         
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
             .plusDays(WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays.toLong())
@@ -548,10 +526,21 @@ class WeatherCache(
         }
 
         if (needsFetch) {
-            if (coords == null) {
-                val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
-                emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessHourly(it) }))
+            val coords = resolveCoordinates(currentLocationIdentifier)
+            if (coords == null)
+            {
+                emit(WeatherDataState.Error("Unable to get GPS position"))
                 return@flow
+            }
+
+            val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
+            val modelInfo = WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode)
+            if (!modelInfo.isAvailableAt(coords.latitude, coords.longitude)) {
+                effectiveModel = "best_match"
+                applicationScope.launch(Dispatchers.IO) {
+                    userSettingsRepository.updateModel("best_match")
+                    userSettingsRepository.updateForecastType(ForecastType.DETERMINISTIC)
+                }
             }
 
             if (isEnsembleMode) {
@@ -646,14 +635,8 @@ class WeatherCache(
         emit(WeatherDataState.Loading)
         val currentSettings = userSettings.value
         val currentLocationIdentifier = locationOverride ?: selectedLocation.value
-        val coords = resolveCoordinates(currentLocationIdentifier)
-        if (coords == null)
-        {
-            emit(WeatherDataState.Error("Unable to get GPS position"))
-            return@flow
-        }
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
-        val effectiveModel = getEffectiveModel(currentSettings, coords)
+        var effectiveModel = currentSettings.model
 
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
             .plusDays(WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays.toLong())
@@ -738,9 +721,10 @@ class WeatherCache(
         }
 
         if (needsFetch) {
-            if (coords == null) {
-                val errorMsg = applicationContext.getString(R.string.error_gps_unavailable)
-                emit(WeatherDataState.Error(errorMsg, mergedData?.let { WeatherDataState.SuccessDaily(it) }))
+            val coords = resolveCoordinates(currentLocationIdentifier)
+            if (coords == null)
+            {
+                emit(WeatherDataState.Error("Unable to get GPS position"))
                 return@flow
             }
 
