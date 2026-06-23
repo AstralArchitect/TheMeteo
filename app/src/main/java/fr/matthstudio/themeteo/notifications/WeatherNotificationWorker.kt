@@ -7,6 +7,7 @@ package fr.matthstudio.themeteo.notifications
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
+import androidx.compose.ui.res.stringResource
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import fr.matthstudio.themeteo.LocationIdentifier
@@ -49,8 +50,12 @@ class WeatherNotificationWorker(
         savedLocations.forEach { allLocations.add(LocationIdentifier.Saved(it)) }
 
         // 2. Fetch data and analyze
-        checkVigilance(allLocations, alertState)
-        checkRain(defaultLocation, alertState)
+        if (userSettings.enableVigilanceNotifications.first()) {
+            checkVigilance(allLocations, alertState)
+        }
+        if (userSettings.enableRainNotifications.first()) {
+            checkRain(defaultLocation, alertState)
+        }
 
         return Result.success()
     }
@@ -63,6 +68,10 @@ class WeatherNotificationWorker(
                 is LocationIdentifier.CurrentUserLocation -> app.weatherCache.currentGpsPosition.value
                 is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
             } ?: continue
+            val locName = when (location) {
+                is LocationIdentifier.CurrentUserLocation -> applicationContext.getString(R.string.current_location)
+                is LocationIdentifier.Saved -> location.location.name
+            }
 
             val vigilance = weatherService.getVigilanceForLocation(coords.latitude, coords.longitude) ?: continue
             val locationKey = Json.encodeToString(location)
@@ -81,7 +90,7 @@ class WeatherNotificationWorker(
                         val formatter = DateTimeFormatter.ofPattern("HH:mm")
                         val start = OffsetDateTime.parse(relevantStep.beginTime).format(formatter)
                         val end = OffsetDateTime.parse(relevantStep.endTime).format(formatter)
-                        applicationContext.getString(R.string.vigilance_duration, start, end)
+                        applicationContext.getString(R.string.vigilance_duration, start, end, locName)
                     } catch (e: Exception) {
                         ""
                     }

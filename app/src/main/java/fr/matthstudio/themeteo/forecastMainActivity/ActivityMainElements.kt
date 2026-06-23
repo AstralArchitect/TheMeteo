@@ -1281,7 +1281,7 @@ fun RainAlertCard(hourlyForecast: WeatherDataState) {
 fun BentoCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     Surface(
         modifier = if (onClick != null) modifier.clickable { onClick() } else modifier,
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f),
         shape = RoundedCornerShape(28.dp),
         tonalElevation = 12.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))

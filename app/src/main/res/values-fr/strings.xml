@@ -259,6 +259,15 @@
     <string name="theme_system">Système</string>
     <string name="theme_weather">Météo</string>
 
+    <!-- Notifications Settings -->
+    <string name="rain_notifications_title">Notifications de pluie</string>
+    <string name="rain_notifications_desc">Soyez notifié de la pluie ou de la neige à venir.</string>
+    <string name="vigilance_notifications_title">Notifications de vigilance</string>
+    <string name="vigilance_notifications_desc">Soyez notifié des phénomènes dangereux (Vigilance).</string>
+    <string name="notification_permission_title">Activer les Notifications</string>
+    <string name="notification_permission_desc">Pour recevoir les alertes de vigilance et les notifications de pluie, l\'application doit avoir l\'autorisation d\'envoyer des notifications.</string>
+    <string name="notification_permission_button">Autoriser</string>
+
     <!-- Notifications -->
     <string name="vigilance_yellow_channel_name">Vigilance Météo (Jaune)</string>
     <string name="vigilance_yellow_channel_description">Notifications pour les vigilances jaunes.</string>
@@ -267,6 +276,6 @@
     <string name="rain_channel_name">Précipitations</string>
     <string name="rain_channel_description">Notifications pour la pluie ou la neige à venir.</string>
     <string name="vigilance_alert_title">Alerte Météo : %1$s</string>
-    <string name="vigilance_duration">De %1$s à %2$s</string>
+    <string name="vigilance_duration">De %1$s à %2$s - A %3$s</string>
     <string name="rain_alert_title">Alerte Pluie</string>
 </resources>

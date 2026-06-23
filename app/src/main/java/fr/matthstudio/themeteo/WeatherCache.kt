@@ -102,7 +102,9 @@ data class UserSettings(
     val hasOpenedAppOnce: Boolean,
     val useEurAqi: Boolean,
     val backgroundLocationAsked: Boolean,
-    val themeMode: ThemeMode
+    val themeMode: ThemeMode,
+    val enableRainNotifications: Boolean,
+    val enableVigilanceNotifications: Boolean
 )
 
 /**
@@ -173,7 +175,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED))
+    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED, true, true))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -296,7 +298,9 @@ class WeatherCache(
                 userSettingsRepository.hasOpenedAppOnce,
                 userSettingsRepository.useEurAqi,
                 userSettingsRepository.backgroundLocationAsked,
-                userSettingsRepository.themeMode
+                userSettingsRepository.themeMode,
+                userSettingsRepository.enableRainNotifications,
+                userSettingsRepository.enableVigilanceNotifications
             ) { values ->
                 val model = values[0] as String?
                 val round = values[1] as Boolean
@@ -315,6 +319,8 @@ class WeatherCache(
                 val useEurAqi = values[14] as Boolean
                 val backgroundAsked = values[15] as Boolean
                 val themeMode = values[16] as ThemeMode
+                val rainNotif = values[17] as Boolean
+                val vigilanceNotif = values[18] as Boolean
                         
                 UserSettings(
                     model ?: "best_match",
@@ -333,7 +339,9 @@ class WeatherCache(
                     hasOpened,
                     useEurAqi,
                     backgroundAsked,
-                    themeMode
+                    themeMode,
+                    rainNotif,
+                    vigilanceNotif
                 )
             }.collect { settings ->
                 _userSettings.value = settings

@@ -62,6 +62,8 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val USE_EUR_AQI = booleanPreferencesKey("use_eur_aqi")
         val BACKGROUND_LOCATION_ASKED = booleanPreferencesKey("background_location_asked")
         val THEME_MODE = intPreferencesKey("theme_mode")
+        val ENABLE_RAIN_NOTIFICATIONS = booleanPreferencesKey("enable_rain_notifications")
+        val ENABLE_VIGILANCE_NOTIFICATIONS = booleanPreferencesKey("enable_vigilance_notifications")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
@@ -80,6 +82,20 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         preferences[PreferencesKeys.THEME_MODE]?.let { index ->
             ThemeMode.entries.getOrNull(index)
         } ?: (if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) ThemeMode.FIXED else ThemeMode.SYSTEM)
+    }
+
+    /**
+     * Flow pour l'activation des notifications de pluie.
+     */
+    val enableRainNotifications: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENABLE_RAIN_NOTIFICATIONS] ?: true
+    }
+
+    /**
+     * Flow pour l'activation des notifications de vigilance.
+     */
+    val enableVigilanceNotifications: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENABLE_VIGILANCE_NOTIFICATIONS] ?: true
     }
 
     /**
@@ -369,6 +385,24 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateThemeMode(mode: ThemeMode) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'activation des notifications de pluie.
+     */
+    suspend fun updateEnableRainNotifications(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENABLE_RAIN_NOTIFICATIONS] = enabled
+        }
+    }
+
+    /**
+     * Met à jour l'activation des notifications de vigilance.
+     */
+    suspend fun updateEnableVigilanceNotifications(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENABLE_VIGILANCE_NOTIFICATIONS] = enabled
         }
     }
 

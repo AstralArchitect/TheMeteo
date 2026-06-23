@@ -282,6 +282,15 @@
     <string name="theme_system">System</string>
     <string name="theme_weather">Weather</string>
 
+    <!-- Notifications Settings -->
+    <string name="rain_notifications_title">Rain Notifications</string>
+    <string name="rain_notifications_desc">Get notified about upcoming rain or snow.</string>
+    <string name="vigilance_notifications_title">Vigilance Notifications</string>
+    <string name="vigilance_notifications_desc">Get notified about severe weather alerts (Vigilance).</string>
+    <string name="notification_permission_title">Enable Notifications</string>
+    <string name="notification_permission_desc">To receive weather alerts and rain notifications, the app needs permission to send notifications.</string>
+    <string name="notification_permission_button">Grant Permission</string>
+
     <!-- Notifications -->
     <string name="vigilance_yellow_channel_name">Weather Vigilance (Yellow)</string>
     <string name="vigilance_yellow_channel_description">Notifications for yellow weather alerts.</string>
@@ -290,6 +299,6 @@
     <string name="rain_channel_name">Precipitations</string>
     <string name="rain_channel_description">Notifications for upcoming rain or snow.</string>
     <string name="vigilance_alert_title">Weather Alert: %1$s</string>
-    <string name="vigilance_duration">From %1$s to %2$s</string>
+    <string name="vigilance_duration">From %1$s to %2$s - At %3$s</string>
     <string name="rain_alert_title">Rain Alert</string>
 </resources>

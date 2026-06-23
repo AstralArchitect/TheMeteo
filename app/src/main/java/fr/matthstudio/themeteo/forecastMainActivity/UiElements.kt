@@ -343,13 +343,6 @@ enum class ChosenVar {
 @Composable
 fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onClick: () -> Unit) {
     val isDark = isSystemInDarkTheme()
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                setToScale(0.8f, 0.8f, 0.8f, 1f)
-            })
-        } else null
-    }
 
     // Charger les icônes
     val iconWeatherFolder = "file:///android_asset/icons/weather/"
@@ -422,8 +415,8 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                     val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
                     
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        EnsembleIconSmall(dayReading.wmoEnsemble.best, animated, weatherIconFilter)
-                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, animated, weatherIconFilter)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.best, animated)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, animated)
                     }
                 } else {
                     if (fileName is String) {
@@ -433,8 +426,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                             modifier = Modifier
                                 .width(30.dp)
                                 .height(30.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
+                            contentScale = ContentScale.Fit
                         )
                     } else {
                         Image(
@@ -443,8 +435,7 @@ fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onCli
                             modifier = Modifier
                                 .width(30.dp)
                                 .height(30.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
+                            contentScale = ContentScale.Fit
                         )
                     }
                 }
@@ -521,14 +512,6 @@ fun DailyForecastRow(
     expandedContent: @Composable () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                // Assombrit légèrement les icônes statiques en mode clair
-                setToScale(0.7f, 0.7f, 0.7f, 1f)
-            })
-        } else null
-    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -554,8 +537,8 @@ fun DailyForecastRow(
             Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
                 if (dayReading.wmoEnsemble != null) {
                     Row {
-                        EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
-                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive)
                     }
                 } else if (weatherWord != null) {
                     LottieWeatherIcon(
@@ -637,7 +620,7 @@ fun DailyForecastRow(
 }
 
 @Composable
-fun EnsembleIconSmall(wmo: Int?, animated: Boolean, filter: ColorFilter?) {
+fun EnsembleIconSmall(wmo: Int?, animated: Boolean) {
     if (wmo == null) return
     val weatherWord = weatherCodeToSimpleWord(wmo)!!
 
