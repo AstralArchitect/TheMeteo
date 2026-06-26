@@ -197,8 +197,8 @@
     <string name="animated_icons_title">Icônes animées</string>
     <string name="animated_icons_desc">Animer les icônes météo, désactivé lorsque l\'économiseur de batterie est activé</string>
     <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
-    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du modèle \"Auto\"</string>
-    <string name="meilleur_mod_le_par_d_faut">Auto (par défaut)</string>
+    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisi avec les données des modèles par défaut (ECMWF/GFS)</string>
+    <string name="meilleur_mod_le_par_d_faut">ECMWF IFS (Recommandé)</string>
     <string name="major_polluant">Polluant Majeur: %1$s</string>
     <string name="gusts">Rafales</string>
     <string name="forecast_type_title">Type de prévision</string>

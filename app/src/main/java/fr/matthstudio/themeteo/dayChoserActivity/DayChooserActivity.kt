@@ -430,44 +430,7 @@ fun SingleDailyForecastCard(
     maxOfAll: Double
 ) {
     val context = LocalContext.current
-
-    // Charger les icônes
-    val iconWeatherFolder = "file:///android_asset/icons/weather/"
-    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
-    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
-    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
-    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
-    val dustIconPath: String = iconWeatherFolder + "dust.svg"
-    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
-    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
-    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
-    val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
-    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
-    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
-    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
-    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
-
     val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
-    val fileName = when (weatherWord) {
-        SimpleWeatherWord.SUNNY -> sunnyDayIconPath
-        SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyDayIconPath
-        SimpleWeatherWord.CLOUDY -> cloudyIconPath
-        SimpleWeatherWord.FOGGY -> foggyIconPath
-        SimpleWeatherWord.HAZE -> hazeIconPath
-        SimpleWeatherWord.DUST -> dustIconPath
-        SimpleWeatherWord.DRIZZLY -> drizzleIconPath
-        SimpleWeatherWord.RAINY1 -> rainy1IconPath
-        SimpleWeatherWord.RAINY2 -> rainy2IconPath
-        SimpleWeatherWord.HAIL -> hailIconPath
-        SimpleWeatherWord.SNOWY1 -> snowy1IconPath
-        SimpleWeatherWord.SNOWY2 -> snowy2IconPath
-        SimpleWeatherWord.SNOWY3 -> snowy3IconPath
-        SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
-        SimpleWeatherWord.STORMY -> stormyIconPath
-        null -> Icons.Default.NotInterested
-    }
 
     val userSettings by viewModel.userSettings.collectAsState()
     val totalPrecipitation = dayReading.precipitation

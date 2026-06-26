@@ -128,7 +128,7 @@ class WeatherNotificationWorker(
             if (now - lastTime < 3 * 60 * 60 * 1000) continue
 
             // Fetch hourly forecast for the next 6 hours
-            val models = listOf("best_match")
+            val models = listOf("ecmwf_ifs", "gfs_seamless")
             val forecast = weatherService.getForecast(
                 coords.latitude,
                 coords.longitude,
@@ -137,7 +137,7 @@ class WeatherNotificationWorker(
                 LocalDate.now().plusDays(1)
             )
 
-            val hourlyData = forecast?.get("best_match")?.first
+            val hourlyData = forecast?.get("ecmwf_ifs")?.first ?: forecast?.get("gfs_seamless")?.first
             if (hourlyData != null) {
                 val currentTime = LocalDateTime.now()
                 val nextRain = hourlyData.firstOrNull { 

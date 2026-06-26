@@ -109,7 +109,7 @@ import kotlin.math.sin
 @Composable
 fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
     val (baseColor, meshColors) = when (state) {
-        SimpleWeatherWord.STORMY -> if (isNight) {
+        SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_RAIN -> if (isNight) {
             Color(0xFF0D001A) to listOf(
                 Color(0xFF311B92).copy(alpha = 0.7f),
                 Color(0xFF1A237E).copy(alpha = 0.5f),
@@ -187,7 +187,7 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
                 Color(0xFF78909C).copy(alpha = 0.5f)
             )
         }
-        SimpleWeatherWord.SUNNY_CLOUDY, SimpleWeatherWord.SUNNY -> if (isNight) {
+        SimpleWeatherWord.SUNNY_CLOUDY, SimpleWeatherWord.MOSTLY_CLEAR, SimpleWeatherWord.SUNNY -> if (isNight) {
             Color(0xFF000814) to listOf(
                 Color(0xFF001D3D).copy(alpha = 0.8f),
                 Color(0xFF003566).copy(alpha = 0.6f),

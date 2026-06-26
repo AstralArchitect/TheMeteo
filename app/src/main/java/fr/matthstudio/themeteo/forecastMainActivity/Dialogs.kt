@@ -5,6 +5,7 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Build
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -37,11 +38,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Compress
@@ -88,12 +91,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import androidx.fragment.app.strictmode.FragmentStrictMode
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.toSmartString
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Preview()
@@ -659,4 +667,159 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
 
         }
     )
+}
+
+@Composable
+fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
+                    alpha = 0.6f
+                )
+            )
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedVisibility(
+            visibleState = visibleState,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.8f)
+                    .clickable(enabled = false) { },
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.vigilance_alerts_dept_code,
+                            vigilanceData.departmentCode
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(vigilanceData.alerts) { alert ->
+                            val alertColor = when (alert.maxColorId) {
+                                1 -> Color(0xFF4CAF50)
+                                2 -> Color(0xFFFFEB3B)
+                                3 -> Color(0xFFFF9800)
+                                4 -> Color(0xFFF44336)
+                                else -> MaterialTheme.colorScheme.outline
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        alertColor.copy(alpha = 0.1f),
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .padding(12.dp)
+                            ) {
+                                val isDark = isSystemInDarkTheme()
+                                val itemContentColor = if (!isDark) when (alert.maxColorId) {
+                                    2 -> Color(0xFF422B00) // Marron très foncé
+                                    3 -> Color(0xFFE65100) // Orange foncé
+                                    4 -> Color(0xFFB71C1C) // Rouge foncé
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                } else alertColor
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = getPhenomenonIcon(alert.phenomenonId),
+                                        contentDescription = null,
+                                        tint = itemContentColor,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = stringResource(mapPhenomenonIdToName(alert.phenomenonId)),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = itemContentColor
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                alert.steps.forEach { step ->
+                                    val start = OffsetDateTime.parse(step.beginTime)
+                                    val end = OffsetDateTime.parse(step.endTime)
+
+                                    val stepColor = when (step.colorId) {
+                                        1 -> Color(0xFF4CAF50)
+                                        2 -> Color(0xFFFFEB3B)
+                                        3 -> Color(0xFFFF9800)
+                                        4 -> Color(0xFFF44336)
+                                        else -> Color.Gray
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier
+                                            .size(10.dp)
+                                            .background(stepColor, CircleShape))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${start.format(formatter)} ${if (start.toLocalDate() != LocalDate.now()) "(${start.format(dayFormatter)})" else ""} - " +
+                                                    "${end.format(formatter)} ${if (end.toLocalDate() != LocalDate.now()) "(${end.format(dayFormatter)})" else ""}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://vigilance.meteofrance.fr/fr".toUri())
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.official_website), style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.close))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

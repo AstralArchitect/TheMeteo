@@ -333,7 +333,7 @@ fun SettingsScreen(cache: WeatherCache) {
                     } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
                         scope.launch {
                             cache.userSettingsRepository.updateForecastType(newType)
-                            cache.userSettingsRepository.updateModel("best_match")
+                            cache.userSettingsRepository.updateModel("ecmwf_ifs")
                         }
                     }
                 }

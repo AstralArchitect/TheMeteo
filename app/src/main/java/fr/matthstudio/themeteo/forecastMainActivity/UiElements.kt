@@ -20,7 +20,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,7 +57,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.rounded.AcUnit
@@ -108,8 +106,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -118,8 +114,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.modifier.modifierLocalConsumer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -132,7 +126,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.net.toUri
 import androidx.glance.appwidget.GlanceAppWidgetManager
-import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -184,6 +177,7 @@ import kotlin.math.sin
  * Énumération pour représenter les conditions météo de manière simple et robuste.
  */
 enum class SimpleWeatherWord {
+    STORMY_RAIN,  // Orageux + pluie
     STORMY,       // Orageux
     HAIL,         // Grêle
     SNOWY1,        // Neigeux
@@ -197,7 +191,8 @@ enum class SimpleWeatherWord {
     HAZE,         // Brume
     FOGGY,        // Brouillard
     CLOUDY,       // Nuageux
-    SUNNY_CLOUDY, // Partiellement nuageux
+    SUNNY_CLOUDY,
+    MOSTLY_CLEAR,
     SUNNY,        // Ensoleillé
 }
 
@@ -211,7 +206,8 @@ fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
     if (code == null) return null
     return when (code) {
         0 -> SimpleWeatherWord.SUNNY
-        1, 2 -> SimpleWeatherWord.SUNNY_CLOUDY
+        1 -> SimpleWeatherWord.MOSTLY_CLEAR
+        2 -> SimpleWeatherWord.SUNNY_CLOUDY
         3 -> SimpleWeatherWord.CLOUDY                 // Overcast
         4 -> SimpleWeatherWord.CLOUDY                 // Smoke
         5 -> SimpleWeatherWord.HAZE                   // Haze
@@ -228,7 +224,7 @@ fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
         27 -> SimpleWeatherWord.HAIL                  // Past hour: Hail
         28 -> SimpleWeatherWord.FOGGY                 // Past hour: Fog
         29 -> SimpleWeatherWord.STORMY                // Past hour: Thunderstorm
-        in 30..39 -> SimpleWeatherWord.DUST           // Duststorms, sandstorms
+        in 30..39 -> SimpleWeatherWord.DUST     // Duststorms, sandstorms
         in 40..49 -> SimpleWeatherWord.FOGGY    // Fog
         in 50..59 -> SimpleWeatherWord.DRIZZLY  // Drizzle
         in 60..69 -> SimpleWeatherWord.RAINY1   // Rain
@@ -239,8 +235,8 @@ fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
         in 80..82 -> SimpleWeatherWord.RAINY2   // Rain showers
         83, 84 -> SimpleWeatherWord.SNOWY_MIX         // Rain and snow mixed showers
         85, 86 -> SimpleWeatherWord.SNOWY3            // Snow showers
-        in 87..90 -> SimpleWeatherWord.HAIL     // Hail showers
-        in 91..94 -> SimpleWeatherWord.STORMY   // Rain/Drizzle with Thunderstorm (but we will let STORMY override)
+        in 87..90 -> SimpleWeatherWord.HAIL         // Hail showers
+        in 91..94 -> SimpleWeatherWord.STORMY_RAIN  // Rain/Drizzle with Thunderstorm
         in 95..99 -> SimpleWeatherWord.STORMY
         else -> SimpleWeatherWord.SUNNY               // Fallback for unknown codes
     }
@@ -2093,161 +2089,6 @@ fun MoonDetailsSection(viewModel: WeatherViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
-    }
-}
-
-@Composable
-fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-    val formatter = DateTimeFormatter.ofPattern("HH:mm")
-    val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
-    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
-                    alpha = 0.6f
-                )
-            )
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        AnimatedVisibility(
-            visibleState = visibleState,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f),
-            exit = fadeOut() + scaleOut(targetScale = 0.8f)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.8f)
-                    .clickable(enabled = false) { },
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        stringResource(
-                            R.string.vigilance_alerts_dept_code,
-                            vigilanceData.departmentCode
-                        ),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        items(vigilanceData.alerts) { alert ->
-                            val alertColor = when (alert.maxColorId) {
-                                1 -> Color(0xFF4CAF50)
-                                2 -> Color(0xFFFFEB3B)
-                                3 -> Color(0xFFFF9800)
-                                4 -> Color(0xFFF44336)
-                                else -> MaterialTheme.colorScheme.outline
-                            }
-
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        alertColor.copy(alpha = 0.1f),
-                                        RoundedCornerShape(16.dp)
-                                    )
-                                    .padding(12.dp)
-                            ) {
-                                val isDark = isSystemInDarkTheme()
-                                val itemContentColor = if (!isDark) when (alert.maxColorId) {
-                                    2 -> Color(0xFF422B00) // Marron très foncé
-                                    3 -> Color(0xFFE65100) // Orange foncé
-                                    4 -> Color(0xFFB71C1C) // Rouge foncé
-                                    else -> MaterialTheme.colorScheme.onSurface
-                                } else alertColor
-
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = getPhenomenonIcon(alert.phenomenonId),
-                                        contentDescription = null,
-                                        tint = itemContentColor,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = stringResource(mapPhenomenonIdToName(alert.phenomenonId)),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = itemContentColor
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                alert.steps.forEach { step ->
-                                    val start = OffsetDateTime.parse(step.beginTime)
-                                    val end = OffsetDateTime.parse(step.endTime)
-
-                                    val stepColor = when (step.colorId) {
-                                        1 -> Color(0xFF4CAF50)
-                                        2 -> Color(0xFFFFEB3B)
-                                        3 -> Color(0xFFFF9800)
-                                        4 -> Color(0xFFF44336)
-                                        else -> Color.Gray
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(modifier = Modifier
-                                            .size(10.dp)
-                                            .background(stepColor, CircleShape))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "${start.format(formatter)} ${if (start.toLocalDate() != LocalDate.now()) "(${start.format(dayFormatter)})" else ""} - " +
-                                                    "${end.format(formatter)} ${if (end.toLocalDate() != LocalDate.now()) "(${start.format(dayFormatter)})" else ""}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://vigilance.meteofrance.fr/fr".toUri())
-                                context.startActivity(intent)
-                            }
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(stringResource(R.string.official_website), style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-
-                        TextButton(onClick = onDismiss) {
-                            Text(stringResource(R.string.close))
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

@@ -19,7 +19,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -62,10 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -81,7 +77,6 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.getDailyData
 import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.data.BentoCardType
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
@@ -89,13 +84,6 @@ import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
-
-data class WeatherDetailItem(
-    val icon: ImageVector,
-    val label: String,
-    val value: String,
-    val subValue: String? = null
-)
 
 data class NextSunEvent(
     val type: String,
@@ -118,7 +106,6 @@ class ForecastMainActivity : ComponentActivity() {
 
         weatherViewModel.selectLocation(weatherViewModel.userSettings.value.defaultLocation)
 
-        // C'est ici que vous appelez votre fonction Composable principale
         enableEdgeToEdge()
         setContent {
             val userSettings by weatherViewModel.userSettings.collectAsState()
@@ -228,7 +215,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     }
 
     val description = when(weatherState.word) {
-        SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)
+        SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_RAIN -> stringResource(R.string.stormy)
         SimpleWeatherWord.HAIL -> stringResource(R.string.hail)
         SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2 -> stringResource(R.string.light_snow)
         SimpleWeatherWord.SNOWY3 -> stringResource(R.string.heavy_snow)
@@ -240,6 +227,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         SimpleWeatherWord.FOGGY -> stringResource(R.string.foggy)
         SimpleWeatherWord.CLOUDY -> stringResource(R.string.cloudy)
         SimpleWeatherWord.SUNNY_CLOUDY -> stringResource(R.string.sunny_cloudy)
+        SimpleWeatherWord.MOSTLY_CLEAR -> stringResource(R.string.partially_cloudy)
         SimpleWeatherWord.SUNNY -> stringResource(R.string.clear)
         null -> ""
     }

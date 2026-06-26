@@ -175,7 +175,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("best_match", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED, true, true))
+    private val _userSettings = MutableStateFlow(UserSettings("ecmwf_ifs", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED, true, true))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -302,7 +302,7 @@ class WeatherCache(
                 userSettingsRepository.enableRainNotifications,
                 userSettingsRepository.enableVigilanceNotifications
             ) { values ->
-                val model = values[0] as String?
+                var model = values[0] as String?
                 val round = values[1] as Boolean
                 val location = values[2] as LocationIdentifier?
                 val screen = values[3] as DefaultScreen?
@@ -321,9 +321,18 @@ class WeatherCache(
                 val themeMode = values[16] as ThemeMode
                 val rainNotif = values[17] as Boolean
                 val vigilanceNotif = values[18] as Boolean
-                        
+
+                // Validation du modèle : s'il n'est pas dans le registre, on bascule sur ecmwf_ifs
+                if (model != null && WeatherModelRegistry.models.none { it.apiName == model }) {
+                    model = "ecmwf_ifs"
+                    applicationScope.launch(Dispatchers.IO) {
+                        userSettingsRepository.updateModel("ecmwf_ifs")
+                        userSettingsRepository.updateForecastType(ForecastType.DETERMINISTIC)
+                    }
+                }
+
                 UserSettings(
-                    model ?: "best_match",
+                    model ?: "ecmwf_ifs",
                     round,
                     location ?: LocationIdentifier.CurrentUserLocation,
                     screen ?: DefaultScreen.FORECAST_MAIN,
@@ -458,12 +467,12 @@ class WeatherCache(
         if (currentSettings.enableModelFallback && !isEnsembleMode) {
             var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
             while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
-                modelChain.add(currentM.secondaryModelApiName)
-                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName, false)
+                modelChain.add(currentM.secondaryModelApiName!!)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
             }
-            // Sécurité : s'assurer que best_match est à la fin si pas déjà présent.
-            if (!modelChain.contains("best_match")) {
-                modelChain.add("best_match")
+            // Sécurité : s'assurer que gfs_seamless est à la fin si pas déjà présent.
+            if (!modelChain.contains("gfs_seamless")) {
+                modelChain.add("gfs_seamless")
             }
             if (modelChain.size > 3) Log.w("WeatherCache", "Model chain is too long: $modelChain")
         }
@@ -536,9 +545,9 @@ class WeatherCache(
             val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
             val modelInfo = WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode)
             if (!modelInfo.isAvailableAt(coords.latitude, coords.longitude)) {
-                effectiveModel = "best_match"
+                effectiveModel = "ecmwf_ifs"
                 applicationScope.launch(Dispatchers.IO) {
-                    userSettingsRepository.updateModel("best_match")
+                    userSettingsRepository.updateModel("ecmwf_ifs")
                     userSettingsRepository.updateForecastType(ForecastType.DETERMINISTIC)
                 }
             }
@@ -654,8 +663,8 @@ class WeatherCache(
                 modelChain.add(currentM.secondaryModelApiName!!)
                 currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
             }
-            if (!modelChain.contains("best_match")) {
-                modelChain.add("best_match")
+            if (!modelChain.contains("gfs_seamless")) {
+                modelChain.add("gfs_seamless")
             }
         }
 

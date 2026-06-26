@@ -218,8 +218,8 @@
     <string name="animated_icons_title">Animated Icons</string>
     <string name="animated_icons_desc">Animate the weather icon, this setting will be disabled when battery saver is on</string>
     <string name="fill_missing_vars_title">Fill Missing Variables</string>
-    <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the \'Auto\' model</string>
-    <string name="meilleur_mod_le_par_d_faut">Auto (default)</string>
+    <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the default models (ECMWF/GFS)</string>
+    <string name="meilleur_mod_le_par_d_faut">ECMWF IFS (Recommended)</string>
     <string name="major_polluant">Major Polluant: %1$s</string>
     <string name="gusts">Gusts</string>
     <string name="forecast_type_title">Forecast Type</string>
@@ -301,4 +301,5 @@
     <string name="vigilance_alert_title">Weather Alert: %1$s</string>
     <string name="vigilance_duration">From %1$s to %2$s - At %3$s</string>
     <string name="rain_alert_title">Rain Alert</string>
+    <string name="partially_cloudy">Partially Cloudy</string>
 </resources>

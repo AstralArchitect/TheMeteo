@@ -31,7 +31,7 @@ object WidgetUtils {
     fun getIconRes(word: SimpleWeatherWord?): Int {
         return when (word) {
             SimpleWeatherWord.SUNNY -> R.drawable.clear_day
-            SimpleWeatherWord.SUNNY_CLOUDY -> R.drawable.cloudy_3_day
+            SimpleWeatherWord.SUNNY_CLOUDY, SimpleWeatherWord.MOSTLY_CLEAR -> R.drawable.cloudy_3_day
             SimpleWeatherWord.CLOUDY -> R.drawable.cloudy
             SimpleWeatherWord.FOGGY -> R.drawable.fog
             SimpleWeatherWord.HAZE -> R.drawable.fog
@@ -42,7 +42,7 @@ object WidgetUtils {
             SimpleWeatherWord.HAIL -> R.drawable.hail
             SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2, SimpleWeatherWord.SNOWY3 -> R.drawable.snowy_2
             SimpleWeatherWord.SNOWY_MIX -> R.drawable.rainy_3
-            SimpleWeatherWord.STORMY -> R.drawable.thunderstorms
+            SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_RAIN -> R.drawable.thunderstorms
             null -> R.drawable.clear_day // Fallback
         }
     }
