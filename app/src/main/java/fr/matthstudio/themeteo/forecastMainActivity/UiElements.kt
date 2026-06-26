@@ -72,6 +72,7 @@ import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Tsunami
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Water
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material3.AlertDialog
@@ -341,124 +342,6 @@ enum class ChosenVar {
 }
 
 @Composable
-fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onClick: () -> Unit) {
-    val isDark = isSystemInDarkTheme()
-
-    // Charger les icônes
-    val iconWeatherFolder = "file:///android_asset/icons/weather/"
-    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
-    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
-    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
-    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
-    val dustIconPath: String = iconWeatherFolder + "dust.svg"
-    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
-    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
-    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
-    val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
-    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
-    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
-    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
-    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
-
-    Surface(
-        modifier = Modifier
-            .width(85.dp)
-            .padding(4.dp)
-            .clickable { // Make the card clickable
-                onClick()
-            },
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = MaterialTheme.shapes.small
-    ) {
-        Box(
-            modifier = Modifier.padding()
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                // Get the day name (e.g., "Mon.")
-                Text(
-                    text = dayReading.date.dayOfWeek.getDisplayName(
-                        TextStyle.SHORT,
-                        Locale.getDefault()
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
-                val fileName = when (weatherWord) {
-                    SimpleWeatherWord.SUNNY -> sunnyDayIconPath
-                    SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyDayIconPath
-                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
-                    SimpleWeatherWord.FOGGY -> foggyIconPath
-                    SimpleWeatherWord.HAZE -> hazeIconPath
-                    SimpleWeatherWord.DUST -> dustIconPath
-                    SimpleWeatherWord.DRIZZLY -> drizzleIconPath
-                    SimpleWeatherWord.RAINY1 -> rainy1IconPath
-                    SimpleWeatherWord.RAINY2 -> rainy2IconPath
-                    SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
-                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
-                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
-                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
-                    SimpleWeatherWord.STORMY -> stormyIconPath
-                    null -> Icons.Default.NotInterested
-                }
-
-                if (dayReading.wmoEnsemble != null) {
-                    val userSettings by viewModel.userSettings.collectAsState()
-                    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
-                    val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
-                    
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        EnsembleIconSmall(dayReading.wmoEnsemble.best, animated)
-                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, animated)
-                    }
-                } else {
-                    if (fileName is String) {
-                        AsyncImage(
-                            model = fileName,
-                            contentDescription = "Icône météo actuelle",
-                            modifier = Modifier
-                                .width(30.dp)
-                                .height(30.dp),
-                            contentScale = ContentScale.Fit
-                        )
-                    } else {
-                        Image(
-                            imageVector = fileName as ImageVector,
-                            contentDescription = "Icône météo actuelle",
-                            modifier = Modifier
-                                .width(30.dp)
-                                .height(30.dp),
-                            contentScale = ContentScale.Fit
-                        )
-                    }
-                }
-                val userSettings by viewModel.userSettings.collectAsState()
-                Text(
-                    text = "${UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit,
-                        roundToInt = true,
-                        showUnitSymbol = false,
-                        showDegreeSymbol = true
-                    )} / ${UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit,
-                        roundToInt = true,
-                        showUnitSymbol = false,
-                        showDegreeSymbol = true
-                    )}",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun TemperatureRangeBar(
     minTemp: Double,
     maxTemp: Double,
@@ -474,7 +357,7 @@ fun TemperatureRangeBar(
     val endFactor = (maxTemp - minOverallTemp) / range
 
     Canvas(modifier = modifier
-        .height(4.dp)
+        .height(6.dp)
         .fillMaxWidth()) {
         val width = size.width
         val height = size.height
@@ -494,8 +377,8 @@ fun TemperatureRangeBar(
                 colors = listOf(Color(0xFF64B5F6), Color(0xFFFFD54F), Color(0xFFFF8A65))
             ),
             topLeft = Offset(startX, 0f),
-            size = androidx.compose.ui.geometry.Size(endX - startX, height),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2, height / 2)
+            size = Size(endX - startX, height),
+            cornerRadius = CornerRadius(height / 2, height / 2)
         )
     }
 }
@@ -516,7 +399,7 @@ fun DailyForecastRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 0.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -526,15 +409,15 @@ fun DailyForecastRow(
             Text(
                 text = if (dayReading.date == LocalDate.now()) stringResource(R.string.today)
                 else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).replaceFirstChar { it.uppercase() },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.width(50.dp)
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(40.dp)
             )
 
             // Icône
             val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
             
-            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.Center) {
                 if (dayReading.wmoEnsemble != null) {
                     Row {
                         EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive)
@@ -544,7 +427,7 @@ fun DailyForecastRow(
                     LottieWeatherIcon(
                         iconPath = getLottieIconPath(weatherWord, false, isSystemInDarkTheme()),
                         animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
-                        modifier = Modifier.fillMaxHeight()
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
@@ -553,21 +436,21 @@ fun DailyForecastRow(
 
             // Précipitations + vent
             Row(
-                modifier = Modifier.width(80.dp),
+                modifier = Modifier.width(90.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start
             ) {
                 if (dayReading.precipitation != null && dayReading.precipitation > 0.1) {
                     Icon(
-                        Icons.Rounded.Water,
+                        Icons.Rounded.WaterDrop,
                         contentDescription = null,
-                        modifier = Modifier.size(12.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
                     )
                     Spacer(Modifier.width(2.dp))
                     ResponsiveText(
                         text = "${dayReading.precipitation.toSmartString()}mm",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
                         color = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
                     )
                 }
@@ -576,7 +459,7 @@ fun DailyForecastRow(
                     Icon(
                         Icons.Rounded.Air,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -585,10 +468,10 @@ fun DailyForecastRow(
             // Températures
             Text(
                 text = UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.End,
-                modifier = Modifier.width(35.dp)
+                modifier = Modifier.width(45.dp)
             )
 
             TemperatureRangeBar(
@@ -604,10 +487,10 @@ fun DailyForecastRow(
 
             Text(
                 text = UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Start,
-                modifier = Modifier.width(35.dp)
+                modifier = Modifier.width(45.dp)
             )
         }
 
@@ -630,43 +513,6 @@ fun EnsembleIconSmall(wmo: Int?, animated: Boolean) {
         modifier = Modifier.size(30.dp)
     )
 }
-
-/*@Composable
-fun FifteenMinutelyForecastCard(viewModel: WeatherViewModel) {
-    if (viewModel.minutelyForecast15.collectAsState().value.isEmpty() ||
-        (viewModel.minutelyForecast15.collectAsState().value.maxOf{it.rain} == 0.0 &&
-                viewModel.minutelyForecast15.collectAsState().value.maxOf{it.snowfall} == 0.0)
-        )
-        return
-
-    Card(
-        modifier = Modifier.padding(24.dp)
-    ) {
-        if (viewModel._isLoadingHourly.collectAsState().value) {
-            Box(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                CircularProgressIndicator()
-            }
-            return@Card
-        }
-
-        Text(
-            text = stringResource(R.string._15_minutely_precipitation_forecast),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
-        )
-
-        if (viewModel.hourlyForecast.collectAsState().value.isEmpty())
-            return@Card
-
-        Column (
-            modifier = Modifier.padding(start = 8.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
-        ) {
-            BarsGraph(viewModel)
-        }
-    }
-}*/
 
 // Helper function for UV levels
 @Composable

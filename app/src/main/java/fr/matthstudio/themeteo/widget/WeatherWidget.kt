@@ -6,9 +6,9 @@ package fr.matthstudio.themeteo.widget
 
 import android.annotation.SuppressLint
 import android.content.Context
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
 import androidx.glance.ColorFilter
@@ -20,15 +20,11 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.ActionParameters
-import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
-import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
@@ -124,8 +120,9 @@ class WeatherWidget : GlanceAppWidget() {
         val alpha = (100 - transparency) / 100f
         
         // Dynamic sizing based on widget size
-        val baseTextSize = (size.width.value / 12f).sp
-        val bigTextSize = (size.width.value / 6.5f).sp
+        val dimensionUsed = min(size.width, size.height)
+        val baseTextSize = (dimensionUsed.value / 12f).sp
+        val bigTextSize = (dimensionUsed.value / 6.5f).sp
         val smallTextSize = (baseTextSize.value - 2).sp
 
         val backgroundProvider = when(theme) {
@@ -207,7 +204,6 @@ class WeatherWidget : GlanceAppWidget() {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                // Larger Icon
                                 Image(
                                     provider = ImageProvider(WidgetUtils.getIconRes(weatherWord)),
                                     contentDescription = null,
