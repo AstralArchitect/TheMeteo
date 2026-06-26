@@ -72,7 +72,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.AllHourlyVarsReading
+import fr.matthstudio.themeteo.EnsembleStat
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.WmoEnsembleStat
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.forecastMainActivity.LottieWeatherIcon
@@ -172,9 +175,9 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
     val hasScrolled = remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val contentWidth = if (forecast is WeatherDataState.SuccessHourly) {
-        (forecast as WeatherDataState.SuccessHourly).data.size * 42.dp
+        (forecast as WeatherDataState.SuccessHourly).data.size * 52.dp
     } else {
-        1000.dp
+        1250.dp
     }
 
     LaunchedEffect(currentStartDateTime) {
@@ -188,7 +191,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                 val index6h = data.indexOfFirst { it.time.hour == 6 }
                 if (index6h != -1) {
                     val contentWidthPx = with(density) { contentWidth.toPx() }
-                    val xPadding = 40f // Matching GenericGraphGlobal's xPadding
+                    val xPadding = with(density) { 20.dp.toPx() }
                     val xStep = (contentWidthPx - 2 * xPadding) / (data.size - 1)
                     val scrollOffset = xPadding + index6h * xStep - (xStep / 2)
                     scrollState.scrollTo(scrollOffset.toInt())
@@ -305,7 +308,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                             viewModel,
                             GraphType.TEMP,
                             Color(0xFFFFF176),
-                            scrollState = scrollState
+                            scrollState = scrollState,
+                            contentWidth = contentWidth
                         )
 
                         if (showTemperatureDetailsGraphs.value) {
@@ -323,7 +327,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                         viewModel,
                                         GraphType.DEW_POINT,
                                         Color(0xFFFF8A65),
-                                        scrollState = scrollState
+                                        scrollState = scrollState,
+                                        contentWidth = contentWidth
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                 }
@@ -334,7 +339,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                         GraphType.HUMIDITY,
                                         Color(0xFF4DD0E1),
                                         scrollState = scrollState,
-                                        valueRange = 0f..100f
+                                        valueRange = 0f..100f,
+                                        contentWidth = contentWidth
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                 }
@@ -350,7 +356,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                 viewModel,
                                 GraphType.A_TEMP,
                                 Color(0xFFFFD54F),
-                                scrollState = scrollState
+                                scrollState = scrollState,
+                                contentWidth = contentWidth
                             )
                         }
                         
@@ -379,7 +386,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                 GraphType.PRECIPITATION,
                                 Color(0xFF64B5F6),
                                 scrollState = scrollState,
-                                valueRange = 0f..3f
+                                valueRange = 0f..3f,
+                                contentWidth = contentWidth
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                         } else {
@@ -397,7 +405,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                         GraphType.PRECIPITATION_PROB,
                                         Color(0xFF64B5F6),
                                         scrollState = scrollState,
-                                        valueRange = 0f..100f
+                                        valueRange = 0f..100f,
+                                        contentWidth = contentWidth
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                 }
@@ -410,7 +419,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                         GraphType.RAIN,
                                         Color(0xFF64B5F6),
                                         scrollState = scrollState,
-                                        valueRange = 0f..3f
+                                        valueRange = 0f..3f,
+                                        contentWidth = contentWidth
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                 }
@@ -422,7 +432,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                         viewModel,
                                         GraphType.SNOWFALL,
                                         Color(0xFFFFFFFF),
-                                        scrollState = scrollState
+                                        scrollState = scrollState,
+                                        contentWidth = contentWidth
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                 }
@@ -437,7 +448,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                     viewModel,
                                     GraphType.SNOW_DEPTH,
                                     Color(0xFFFFFFFF),
-                                    scrollState = scrollState
+                                    scrollState = scrollState,
+                                    contentWidth = contentWidth
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
@@ -449,7 +461,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                             viewModel,
                             GraphType.WIND_SPEED,
                             Color(0xFFAED581),
-                            scrollState = scrollState
+                            scrollState = scrollState,
+                            contentWidth = contentWidth
                         )
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -460,7 +473,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                 viewModel,
                                 GraphType.VISIBILITY,
                                 Color(0xFF98FFEB),
-                                scrollState = scrollState
+                                scrollState = scrollState,
+                                contentWidth = contentWidth
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                         }
@@ -473,7 +487,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                 GraphType.CLOUD_COVER,
                                 Color(0xFF9D9D9D),
                                 scrollState = scrollState,
-                                valueRange = 0f..100f
+                                valueRange = 0f..100f,
+                                contentWidth = contentWidth
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                         }
@@ -500,7 +515,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                 GraphType.UV_INDEX,
                                 Color(0xFFFFEAB5),
                                 scrollState = scrollState,
-                                valueRange = 0f..11f
+                                valueRange = 0f..11f,
+                                contentWidth = contentWidth
                             )
                             Spacer(modifier = Modifier.height(16.dp))
 
@@ -512,7 +528,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                         GraphType.OPACITY,
                                         Color(0xFF9D9D9D),
                                         scrollState = scrollState,
-                                        valueRange = 0f..100f
+                                        valueRange = 0f..100f,
+                                        contentWidth = contentWidth
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                 }
@@ -526,7 +543,8 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                 viewModel,
                                 GraphType.PRESSURE,
                                 Color(0xFF9575CD),
-                                scrollState = scrollState
+                                scrollState = scrollState,
+                                contentWidth = contentWidth
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                         }
@@ -554,6 +572,8 @@ enum class GraphType {
 fun DaySelector(viewModel: WeatherViewModel) {
     val availableDaysState by viewModel.availableDays.collectAsState()
     val currentStartDate by viewModel.currentStartDateTime.collectAsState()
+    val userSettings by viewModel.userSettings.collectAsState()
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     if (availableDaysState is WeatherDataState.SuccessDaily) {
         val days = (availableDaysState as WeatherDataState.SuccessDaily).data
@@ -579,15 +599,19 @@ fun DaySelector(viewModel: WeatherViewModel) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = dailyReading.date.format(DateTimeFormatter.ofPattern("EEE")),
+                            text = dailyReading.date.format(DateTimeFormatter.ofPattern("EEE")) + " " + dailyReading.date.dayOfMonth.toString(),
                             style = MaterialTheme.typography.labelMedium,
                             color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            text = dailyReading.date.dayOfMonth.toString(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                        )
+
+                        val weatherWord = weatherCodeToSimpleWord(dailyReading.wmo)
+                        if (weatherWord != null) {
+                            LottieWeatherIcon(
+                                iconPath = getLottieIconPath(weatherWord, false, isSystemInDarkTheme()),
+                                animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -599,12 +623,13 @@ fun DaySelector(viewModel: WeatherViewModel) {
 fun BackgroundGrid(
     forecast: WeatherDataState,
     modifier: Modifier = Modifier,
-    contentWidth: Dp = 1000.dp
+    contentWidth: Dp
 ) {
     if (forecast !is WeatherDataState.SuccessHourly) return
     val data = forecast.data
     val itemCount = data.size
-    val xPadding = 40f
+    val density = LocalDensity.current
+    val xPadding = with(density) { 20.dp.toPx() }
     val textColor = MaterialTheme.colorScheme.onBackground
     
     Canvas(
@@ -668,6 +693,7 @@ fun GenericGraph(
     graphType: GraphType,
     graphColor: Color,
     valueRange: ClosedFloatingPointRange<Float>? = null,
+    contentWidth: Dp,
     scrollState: ScrollState = rememberScrollState()
 ) {
     val fullForecast by viewModel.hourlyForecast.collectAsState()
@@ -678,12 +704,6 @@ fun GenericGraph(
         graphType == GraphType.SNOWFALL
     )
         roundToInt = false
-
-    val contentWidth = if (fullForecast is WeatherDataState.SuccessHourly) {
-        (fullForecast as WeatherDataState.SuccessHourly).data.size * 42.dp
-    } else {
-        1000.dp
-    }
 
     GenericGraphGlobal(
         fullForecast,
@@ -708,33 +728,37 @@ fun GenericGraphGlobal(
     graphColor: Color,
     valueRange: ClosedFloatingPointRange<Float>? = null,
     scrollState: ScrollState = rememberScrollState(),
-    contentWidth: Dp = 1000.dp,
+    contentWidth: Dp = 1250.dp,
     contentHeight: Dp = 125.dp,
     compactHourFormat: Boolean = false,
     sparseMode: Boolean = false
 ) {
+    val rawHourlyData = (fullForecast as WeatherDataState.SuccessHourly).data
+    val hourlyData = if (sparseMode) aggregateHourlyData(rawHourlyData) else rawHourlyData
+    val density = LocalDensity.current
+
     Box(
         modifier = Modifier
-            .width(contentWidth)
+            .fillMaxWidth()
             .horizontalScroll(scrollState),
     ) {
         var forecast: List<Number>
         val times: List<String> =
-            (fullForecast as WeatherDataState.SuccessHourly).data
+            hourlyData
                 .map { it.time.format(DateTimeFormatter.ofPattern("HH")) + if (!compactHourFormat) "h" else "" }
         
         val isTemperatureGraph = graphType == GraphType.TEMP || graphType == GraphType.A_TEMP || graphType == GraphType.DEW_POINT
 
         when (graphType) {
             GraphType.TEMP -> {
-                forecast = fullForecast.data.map { f -> 
+                forecast = hourlyData.map { f -> 
                     val v = f.temperature ?: throw IllegalStateException("Graph data cannot be null")
                     UnitConverter.convertTemperature(v, temperatureUnit)
                 }
             }
 
             GraphType.A_TEMP -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> 
                         val v = f.apparentTemperature ?: throw IllegalStateException("Graph data cannot be null")
                         UnitConverter.convertTemperature(v, temperatureUnit)
@@ -742,39 +766,39 @@ fun GenericGraphGlobal(
             }
 
             GraphType.DEW_POINT -> {
-                forecast = fullForecast.data.map { f -> 
+                forecast = hourlyData.map { f -> 
                     val v = f.dewpoint ?: throw IllegalStateException("Graph data cannot be null")
                     UnitConverter.convertTemperature(v, temperatureUnit)
                 }
             }
 
             GraphType.PRECIPITATION_PROB -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.precipitationData.precipitationProbability ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.PRECIPITATION -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.precipitationData.precipitation ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.RAIN -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.precipitationData.rain ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.SNOWFALL -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.precipitationData.snowfall ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.SNOW_DEPTH -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.precipitationData.snowDepth ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.WIND_SPEED -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> 
                         val v = f.wind.windspeed ?: throw IllegalStateException("Graph data cannot be null")
                         UnitConverter.convertWind(v, windUnit)
@@ -782,32 +806,32 @@ fun GenericGraphGlobal(
             }
 
             GraphType.PRESSURE -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.pressure ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.HUMIDITY -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.humidity ?: throw IllegalStateException("Graph data cannot be null")}
             }
 
             GraphType.CLOUD_COVER -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.skyInfo.cloudcoverTotal ?: throw IllegalStateException("Graph data cannot be null")}
             }
 
             GraphType.OPACITY -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.skyInfo.opacity ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.UV_INDEX -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> f.skyInfo.uvIndex ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.VISIBILITY -> {
-                forecast = fullForecast.data
+                forecast = hourlyData
                     .map { f -> (f.skyInfo.visibility?.toDouble() ?: throw IllegalStateException("Graph data cannot be null")) / 1000.0 }
             }
         }
@@ -832,7 +856,7 @@ fun GenericGraphGlobal(
             GraphType.PRESSURE -> "pressure_msl"
             else -> null
         }
-        val ensembleStatsRaw = if (ensembleKey != null) fullForecast.data.map { it.ensembleStats?.get(ensembleKey) } else null
+        val ensembleStatsRaw = if (ensembleKey != null) hourlyData.map { it.ensembleStats?.get(ensembleKey) } else null
         
         // Convert ensemble stats if necessary
         val ensembleStats = ensembleStatsRaw?.map { stat ->
@@ -857,7 +881,7 @@ fun GenericGraphGlobal(
                 .width(contentWidth)
                 .height(contentHeight)
         ) {
-            val xPadding = 40f // Unifié pour laisser de la place au texte sans padding externe
+            val xPadding = with(density) { 20.dp.toPx() }
             val yPadding = 80f
             var maxValue = forecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
             var minValue = forecast.minOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
@@ -876,7 +900,7 @@ fun GenericGraphGlobal(
 
             // 3. Baser le calcul du pas sur la largeur totale du contenu
             val canvasWidth = size.width
-            val xStep = (canvasWidth - 2 * xPadding) / (forecast.size - 1)
+            val xStep = (canvasWidth - 2 * xPadding) / (rawHourlyData.size - 1)
             val yScale = (size.height - 2 * yPadding) / (maxValue - minValue).coerceAtLeast(1.0)
 
             // --- 4. Dessiner le ruban d'incertitude (Ensemble) ---
@@ -886,7 +910,7 @@ fun GenericGraphGlobal(
                 
                 // Partie supérieure du ruban (Max)
                 ensembleStats.forEachIndexed { i, stat ->
-                    val x = xPadding + (i * xStep)
+                    val x = xPadding + (i * (if(sparseMode) 2 else 1) * xStep)
                     val value = stat?.max ?: forecast[i].toDouble()
                     val y = size.height - yPadding - ((value - minValue) * yScale)
                     if (firstEnsemble) {
@@ -899,7 +923,7 @@ fun GenericGraphGlobal(
                 
                 // Partie inférieure du ruban (Min)
                 for (i in ensembleStats.indices.reversed()) {
-                    val x = xPadding + (i * xStep)
+                    val x = xPadding + (i * (if(sparseMode) 2 else 1) * xStep)
                     val value = ensembleStats[i]?.min ?: forecast[i].toDouble()
                     val y = size.height - yPadding - ((value - minValue) * yScale)
                     uncertaintyPath.lineTo(x, y.toFloat())
@@ -914,7 +938,7 @@ fun GenericGraphGlobal(
                 // Labels pour les valeurs min/max de l'ensemble (optionnel, pour plus de clarté)
                 ensembleStats.forEachIndexed { i, stat ->
                     if (stat?.min != null && stat.max != null) {
-                        val x = xPadding + (i * xStep)
+                        val x = xPadding + (i * (if(sparseMode) 2 else 1) * xStep)
                         val yMax = size.height - yPadding - ((stat.max - minValue) * yScale)
                         val yMin = size.height - yPadding - ((stat.min - minValue) * yScale)
                         val yAvg = size.height - yPadding - ((forecast[i].toDouble() - minValue) * yScale)
@@ -964,14 +988,14 @@ fun GenericGraphGlobal(
 
             // Construction des chemins pour la courbe et le dégradé
             forecast.forEachIndexed { i, point ->
-                val x = xPadding + (i * xStep)
+                val x = xPadding + (i * (if(sparseMode) 2 else 1) * xStep)
                 val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
                 linePath.lineTo(x, y.toFloat())
                 gradientPath.lineTo(x, y.toFloat())
             }
 
             // 4. Correction de la fermeture du chemin du dégradé
-            val lastX = xPadding + ((forecast.size - 1) * xStep)
+            val lastX = xPadding + ((if(sparseMode) (forecast.size * 2 - 2) else (forecast.size - 1)) * xStep)
             gradientPath.lineTo(lastX, size.height)
             gradientPath.close()
 
@@ -992,11 +1016,12 @@ fun GenericGraphGlobal(
 
             // Points + labels
             forecast.forEachIndexed { i, point ->
-                val x = xPadding + (i * xStep)
+                val x = xPadding + (i * (if(sparseMode) 2 else 1) * xStep)
                 val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
 
                 // Value, Point and Hour label logic with sparseMode
-                val shouldDraw = !sparseMode || (i % 2 == 0)
+                // With the aggregated data, we always draw every point in 'forecast'
+                val shouldDraw = true
 
                 if (shouldDraw) {
                     // Point
@@ -1031,32 +1056,52 @@ fun GenericGraphGlobal(
     }
     // Si le graphique de vent a été choisi, alors afficher le vecteur de direction du vent
     if (graphType == GraphType.WIND_SPEED) {
-        WindVectors(fullForecast, windUnit, scrollState, contentWidth)
+        WindVectors(hourlyData, windUnit, scrollState, contentWidth, sparseMode, rawHourlyData.size)
     }
 }
 
 @Composable
-fun WindVectors(forecast: WeatherDataState, windUnit: WindUnit = WindUnit.KPH, scrollState: ScrollState = rememberScrollState(), contentWidth: Dp = 1000.dp) {
+fun WindVectors(
+    hourlyData: List<AllHourlyVarsReading>,
+    windUnit: WindUnit = WindUnit.KPH,
+    scrollState: ScrollState = rememberScrollState(),
+    contentWidth: Dp = 1250.dp,
+    sparseMode: Boolean = false,
+    originalSize: Int = 24
+) {
+    val density = LocalDensity.current
+    val xPaddingDp = 20.dp
+    
     // Draw the icon
     Box(
         modifier = Modifier
-            .width(contentWidth)
+            .fillMaxWidth()
             .horizontalScroll(scrollState), // ScrollState partagé
     ) {
-        if ((forecast as WeatherDataState.SuccessHourly).data.isNotEmpty())
-        {
-            Row(
-                modifier = Modifier.fillMaxWidth(), // Make the Row fill the 1000.dp width
-                // This will space your items evenly across the width of the graph
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                forecast.data.forEach { allVarsReading ->
-                    Column (
+        Box(modifier = Modifier.width(contentWidth)) {
+            if (hourlyData.isNotEmpty()) {
+                val canvasWidthPx = with(density) { contentWidth.toPx() }
+                val xPaddingPx = with(density) { xPaddingDp.toPx() }
+                val xStepPx = (canvasWidthPx - 2 * xPaddingPx) / (originalSize - 1)
+
+                hourlyData.forEachIndexed { i, allVarsReading ->
+                    val xPosPx = xPaddingPx + (i * (if(sparseMode) 2 else 1) * xStepPx)
+                    val xPosDp = with(density) { xPosPx.toDp() }
+                    
+                    Column(
+                        modifier = Modifier
+                            .offset(x = xPosDp - 20.dp) // center the column
+                            .width(40.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         val windGusts = allVarsReading.wind.windGusts
-                        Text (
-                            text = if (windGusts != null) UnitConverter.formatValue(UnitConverter.convertWind(windGusts, windUnit)) else "--",
+                        Text(
+                            text = if (windGusts != null) UnitConverter.formatValue(
+                                UnitConverter.convertWind(
+                                    windGusts,
+                                    windUnit
+                                )
+                            ) else "--",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.padding(bottom = 1.dp)
@@ -1066,9 +1111,7 @@ fun WindVectors(forecast: WeatherDataState, windUnit: WindUnit = WindUnit.KPH, s
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier
-                                // Use a fixed width that matches the spacing of your graph points.
-                                // 41.5.dp seems about right (1000dp / 24 hours ≈ 41.6dp)
-                                .width(41.5.dp)
+                                .size(24.dp)
                                 .rotate(
                                     allVarsReading.wind.windDirection?.toFloat()?.plus(90f) ?: 0f
                                 )
@@ -1086,16 +1129,17 @@ fun WeatherIconGraphGlobal(
     scrollState: ScrollState = rememberScrollState(),
     userSettings: UserSettings,
     isBatterySaverActive: Boolean,
-    contentWidth: Dp,
-    showPairsOnly: Boolean,
+    contentWidth: Dp = 1250.dp,
+    showPairsOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
-    val hourlyData = (forecast as? WeatherDataState.SuccessHourly)?.data
+    val rawHourlyData = (forecast as? WeatherDataState.SuccessHourly)?.data
+    val hourlyData = if (showPairsOnly && rawHourlyData != null) aggregateHourlyData(rawHourlyData) else rawHourlyData
 
-    val iconsSize = 55.dp
     val density = LocalDensity.current
-    val xPaddingPx = 40f
+    val iconsSize = if (!showPairsOnly) contentWidth / 20f else contentWidth / 11f
+    val xPaddingPx = with(density) { 20.dp.toPx() }
     val daySeparatorColor = Color.Gray.copy(alpha = 0.7f)
     
     Box(
@@ -1104,15 +1148,13 @@ fun WeatherIconGraphGlobal(
             .horizontalScroll(scrollState),
     ) {
         Box(modifier = Modifier.width(contentWidth)) {
-            if (hourlyData == null) return@Box
+            if (hourlyData == null || rawHourlyData == null) return@Box
             
             val canvasWidthPx = with(density) { contentWidth.toPx() }
-            val xStepPx = (canvasWidthPx - 2 * xPaddingPx) / (hourlyData.size - 1)
+            val xStepPx = (canvasWidthPx - 2 * xPaddingPx) / (rawHourlyData.size - 1)
             
             for (i in 0..<hourlyData.size) {
-                if (showPairsOnly && i % 2 != 0) continue
-                
-                val xPosPx = xPaddingPx + (i * xStepPx)
+                val xPosPx = xPaddingPx + (i * (if(showPairsOnly) 2 else 1) * xStepPx)
                 val xPosDp = with(density) { xPosPx.toDp() }
                 
                 val weatherWord = getSimpleWeather(hourlyData[i]).word
@@ -1171,7 +1213,7 @@ fun WeatherIconGraph(
     modifier: Modifier = Modifier,
     viewModel: WeatherViewModel,
     scrollState: ScrollState = rememberScrollState(),
-    contentWidth: Dp = 1000.dp
+    contentWidth: Dp = 1250.dp
 ) {
     // Get the forecast
     val forecast by viewModel.hourlyForecast.collectAsState()
@@ -1187,4 +1229,71 @@ fun WeatherIconGraph(
         false,
         modifier = modifier
     )
+}
+
+private fun aggregateHourlyData(data: List<AllHourlyVarsReading>): List<AllHourlyVarsReading> {
+    return (data.indices step 2).map { i ->
+        val h1 = data[i]
+        val h2 = if (i + 1 < data.size) data[i + 1] else h1
+        h1.copy(
+            temperature = maxOfNullable(h1.temperature, h2.temperature),
+            apparentTemperature = maxOfNullable(h1.apparentTemperature, h2.apparentTemperature),
+            dewpoint = maxOfNullable(h1.dewpoint, h2.dewpoint),
+            pressure = maxOfNullable(h1.pressure, h2.pressure),
+            humidity = maxOfNullable(h1.humidity, h2.humidity),
+            wmo = maxOfNullable(h1.wmo, h2.wmo),
+            precipitationData = h1.precipitationData.copy(
+                precipitation = maxOfNullable(h1.precipitationData.precipitation, h2.precipitationData.precipitation),
+                precipitationProbability = maxOfNullable(h1.precipitationData.precipitationProbability, h2.precipitationData.precipitationProbability),
+                rain = maxOfNullable(h1.precipitationData.rain, h2.precipitationData.rain),
+                snowfall = maxOfNullable(h1.precipitationData.snowfall, h2.precipitationData.snowfall),
+                snowDepth = maxOfNullable(h1.precipitationData.snowDepth, h2.precipitationData.snowDepth)
+            ),
+            skyInfo = h1.skyInfo.copy(
+                cloudcoverTotal = maxOfNullable(h1.skyInfo.cloudcoverTotal, h2.skyInfo.cloudcoverTotal),
+                opacity = maxOfNullable(h1.skyInfo.opacity, h2.skyInfo.opacity),
+                uvIndex = maxOfNullable(h1.skyInfo.uvIndex, h2.skyInfo.uvIndex),
+                visibility = maxOfNullable(h1.skyInfo.visibility, h2.skyInfo.visibility),
+                shortwaveRadiation = maxOfNullable(h1.skyInfo.shortwaveRadiation, h2.skyInfo.shortwaveRadiation)
+            ),
+            wind = h1.wind.copy(
+                windspeed = maxOfNullable(h1.wind.windspeed, h2.wind.windspeed),
+                windGusts = maxOfNullable(h1.wind.windGusts, h2.wind.windGusts)
+            ),
+            ensembleStats = aggregateEnsembleStats(h1.ensembleStats, h2.ensembleStats),
+            wmoEnsemble = if (h1.wmoEnsemble != null && h2.wmoEnsemble != null) {
+                WmoEnsembleStat(
+                    best = minOf(h1.wmoEnsemble.best, h2.wmoEnsemble.best),
+                    worst = maxOf(h1.wmoEnsemble.worst, h2.wmoEnsemble.worst)
+                )
+            } else h1.wmoEnsemble ?: h2.wmoEnsemble
+        )
+    }
+}
+
+private fun <T : Comparable<T>> maxOfNullable(a: T?, b: T?): T? {
+    return if (a == null) b else if (b == null) a else maxOf(a, b)
+}
+
+private fun <T : Comparable<T>> minOfNullable(a: T?, b: T?): T? {
+    return if (a == null) b else if (b == null) a else minOf(a, b)
+}
+
+private fun aggregateEnsembleStats(s1: Map<String, EnsembleStat>?, s2: Map<String, EnsembleStat>?): Map<String, EnsembleStat>? {
+    if (s1 == null) return s2
+    if (s2 == null) return s1
+    val result = s1.toMutableMap()
+    s2.forEach { (k, v2) ->
+        val v1 = result[k]
+        if (v1 != null) {
+            result[k] = EnsembleStat(
+                avg = maxOfNullable(v1.avg, v2.avg),
+                min = minOfNullable(v1.min, v2.min),
+                max = maxOfNullable(v1.max, v2.max)
+            )
+        } else {
+            result[k] = v2
+        }
+    }
+    return result
 }

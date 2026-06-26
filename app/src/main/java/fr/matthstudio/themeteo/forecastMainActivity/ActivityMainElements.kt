@@ -57,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -208,16 +209,46 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
     val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || state == null || isBatterySaverActive) {
-        // Dégradé simple pour les versions anciennes ou lorsque state est null
+        // Mode optimisé : Mélange de dégradés radiaux (Mesh simulé) et linéaire (profondeur)
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
+                .background(baseColor)
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                // 1. Dégradé de profondeur pour éviter un rendu trop plat
+                drawRect(
                     brush = Brush.verticalGradient(
-                        colors = meshColors
+                        0.0f to Color.Black.copy(alpha = 0.1f),
+                        0.5f to Color.Transparent,
+                        1.0f to Color.Black.copy(alpha = 0.1f)
                     )
                 )
-        )
+
+                // 2. Simulation de l'effet "Mesh" avec des dégradés radiaux larges (très léger en CPU)
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[0], Color.Transparent),
+                        center = Offset(size.width * 0.1f, size.height * 0.2f),
+                        radius = size.maxDimension * 0.8f
+                    )
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[1], Color.Transparent),
+                        center = Offset(size.width * 0.9f, size.height * 0.4f),
+                        radius = size.maxDimension * 0.7f
+                    )
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[2], Color.Transparent),
+                        center = Offset(size.width * 0.4f, size.height * 0.8f),
+                        radius = size.maxDimension * 0.8f
+                    )
+                )
+            }
+        }
     } else {
         // Effet de cercles floutés (Mesh) pour les versions récentes
         Box(
@@ -279,7 +310,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
             })
     ) {
         Column(
-            modifier = Modifier.padding(start = 8.dp, top = 0.dp)
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 0.dp)
         ) {
             Row (
                 modifier = Modifier.fillMaxWidth(),
@@ -637,7 +668,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
         val userSettings by viewModel.userSettings.collectAsState()
         val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-        var expandedDayIndex by remember { mutableStateOf(-1) }
+        var expandedDayIndex by remember { mutableIntStateOf(-1) }
 
         Column(modifier = Modifier.padding(vertical = 16.dp)) {
             Row(
@@ -756,14 +787,14 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
                                 GraphType.TEMP,
                                 Color(0xFFFFF176),
                                 scrollState = scrollState,
-                                contentWidth = 500.dp,
+                                contentWidth = 700.dp,
                                 contentHeight = 80.dp,
                                 compactHourFormat = false
                             )
                             WeatherIconGraph(viewModel,
                                 hourlyForecast,
                                 scrollState,
-                                500.dp,
+                                700.dp,
                                 true
                             )
                         }
@@ -812,22 +843,18 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
                             // Sun
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
-                                    Icons.Rounded.Timer,
+                                    Icons.Rounded.WbSunny,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.secondary
                                 )
+                                val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+                                val sunriseTime = dayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.format(timeFormatter) ?: "--:--"
+                                val sunsetTime = dayReading.sunset.toEventLocalDateTime(context.applicationContext)?.format(timeFormatter) ?: "--:--"
+                                
                                 Text(
-                                    "${dayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.hour}:${
-                                        dayReading.sunrise.toEventLocalDateTime(
-                                            context.applicationContext
-                                        )?.minute
-                                    } " +
-                                            "/ ${dayReading.sunset.toEventLocalDateTime(context.applicationContext)?.hour}:${
-                                                dayReading.sunset.toEventLocalDateTime(
-                                                    context.applicationContext
-                                                )?.minute
-                                            }", style = MaterialTheme.typography.labelSmall
+                                    text = "$sunriseTime / $sunsetTime",
+                                    style = MaterialTheme.typography.labelSmall
                                 )
                             }
                         }
@@ -1199,7 +1226,7 @@ fun AdditionalInfos(viewModel: WeatherViewModel, context: Context) {
             color = Color.White.copy(alpha = 0.7f)
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        /*Spacer(modifier = Modifier.height(8.dp))
 
         Button(
             onClick = {
@@ -1215,7 +1242,7 @@ fun AdditionalInfos(viewModel: WeatherViewModel, context: Context) {
             Icon(Icons.Rounded.Map, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.open_satellite_map))
-        }
+        }*/
     }
 }
 

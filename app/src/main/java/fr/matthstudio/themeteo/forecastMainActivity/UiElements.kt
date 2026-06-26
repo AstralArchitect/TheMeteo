@@ -516,7 +516,7 @@ fun DailyForecastRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 0.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -544,7 +544,7 @@ fun DailyForecastRow(
                     LottieWeatherIcon(
                         iconPath = getLottieIconPath(weatherWord, false, isSystemInDarkTheme()),
                         animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.fillMaxHeight()
                     )
                 }
             }
@@ -1328,7 +1328,7 @@ fun WeatherIconGraph(
     viewModel: WeatherViewModel,
     forecast: WeatherDataState?,
     scrollState: ScrollState = rememberScrollState(),
-    contentWidth: Dp = 1000.dp,
+    contentWidth: Dp = 1250.dp,
     showPairsOnly: Boolean = false
 ) {
     // Get the forecast
