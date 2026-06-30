@@ -549,15 +549,15 @@ fun SingleDailyForecastCard(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.Bottom
                 ) {
-                    Text(
+                    ResponsiveText(
                         text = tempText,
                         style = MaterialTheme.typography.labelLarge
                     )
-                    Text(
+                    ResponsiveText(
                         text = precipitationText,
                         style = MaterialTheme.typography.labelSmall
                     )
-                    Text(
+                    ResponsiveText(
                         text = windText,
                         style = MaterialTheme.typography.labelSmall
                     )

@@ -33,19 +33,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.filled.Air
-import androidx.compose.material.icons.rounded.AddCircleOutline
-import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Grass
 import androidx.compose.material.icons.rounded.LocalFlorist
-import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Nature
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -69,10 +63,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -90,27 +80,21 @@ import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
-import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.utilClasses.AirQualityUI
 import fr.matthstudio.themeteo.utilClasses.FullSunData
 import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
-import java.nio.file.WatchEvent
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 
 @Composable
 fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
     val (baseColor, meshColors) = when (state) {
-        SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_RAIN -> if (isNight) {
+        SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_HAIL, SimpleWeatherWord.EXTREME_STORMY, SimpleWeatherWord.EXTREME_STORMY_HAIL -> if (isNight) {
             Color(0xFF0D001A) to listOf(
                 Color(0xFF311B92).copy(alpha = 0.7f),
                 Color(0xFF1A237E).copy(alpha = 0.5f),
@@ -188,7 +172,7 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
                 Color(0xFF78909C).copy(alpha = 0.5f)
             )
         }
-        SimpleWeatherWord.SUNNY_CLOUDY, SimpleWeatherWord.MOSTLY_CLEAR, SimpleWeatherWord.SUNNY -> if (isNight) {
+        SimpleWeatherWord.PARTLY_CLOUDY, SimpleWeatherWord.MOSTLY_CLEAR, SimpleWeatherWord.SUNNY -> if (isNight) {
             Color(0xFF000814) to listOf(
                 Color(0xFF001D3D).copy(alpha = 0.8f),
                 Color(0xFF003566).copy(alpha = 0.6f),

@@ -301,5 +301,5 @@
     <string name="vigilance_alert_title">Weather Alert: %1$s</string>
     <string name="vigilance_duration">From %1$s to %2$s - At %3$s</string>
     <string name="rain_alert_title">Rain Alert</string>
-    <string name="partially_cloudy">Partially Cloudy</string>
+    <string name="mostly_cloudy">Mostly Clear</string>
 </resources>

@@ -6,7 +6,6 @@ package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -14,11 +13,6 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.view.Surface
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -36,7 +30,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,7 +44,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
@@ -82,7 +74,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -116,6 +107,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -124,7 +116,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.core.net.toUri
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -154,7 +145,6 @@ import fr.matthstudio.themeteo.dayGraphsActivity.WeatherIconGraphGlobal
 import fr.matthstudio.themeteo.utilClasses.FullSunData
 import fr.matthstudio.themeteo.utilClasses.PhaseType
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
-import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.widget.DailyWeatherWidget
 import fr.matthstudio.themeteo.widget.WeatherWidget
@@ -162,7 +152,6 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -177,8 +166,10 @@ import kotlin.math.sin
  * Énumération pour représenter les conditions météo de manière simple et robuste.
  */
 enum class SimpleWeatherWord {
-    STORMY_RAIN,  // Orageux + pluie
-    STORMY,       // Orageux
+    EXTREME_STORMY_HAIL,
+    EXTREME_STORMY,
+    STORMY_HAIL,
+    STORMY,  // Orageux + pluie
     HAIL,         // Grêle
     SNOWY1,        // Neigeux
     SNOWY2,        // Neige
@@ -191,7 +182,7 @@ enum class SimpleWeatherWord {
     HAZE,         // Brume
     FOGGY,        // Brouillard
     CLOUDY,       // Nuageux
-    SUNNY_CLOUDY,
+    PARTLY_CLOUDY,
     MOSTLY_CLEAR,
     SUNNY,        // Ensoleillé
 }
@@ -207,37 +198,30 @@ fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
     return when (code) {
         0 -> SimpleWeatherWord.SUNNY
         1 -> SimpleWeatherWord.MOSTLY_CLEAR
-        2 -> SimpleWeatherWord.SUNNY_CLOUDY
+        2 -> SimpleWeatherWord.PARTLY_CLOUDY
         3 -> SimpleWeatherWord.CLOUDY                 // Overcast
         4 -> SimpleWeatherWord.CLOUDY                 // Smoke
         5 -> SimpleWeatherWord.HAZE                   // Haze
         6, 7, 8, 9 -> SimpleWeatherWord.DUST          // Dust
-        in 10..12 -> SimpleWeatherWord.FOGGY          // Mist/Shallow fog
-        in 13..19 -> SimpleWeatherWord.CLOUDY         // Lightning, Squalls, etc.
-        20 -> SimpleWeatherWord.DRIZZLY               // Past hour: Drizzle/Snow grains
-        21 -> SimpleWeatherWord.RAINY1                // Past hour: Rain
-        22 -> SimpleWeatherWord.SNOWY1                // Past hour: Snow
-        23 -> SimpleWeatherWord.SNOWY_MIX             // Past hour: Rain and Snow
-        24 -> SimpleWeatherWord.DRIZZLY               // Past hour: Freezing rain
-        25 -> SimpleWeatherWord.RAINY2                // Past hour: Showers
-        26 -> SimpleWeatherWord.SNOWY2                // Past hour: Snow showers
-        27 -> SimpleWeatherWord.HAIL                  // Past hour: Hail
-        28 -> SimpleWeatherWord.FOGGY                 // Past hour: Fog
-        29 -> SimpleWeatherWord.STORMY                // Past hour: Thunderstorm
-        in 30..39 -> SimpleWeatherWord.DUST     // Duststorms, sandstorms
-        in 40..49 -> SimpleWeatherWord.FOGGY    // Fog
-        in 50..59 -> SimpleWeatherWord.DRIZZLY  // Drizzle
-        in 60..69 -> SimpleWeatherWord.RAINY1   // Rain
+        in 10..12 -> SimpleWeatherWord.FOGGY     // Mist/Shallow fog
+        in 13..19 -> SimpleWeatherWord.CLOUDY    // Lightning, Squalls, etc.
+        in 30..39 -> SimpleWeatherWord.DUST      // Duststorms, sandstorms
+        in 40..49 -> SimpleWeatherWord.FOGGY     // Fog
+        in 50..59 -> SimpleWeatherWord.DRIZZLY   // Drizzle
+        in 60..69 -> SimpleWeatherWord.RAINY1    // Rain
         70, 71 -> SimpleWeatherWord.SNOWY1            // Light Snow
         72, 73 -> SimpleWeatherWord.SNOWY2            // Snow
         74, 75 -> SimpleWeatherWord.SNOWY3            // Heavy Snow
-        in 76..79 -> SimpleWeatherWord.SNOWY_MIX// Snow Grains
-        in 80..82 -> SimpleWeatherWord.RAINY2   // Rain showers
+        in 76..79 -> SimpleWeatherWord.SNOWY_MIX // Snow Grains
+        in 80..82 -> SimpleWeatherWord.RAINY2    // Rain showers
         83, 84 -> SimpleWeatherWord.SNOWY_MIX         // Rain and snow mixed showers
         85, 86 -> SimpleWeatherWord.SNOWY3            // Snow showers
-        in 87..90 -> SimpleWeatherWord.HAIL         // Hail showers
-        in 91..94 -> SimpleWeatherWord.STORMY_RAIN  // Rain/Drizzle with Thunderstorm
-        in 95..99 -> SimpleWeatherWord.STORMY
+        in 87..90 -> SimpleWeatherWord.HAIL      // Hail showers
+        in 91..94 -> SimpleWeatherWord.RAINY2    // Thunderstorm with rain
+        95 -> SimpleWeatherWord.STORMY
+        96 -> SimpleWeatherWord.STORMY_HAIL
+        97, 98 -> SimpleWeatherWord.EXTREME_STORMY
+        99 -> SimpleWeatherWord.EXTREME_STORMY_HAIL
         else -> SimpleWeatherWord.SUNNY               // Fallback for unknown codes
     }
 }
@@ -436,7 +420,7 @@ fun DailyForecastRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start
             ) {
-                if (dayReading.precipitation != null && dayReading.precipitation > 0.1) {
+                if (dayReading.precipitation != null && dayReading.precipitation >= 0.1) {
                     Icon(
                         Icons.Rounded.WaterDrop,
                         contentDescription = null,
@@ -1233,7 +1217,7 @@ fun SunGraph(data: FullSunData, modifier: Modifier = Modifier) {
     val isShifted = ss0 < sr0
 
     val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
-        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second }
         val ss1Shifted = ss1 + totalSecondsDay
         val noon = (sr0 + ss1Shifted) / 2f
         listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
@@ -1328,7 +1312,7 @@ fun SunPathVisualization(viewModel: WeatherViewModel) {
 
     val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
         // Logique Shifting : centré sur le midi solaire
-        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second }
         val ss1Shifted = ss1 + totalSecondsDay
         val noon = (sr0 + ss1Shifted) / 2f
         listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
@@ -1685,7 +1669,7 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
                 // Add display rotation
                 val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
-                        context.display?.rotation ?: Surface.ROTATION_0
+                        context.display.rotation ?: Surface.ROTATION_0
                     } catch (e: Exception) {
                         Surface.ROTATION_0
                     }
@@ -1816,7 +1800,7 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
 
                 // Current Moon Position
                 drawAzimuthPointer(
-                    center, radius * cos(moonPos.elevation.toDouble() * (PI / 180.0)).toFloat(), moonPos.azimuth,
+                    center, radius * cos(moonPos.elevation * (PI / 180.0)).toFloat(), moonPos.azimuth,
                     color = if (moonPos.elevation >= 0 ) Color(0xFFB0C4DE) else Color(0x00B0C4DE),
                     iconRadius = 6.dp.toPx()
                 )
@@ -2094,6 +2078,41 @@ fun MoonDetailsSection(viewModel: WeatherViewModel) {
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
+}
+
+@Composable
+fun ResponsiveText(
+    text: AnnotatedString,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontWeight: FontWeight? = null,
+    textAlign: TextAlign? = null,
+    maxLines: Int = 1,
+    targetTextSizeHeight: TextUnit = style.fontSize
+) {
+    var textSize by remember { mutableStateOf(targetTextSizeHeight) }
+    var readyToDraw by remember { mutableStateOf(false) }
+
+    Text(
+        text = text,
+        modifier = modifier,
+        color = color,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        fontSize = textSize,
+        style = style,
+        maxLines = maxLines,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        onTextLayout = { textLayoutResult ->
+            if (textLayoutResult.hasVisualOverflow) {
+                textSize = (textSize.value * 0.9f).sp
+            } else {
+                readyToDraw = true
+            }
+        }
+    )
 }
 
 @Composable

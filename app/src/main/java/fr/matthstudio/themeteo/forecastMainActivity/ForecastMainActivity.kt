@@ -215,7 +215,10 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     }
 
     val description = when(weatherState.word) {
-        SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_RAIN -> stringResource(R.string.stormy)
+        SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)
+        SimpleWeatherWord.STORMY_HAIL -> "Orage avec Grêle"
+        SimpleWeatherWord.EXTREME_STORMY -> "Orage Fort"
+        SimpleWeatherWord.EXTREME_STORMY_HAIL -> "Orage Fort avec Grêle"
         SimpleWeatherWord.HAIL -> stringResource(R.string.hail)
         SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2 -> stringResource(R.string.light_snow)
         SimpleWeatherWord.SNOWY3 -> stringResource(R.string.heavy_snow)
@@ -226,8 +229,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         SimpleWeatherWord.HAZE -> stringResource(R.string.haze)
         SimpleWeatherWord.FOGGY -> stringResource(R.string.foggy)
         SimpleWeatherWord.CLOUDY -> stringResource(R.string.cloudy)
-        SimpleWeatherWord.SUNNY_CLOUDY -> stringResource(R.string.sunny_cloudy)
-        SimpleWeatherWord.MOSTLY_CLEAR -> stringResource(R.string.partially_cloudy)
+        SimpleWeatherWord.PARTLY_CLOUDY -> stringResource(R.string.sunny_cloudy)
+        SimpleWeatherWord.MOSTLY_CLEAR -> stringResource(R.string.mostly_cloudy)
         SimpleWeatherWord.SUNNY -> stringResource(R.string.clear)
         null -> ""
     }

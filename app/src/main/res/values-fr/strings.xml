@@ -278,4 +278,5 @@
     <string name="vigilance_alert_title">Alerte Météo : %1$s</string>
     <string name="vigilance_duration">De %1$s à %2$s - A %3$s</string>
     <string name="rain_alert_title">Alerte Pluie</string>
+    <string name="mostly_cloudy">Globalement Ensoleillé</string>
 </resources>
