@@ -399,15 +399,15 @@ fun DailyForecastRow(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Jour
             Text(
                 text = if (dayReading.date == LocalDate.now()) stringResource(R.string.today)
                 else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).replaceFirstChar { it.uppercase() },
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.width(40.dp)
+                fontWeight = FontWeight.Bold
             )
 
             // Icône
@@ -462,32 +462,36 @@ fun DailyForecastRow(
             }
 
             // Températures
-            Text(
-                text = UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.End,
-                modifier = Modifier.width(45.dp)
-            )
-
-            TemperatureRangeBar(
-                minTemp = dayReading.minTemperature ?: 0.0,
-                maxTemp = dayReading.maxTemperature ?: 0.0,
-                minOverallTemp = minOverallTemp,
-                maxOverallTemp = maxOverallTemp,
-                unit = userSettings.temperatureUnit,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp)
-            )
-
-            Text(
-                text = UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.width(45.dp)
-            )
+            Row(
+                modifier = Modifier,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                Text(
+                    text = UnitConverter.formatTemperature(
+                        dayReading.minTemperature,
+                        userSettings.temperatureUnit,
+                        true,
+                        showUnitSymbol = false
+                    ) + "/",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(45.dp)
+                )
+                Text(
+                    text = UnitConverter.formatTemperature(
+                        dayReading.maxTemperature,
+                        userSettings.temperatureUnit,
+                        true,
+                        showUnitSymbol = false
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.width(45.dp)
+                )
+            }
         }
 
         AnimatedVisibility(visible = isExpanded) {

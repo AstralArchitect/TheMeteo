@@ -72,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -1110,7 +1111,6 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     BentoCard(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (isMinified) 64.dp else 130.dp)
             .padding(vertical = 4.dp)
             .clickable { onCardClick() }
     ) {
@@ -1119,7 +1119,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(alertColor.copy(alpha = 0.2f))
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -1148,7 +1148,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(alertColor.copy(alpha = 0.2f))
-                    .padding(16.dp),
+                    .padding(16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
