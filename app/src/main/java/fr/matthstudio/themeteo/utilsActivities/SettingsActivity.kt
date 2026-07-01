@@ -281,6 +281,18 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            DurationExtensionSetting(
+                isChecked = userSettings.enableDurationExtension,
+                enabled = userSettings.forecastType != ForecastType.ENSEMBLE,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateEnableDurationExtension(enabled)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             AnimatedIconsSetting(
                 isChecked = userSettings.enableAnimatedIcons,
                 onCheckedChange = { enabled ->
@@ -850,6 +862,42 @@ fun ModelFallbackSetting(
             )
             Text(
                 stringResource(R.string.fill_missing_vars_desc),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
+            )
+        }
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
+fun DurationExtensionSetting(
+    isChecked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val alpha = if (enabled) 1f else 0.5f
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.extend_duration_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+            )
+            Text(
+                stringResource(R.string.extend_duration_desc),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)

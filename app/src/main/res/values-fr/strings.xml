@@ -198,6 +198,8 @@
     <string name="animated_icons_desc">Animer les icônes météo, désactivé lorsque l\'économiseur de batterie est activé</string>
     <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
     <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisi avec les données des modèles par défaut (ECMWF/GFS)</string>
+    <string name="extend_duration_title">Prolonger la durée des prévisions</string>
+    <string name="extend_duration_desc">Prolonge la durée de prévision du modèle choisi (ex: AROME) en utilisant les modèles globaux (ECMWF/GFS).</string>
     <string name="meilleur_mod_le_par_d_faut">ECMWF IFS (Recommandé)</string>
     <string name="major_polluant">Polluant Majeur: %1$s</string>
     <string name="gusts">Rafales</string>

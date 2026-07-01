@@ -104,7 +104,8 @@ data class UserSettings(
     val backgroundLocationAsked: Boolean,
     val themeMode: ThemeMode,
     val enableRainNotifications: Boolean,
-    val enableVigilanceNotifications: Boolean
+    val enableVigilanceNotifications: Boolean,
+    val enableDurationExtension: Boolean
 )
 
 /**
@@ -175,7 +176,7 @@ class WeatherCache(
     private val cacheMutex = Mutex()
 
     // --- StateFlows pour les settings et la localisation sélectionnée ---
-    private val _userSettings = MutableStateFlow(UserSettings("ecmwf_ifs", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED, true, true))
+    private val _userSettings = MutableStateFlow(UserSettings("ecmwf_ifs", true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, true, ForecastType.DETERMINISTIC, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED, true, true, false))
     val userSettings: StateFlow<UserSettings> = _userSettings.asStateFlow()
 
     private val _selectedLocation = MutableStateFlow<LocationIdentifier>(LocationIdentifier.CurrentUserLocation)
@@ -300,7 +301,8 @@ class WeatherCache(
                 userSettingsRepository.backgroundLocationAsked,
                 userSettingsRepository.themeMode,
                 userSettingsRepository.enableRainNotifications,
-                userSettingsRepository.enableVigilanceNotifications
+                userSettingsRepository.enableVigilanceNotifications,
+                userSettingsRepository.enableDurationExtension
             ) { values ->
                 var model = values[0] as String?
                 val round = values[1] as Boolean
@@ -321,6 +323,7 @@ class WeatherCache(
                 val themeMode = values[16] as ThemeMode
                 val rainNotif = values[17] as Boolean
                 val vigilanceNotif = values[18] as Boolean
+                val durationExtension = values[19] as Boolean
 
                 // Validation du modèle : s'il n'est pas dans le registre, on bascule sur ecmwf_ifs
                 if (model != null && WeatherModelRegistry.models.none { it.apiName == model }) {
@@ -350,7 +353,8 @@ class WeatherCache(
                     backgroundAsked,
                     themeMode,
                     rainNotif,
-                    vigilanceNotif
+                    vigilanceNotif,
+                    durationExtension
                 )
             }.collect { settings ->
                 _userSettings.value = settings
@@ -452,8 +456,23 @@ class WeatherCache(
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         var effectiveModel = currentSettings.model
         
+        val maxPredictionDays = if (currentSettings.enableDurationExtension && !isEnsembleMode) {
+            val modelChainForDuration = mutableListOf<String>()
+            modelChainForDuration.add(effectiveModel)
+            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
+            while (currentM.secondaryModelApiName != null && !modelChainForDuration.contains(currentM.secondaryModelApiName)) {
+                modelChainForDuration.add(currentM.secondaryModelApiName!!)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
+            }
+            if (!modelChainForDuration.contains("gfs_seamless")) modelChainForDuration.add("gfs_seamless")
+            
+            modelChainForDuration.map { WeatherModelRegistry.getModel(it, false).predictionDays }.maxOrNull() ?: 14
+        } else {
+            WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays
+        }
+
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
-            .plusDays(WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays.toLong())
+            .plusDays(maxPredictionDays.toLong())
             .toLocalDate()
         var endTime = startTime.plusHours(hours.toLong())
         if (endTime.toLocalDate().isAfter(maxAllowedDate)) {
@@ -464,7 +483,7 @@ class WeatherCache(
         val modelChain = mutableListOf<String>()
         modelChain.add(effectiveModel)
         
-        if (currentSettings.enableModelFallback && !isEnsembleMode) {
+        if ((currentSettings.enableModelFallback || currentSettings.enableDurationExtension) && !isEnsembleMode) {
             var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
             while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
                 modelChain.add(currentM.secondaryModelApiName!!)
@@ -647,8 +666,23 @@ class WeatherCache(
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         var effectiveModel = currentSettings.model
 
+        val maxPredictionDays = if (currentSettings.enableDurationExtension && !isEnsembleMode) {
+            val modelChainForDuration = mutableListOf<String>()
+            modelChainForDuration.add(effectiveModel)
+            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
+            while (currentM.secondaryModelApiName != null && !modelChainForDuration.contains(currentM.secondaryModelApiName)) {
+                modelChainForDuration.add(currentM.secondaryModelApiName!!)
+                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
+            }
+            if (!modelChainForDuration.contains("gfs_seamless")) modelChainForDuration.add("gfs_seamless")
+            
+            modelChainForDuration.map { WeatherModelRegistry.getModel(it, false).predictionDays }.maxOrNull() ?: 14
+        } else {
+            WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays
+        }
+
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
-            .plusDays(WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays.toLong())
+            .plusDays(maxPredictionDays.toLong())
             .toLocalDate()
         var endDate = date.plusDays(days)
         if (endDate.isAfter(maxAllowedDate)) endDate = maxAllowedDate
@@ -657,7 +691,7 @@ class WeatherCache(
         val modelChain = mutableListOf<String>()
         modelChain.add(effectiveModel)
         
-        if (currentSettings.enableModelFallback && !isEnsembleMode) {
+        if ((currentSettings.enableModelFallback || currentSettings.enableDurationExtension) && !isEnsembleMode) {
             var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
             while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
                 modelChain.add(currentM.secondaryModelApiName!!)
@@ -784,9 +818,16 @@ class WeatherCache(
     }
 
     private fun mergeHourly(primary: List<AllHourlyVarsReading>, fallback: List<AllHourlyVarsReading>): List<AllHourlyVarsReading> {
+        val primaryMap = primary.associateBy { it.time }
         val fallbackMap = fallback.associateBy { it.time }
-        return primary.map { p ->
-            val f = fallbackMap[p.time] ?: return@map p
+        val allTimes = (primaryMap.keys + fallbackMap.keys).sorted()
+
+        return allTimes.map { time ->
+            val p = primaryMap[time]
+            val f = fallbackMap[time]
+            
+            if (p == null) return@map f!!
+            if (f == null) return@map p
             
             val mergedPrecipitationData = p.precipitationData.copy(
                 precipitation = p.precipitationData.precipitation.nanToNull() ?: f.precipitationData.precipitation.nanToNull(),
@@ -839,9 +880,17 @@ class WeatherCache(
     }
 
     private fun mergeDaily(primary: List<DailyReading>, fallback: List<DailyReading>): List<DailyReading> {
+        val primaryMap = primary.associateBy { it.date }
         val fallbackMap = fallback.associateBy { it.date }
-        return primary.map { p ->
-            val f = fallbackMap[p.date] ?: return@map p
+        val allDates = (primaryMap.keys + fallbackMap.keys).sorted()
+
+        return allDates.map { date ->
+            val p = primaryMap[date]
+            val f = fallbackMap[date]
+
+            if (p == null) return@map f!!
+            if (f == null) return@map p
+
             p.copy(
                 maxTemperature = p.maxTemperature.nanToNull() ?: f.maxTemperature.nanToNull(),
                 minTemperature = p.minTemperature.nanToNull() ?: f.minTemperature.nanToNull(),

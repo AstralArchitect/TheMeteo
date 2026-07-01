@@ -219,6 +219,8 @@
     <string name="animated_icons_desc">Animate the weather icon, this setting will be disabled when battery saver is on</string>
     <string name="fill_missing_vars_title">Fill Missing Variables</string>
     <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the default models (ECMWF/GFS)</string>
+    <string name="extend_duration_title">Extend Forecast Duration</string>
+    <string name="extend_duration_desc">Extends the forecast duration of the selected model (e.g., AROME) by using global models (ECMWF/GFS).</string>
     <string name="meilleur_mod_le_par_d_faut">ECMWF IFS (Recommended)</string>
     <string name="major_polluant">Major Polluant: %1$s</string>
     <string name="gusts">Gusts</string>

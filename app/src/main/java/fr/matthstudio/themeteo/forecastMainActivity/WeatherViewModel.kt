@@ -177,7 +177,11 @@ class WeatherViewModel(
         refreshCounter
     ) { _, settings, _ ->
         // On récupère les settings ici pour calculer la durée
-        WeatherModelRegistry.getModel(settings.model, userSettings.value.forecastType == ForecastType.ENSEMBLE).predictionDays.toLong()
+        if (settings.enableDurationExtension && settings.forecastType != ForecastType.ENSEMBLE) {
+            14L // On demande 14 jours (ECMWF IFS) si l'extension est activée
+        } else {
+            WeatherModelRegistry.getModel(settings.model, userSettings.value.forecastType == ForecastType.ENSEMBLE).predictionDays.toLong()
+        }
     }.flatMapLatest { duration ->
         weatherCache.get(LocalDate.now(), duration)
     }.stateIn(
