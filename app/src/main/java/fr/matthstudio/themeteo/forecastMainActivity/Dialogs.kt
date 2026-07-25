@@ -6,7 +6,10 @@ package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
@@ -91,6 +94,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.core.net.toUri
 import androidx.fragment.app.strictmode.FragmentStrictMode
 import fr.matthstudio.themeteo.R
@@ -580,7 +584,7 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
                         factory = { context ->
                             WebView(context).apply {
                                 webViewClient = object : WebViewClient() {
-                                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                         super.onPageStarted(view, url, favicon)
                                         isLoading = true
                                         hasError = false
@@ -598,8 +602,8 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
 
                                     override fun onReceivedError(
                                         view: WebView?,
-                                        request: android.webkit.WebResourceRequest?,
-                                        error: android.webkit.WebResourceError?
+                                        request: WebResourceRequest?,
+                                        error: WebResourceError?
                                     ) {
                                         super.onReceivedError(view, request, error)
                                         isLoading = false
@@ -822,4 +826,54 @@ fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit)
             }
         }
     }
+}
+
+@Composable
+fun RainForecastExplanationDialog(onDismiss: () -> Unit) {
+    AlertDialog(onDismiss,
+        title = { Text(stringResource(R.string.rain_forecast_explanation_title)) },
+        text = {
+            Column() {
+                Text(
+                    stringResource(R.string.rain_forecast_explanation_1),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(5.dp))
+                Row {
+                    Box(
+                        modifier = Modifier.size(20.dp)
+                            .background(color = Color(0xFF90CAF9))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.rain_rate_low))
+                }
+                Spacer(modifier = Modifier.height(1.dp))
+                Row {
+                    Box(
+                        modifier = Modifier.size(20.dp)
+                            .background(color = Color(0xFF42A5F5))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.rain_rate_medium))
+                }
+                Spacer(modifier = Modifier.height(1.dp))
+                Row {
+                    Box(
+                        modifier = Modifier.size(20.dp)
+                            .background(color = Color(0xFF2962FF))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.rain_rate_high))
+                }
+                Spacer(modifier = Modifier.height(5.dp))
+                Text(
+                    stringResource(R.string.rain_forecast_explanation_2),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = {
+
+        }
+    )
 }

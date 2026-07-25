@@ -14,5 +14,6 @@ enum class BentoCardType {
     AIR_QUALITY,
     POLLEN,
     SUN_DETAILS,
+    RAIN_WITHIN_HOUR,
     ADDITIONAL_INFOS
 }

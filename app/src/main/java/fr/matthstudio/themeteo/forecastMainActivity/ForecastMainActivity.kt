@@ -164,6 +164,7 @@ fun BentoCardContent(
                 PollenCard(data = data, onClick = onShowAirQuality)
             }
         }
+        BentoCardType.RAIN_WITHIN_HOUR -> RainWithinHourCard(viewModel)
         BentoCardType.ADDITIONAL_INFOS -> AdditionalInfos(viewModel, context)
     }
 }
@@ -279,11 +280,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     }
 
     if (showAddLocationDialog) {
-        val searchResults by viewModel.geocodingResults.collectAsState()
+        val searchState by viewModel.searchState.collectAsState()
         val userLocation by viewModel.userLocation.collectAsState()
 
         AddLocationDialog(
-            searchResults = searchResults,
+            searchState = searchState,
             userLocation = userLocation,
             weatherService = viewModel.weatherService,
             onSearch = { viewModel.searchCity(it) },

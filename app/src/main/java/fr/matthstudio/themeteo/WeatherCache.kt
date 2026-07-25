@@ -30,6 +30,7 @@ import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
 import fr.matthstudio.themeteo.utilClasses.DailyMoonEvents
 import fr.matthstudio.themeteo.utilClasses.FullSunCalculator
 import fr.matthstudio.themeteo.utilClasses.FullSunData
+import fr.matthstudio.themeteo.utilClasses.MeteoFranceRainResponse
 import fr.matthstudio.themeteo.utilClasses.MoonCalculator
 import fr.matthstudio.themeteo.utilClasses.MoonData
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
@@ -151,8 +152,7 @@ data class ModelDataCache(
     @Serializable
     var vigilanceInfo: VigilanceInfos? = null,
     @Serializable(with = LocalDateTimeSerializer::class)
-    var lastVigilanceFetch: LocalDateTime = LocalDateTime.MIN,
-
+    var lastVigilanceFetch: LocalDateTime = LocalDateTime.MIN
     )
 
 // Liste des updates de l'API
@@ -1076,6 +1076,24 @@ class WeatherCache(
         }
     }
 
+    fun getRainWithinHour(): Flow<WeatherDataState> = flow {
+        emit(WeatherDataState.Loading)
+        val currentLocationIdentifier = selectedLocation.value
+        val coords = resolveCoordinates(currentLocationIdentifier)
+        if (coords == null) {
+            emit(WeatherDataState.Error("Unable to get GPS position"))
+            return@flow
+        }
+        val currentModel = userSettings.value.model
+
+        val freshRain = weatherService.getRainWithinHour(coords.latitude, coords.longitude)
+        if (freshRain != null) {
+            emit(WeatherDataState.SuccessRainWithinHour(freshRain))
+        } else {
+            emit(WeatherDataState.Error("Météo-France rain within the hour data unavailable."))
+        }
+    }
+
     fun getRawCache(): MutableMap<LocationIdentifier, MutableMap<String, ModelDataCache>> = cache
 
     fun invalidateCache() {
@@ -1126,6 +1144,7 @@ sealed class WeatherDataState {
     data class SuccessCurrent(val data: Map<Pair<Double, Double>, CurrentWeatherReading>) : WeatherDataState()
     data class SuccessAirQuality(val data: Triple<AirQualityInfo, AirQualityForecastResponse?, PollenResponse?>) : WeatherDataState()
     data class SuccessVigilance(val data: VigilanceInfos) : WeatherDataState()
+    data class SuccessRainWithinHour(val data: MeteoFranceRainResponse) : WeatherDataState()
     data class Error(val message: String, val staleData: WeatherDataState? = null) : WeatherDataState()
 }
 

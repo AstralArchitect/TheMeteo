@@ -303,5 +303,16 @@
     <string name="vigilance_alert_title">Weather Alert: %1$s</string>
     <string name="vigilance_duration">From %1$s to %2$s - At %3$s</string>
     <string name="rain_alert_title">Rain Alert</string>
+    <string name="rain_within_the_hour">Rain within the hour</string>
+    <string name="now">Now</string>
     <string name="mostly_cloudy">Mostly Clear</string>
+    <string name="no_results">No results found</string>
+    <string name="type_more_chars">Type at least 2 characters to search</string>
+
+    <string name="rain_forecast_explanation_title">Rain forecast information</string>
+    <string name="rain_forecast_explanation_1">The rain forecast is provided by Météo France and therefore only available in France.\n\nIt shows the precipitation forecast for the next hour in 3 levels :</string>
+    <string name="rain_forecast_explanation_2">The precipitation forecast has usually a better quality and is more reliable than the hourly forecast.</string>
+    <string name="rain_rate_low">Low rain Rate</string>
+    <string name="rain_rate_medium">Medium rain Rate</string>
+    <string name="rain_rate_high">High rain Rate</string>
 </resources>

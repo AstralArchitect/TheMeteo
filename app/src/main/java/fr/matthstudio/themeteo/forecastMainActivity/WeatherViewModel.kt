@@ -4,11 +4,12 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.forecastMainActivity
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import fr.matthstudio.themeteo.GeocodingResult
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.PolicyUpdateInfo
+import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
@@ -20,8 +21,13 @@ import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
+import fr.matthstudio.themeteo.utilClasses.EnvironmentalUIModel
+import fr.matthstudio.themeteo.utilClasses.FullSunData
+import fr.matthstudio.themeteo.utilClasses.MoonData
+import fr.matthstudio.themeteo.utilClasses.mapToEnvironmentalUI
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,20 +36,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
-
-import fr.matthstudio.themeteo.utilClasses.EnvironmentalUIModel
-import fr.matthstudio.themeteo.utilClasses.FullSunCalculator
-import fr.matthstudio.themeteo.utilClasses.DailySunData
-import fr.matthstudio.themeteo.utilClasses.FullSunData
-import fr.matthstudio.themeteo.utilClasses.MoonCalculator
-import fr.matthstudio.themeteo.utilClasses.MoonData
-import fr.matthstudio.themeteo.utilClasses.DailyMoonEvents
-import fr.matthstudio.themeteo.utilClasses.mapToEnvironmentalUI
-import kotlinx.coroutines.flow.map
+import java.util.Calendar
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * Ce ViewModel sert d'intermédiaire entre l'UI (WeatherScreen) et la logique de données (WeatherCache).
@@ -110,7 +111,30 @@ class WeatherViewModel(
     /**
      * Expose l'ordre des cartes Bento.
      */
-    val bentoCardsOrder: StateFlow<List<BentoCardType>> = weatherCache.userSettingsRepository.bentoCardsOrder.stateIn(
+    val bentoCardsOrder: StateFlow<List<BentoCardType>> = weatherCache.userSettingsRepository.bentoCardsOrder.map { savedOrder ->
+        // S'assurer que tous les nouveaux types de cartes sont présents (pour les anciens utilisateurs)
+        val currentEntries = BentoCardType.entries
+        if (savedOrder.size < currentEntries.size) {
+            val missing = currentEntries.filter { it !in savedOrder }
+            val mutableOrder = savedOrder.toMutableList()
+            
+            missing.forEach { missingCard ->
+                if (missingCard == BentoCardType.RAIN_WITHIN_HOUR) {
+                    val vigilanceIndex = mutableOrder.indexOf(BentoCardType.VIGILANCE)
+                    if (vigilanceIndex != -1) {
+                        mutableOrder.add(vigilanceIndex + 1, missingCard)
+                    } else {
+                        mutableOrder.add(missingCard)
+                    }
+                } else {
+                    mutableOrder.add(missingCard)
+                }
+            }
+            mutableOrder
+        } else {
+            savedOrder
+        }
+    }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
         BentoCardType.entries
@@ -262,31 +286,90 @@ class WeatherViewModel(
         WeatherDataState.Loading
     )
 
+    private fun getMillisToNextFiveMinuteMark(): Long {
+        val now = Calendar.getInstance()
+        val minute = now.get(Calendar.MINUTE)
+        val second = now.get(Calendar.SECOND)
+        val millis = now.get(Calendar.MILLISECOND)
+
+        // Nombre de minutes à ajouter pour atteindre le prochain multiple de 5.
+        val minutesToNextBoundary = 5 - (minute % 5)
+
+        // On convertit tout en millisecondes et on soustrait le temps déjà écoulé dans la minute courante
+        return (minutesToNextBoundary * 60 * 1000L) - (second * 1000L) - millis
+    }
+
+    val fiveMinuteTicker: StateFlow<Long> = flow {
+        // 1. Émission initiale immédiate au lancement
+        emit(System.currentTimeMillis())
+
+        while (true) {
+            val delayMillis = getMillisToNextFiveMinuteMark()
+
+            delay(delayMillis.milliseconds)
+
+            emit(System.currentTimeMillis())
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = System.currentTimeMillis()
+    )
+
+    /**
+     * Flow de WeatherDataState pour la pluie dans l'heure à la localisation selectionnée.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val rainWithinHour: StateFlow<WeatherDataState> = combine(
+        selectedLocation,
+        refreshCounter,
+        fiveMinuteTicker
+    ) { _, _, _ ->
+    }.flatMapLatest {
+        weatherCache.getRainWithinHour()
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        WeatherDataState.Loading
+    )
+
     // --- 2. GESTION DE LA RECHERCHE DE VILLES (GEOCODING) ---
 
     // Le terme de recherche entré par l'utilisateur.
     private val _searchQuery = MutableStateFlow("")
 
-    // Les résultats de la recherche retournés par l'API Geocoding.
-    private val _geocodingResults = MutableStateFlow<List<GeocodingResult>>(emptyList())
-    val geocodingResults: StateFlow<List<GeocodingResult>> = _geocodingResults.asStateFlow()
+    /**
+     * État de la recherche de villes, réactif au changement de _searchQuery.
+     * Utilise flatMapLatest pour annuler les recherches précédentes si l'utilisateur continue de taper.
+     */
+    val searchState: StateFlow<SearchState> = _searchQuery
+        .debounce(300)
+        .flatMapLatest { query ->
+            if (query.length >= 2) {
+                kotlinx.coroutines.flow.flow<SearchState> {
+                    Log.d("WeatherViewModel", "Recherche lancée pour : $query")
+                    emit(SearchState.Loading)
+                    val results = weatherService.searchCity(query)
+                    if (results == null) {
+                        emit(SearchState.Error("Erreur réseau"))
+                    } else if (results.isEmpty()) {
+                        emit(SearchState.Empty)
+                    } else {
+                        emit(SearchState.Success(results))
+                    }
+                }
+            } else {
+                kotlinx.coroutines.flow.flowOf(SearchState.Idle)
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = SearchState.Idle
+        )
 
 
     init {
-        // On observe le terme de recherche pour lancer un appel à l'API de geocoding.
-        viewModelScope.launch {
-            _searchQuery
-                .debounce(300) // Attend 300ms de silence de l'utilisateur avant de lancer la recherche pour éviter les appels inutiles.
-                .collect { query ->
-                    if (query.length > 2) {
-                        val results = weatherService.searchCity(query)
-                        _geocodingResults.value = results ?: emptyList()
-                    } else {
-                        _geocodingResults.value = emptyList()
-                    }
-                }
-        }
-
         // Vérification des mises à jour des politiques
         viewModelScope.launch {
             checkPolicyUpdates()
@@ -352,7 +435,6 @@ class WeatherViewModel(
      */
     fun clearSearch() {
         _searchQuery.value = ""
-        _geocodingResults.value = emptyList()
     }
 
     /**

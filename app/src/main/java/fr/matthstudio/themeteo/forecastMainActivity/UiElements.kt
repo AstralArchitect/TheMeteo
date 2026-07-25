@@ -67,6 +67,7 @@ import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -129,6 +130,7 @@ import fr.matthstudio.themeteo.AllHourlyVarsReading
 import fr.matthstudio.themeteo.CurrentWeatherReading
 import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.GeocodingResult
+import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
@@ -813,7 +815,7 @@ fun RenameLocationDialog(
 // 3. LA BOÎTE DE DIALOGUE POUR LA RECHERCHE ET L'AJOUT
 @Composable
 fun AddLocationDialog(
-    searchResults: List<GeocodingResult>, // Remplacez par votre type réel de résultat
+    searchState: SearchState,
     userLocation: GpsCoordinates?,
     weatherService: WeatherService,
     onSearch: (String) -> Unit,
@@ -853,32 +855,72 @@ fun AddLocationDialog(
                         onSearch(it) // Déclenche la recherche via le ViewModel
                     },
                     label = { Text(stringResource(R.string.search_city)) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
                 )
                 Spacer(Modifier.height(16.dp))
-                LazyColumn {
-                    items(searchResults) { result ->
-                        Text(
-                            text = "${result.name}, ${result.region}, ${result.countryCode}",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val newLocation = SavedLocation(
-                                        name = result.name,
-                                        latitude = result.latitude,
-                                        longitude = result.longitude,
-                                        country = result.countryCode
+                
+                Box(modifier = Modifier.height(200.dp).fillMaxWidth()) {
+                    when (searchState) {
+                        is SearchState.Loading -> {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                        }
+                        is SearchState.Success -> {
+                            LazyColumn {
+                                items(searchState.results) { result ->
+                                    Text(
+                                        text = "${result.name}, ${result.region}, ${result.countryCode}",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                val newLocation = SavedLocation(
+                                                    name = result.name,
+                                                    latitude = result.latitude,
+                                                    longitude = result.longitude,
+                                                    country = result.countryCode
+                                                )
+                                                onAddLocation(newLocation)
+                                                onLocationSelected(LocationIdentifier.Saved(newLocation))
+                                                onDismiss()
+                                            }
+                                            .padding(vertical = 8.dp)
                                     )
-                                    onAddLocation(newLocation)
-                                    onLocationSelected(LocationIdentifier.Saved(newLocation))
-                                    onDismiss()
                                 }
-                                .padding(vertical = 8.dp)
-                        )
+                            }
+                        }
+                        is SearchState.Empty -> {
+                            Text(
+                                text = stringResource(R.string.no_results),
+                                modifier = Modifier.align(Alignment.Center),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        is SearchState.Error -> {
+                            Text(
+                                text = searchState.message,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
+                        is SearchState.Idle -> {
+                            if (searchQuery.length >= 1 && searchQuery.length < 2) {
+                                Text(
+                                    text = stringResource(R.string.type_more_chars),
+                                    modifier = Modifier.align(Alignment.Center),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
+                
                 // Bouton pour ouvrir la carte
-                Button(onClick = { showMapPicker = true }) {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { showMapPicker = true }
+                ) {
                     Text(stringResource(R.string.pick_on_map))
                 }
             }

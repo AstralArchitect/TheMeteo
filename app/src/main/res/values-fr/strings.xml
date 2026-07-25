@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="temperature_forecast">Prévision de température</string>
-    <string name="precipitation_forecast">Prévision de pluie</string>
+    <string name="precipitation_forecast">Pluie dans l\'heure</string>
     <string name="wind_forecast">Prévision du vent</string>
     <string name="actual_situation">Situation Actuelle</string>
     <string name="open_satellite_view">Ouvrir les vues Satellites</string>
@@ -248,6 +248,7 @@
     <string name="moderate">Modéré</string>
     <string name="high">Fort</string>
     <string name="very_high">Très fort</string>
+    <string name="none">Aucun</string>
     <string name="extreme">Extrême</string>
     <string name="error_gps_unavailable">Position GPS indisponible. Veuillez vérifier les permissions de localisation.</string>
     <string name="background_location_rationale_title">Mises à jour des widgets</string>
@@ -280,5 +281,16 @@
     <string name="vigilance_alert_title">Alerte Météo : %1$s</string>
     <string name="vigilance_duration">De %1$s à %2$s - A %3$s</string>
     <string name="rain_alert_title">Alerte Pluie</string>
+    <string name="rain_within_the_hour">Pluie dans l\'heure</string>
+    <string name="now">Maintenant</string>
     <string name="mostly_cloudy">Globalement Ensoleillé</string>
+    <string name="no_results">Aucun résultat trouvé</string>
+    <string name="type_more_chars">Entrez au moins 2 caractères pour rechercher</string>
+
+    <string name="rain_forecast_explanation_title">Informations sur la pluie dans l\'heure</string>
+    <string name="rain_forecast_explanation_1">La prévision de pluie est fournie par Météo France et n\'est donc disponible qu\'en France.\n\nElle indique les prévisions de précipitations pour l\'heure suivante en 3 niveaux :</string>
+    <string name="rain_forecast_explanation_2">La prévision de précipitations est généralement de meilleure qualité et plus fiable que les prévisions horaires.</string>
+    <string name="rain_rate_low">Faible intensité</string>
+    <string name="rain_rate_medium">Intensité modérée</string>
+    <string name="rain_rate_high">Forte intensité</string>
 </resources>

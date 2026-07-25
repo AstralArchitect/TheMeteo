@@ -175,11 +175,11 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
     }
 
     if (showAddLocationDialog) {
-        val searchResults by weatherViewModel.geocodingResults.collectAsState()
+        val searchState by weatherViewModel.searchState.collectAsState()
         val userLocation by weatherViewModel.userLocation.collectAsState()
 
         AddLocationDialog(
-            searchResults = searchResults,
+            searchState = searchState,
             userLocation = userLocation,
             weatherService = weatherViewModel.weatherService,
             onSearch = { weatherViewModel.searchCity(it) },
