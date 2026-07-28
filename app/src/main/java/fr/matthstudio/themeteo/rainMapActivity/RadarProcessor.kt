@@ -73,8 +73,8 @@ object RadarProcessor {
             intensite < 15.0f  -> Color.argb(alpha, 255, 210, 0)    // Jaune (Pluie soutenue)
             intensite < 25.0f  -> Color.argb(alpha, 255, 120, 0)    // Orange (Pluie forte - dès 15 mm)
             intensite < 40.0f  -> Color.argb(alpha, 230, 30, 30)     // Rouge (Pluie très forte / Orage)
-            intensite < 60.0f  -> Color.argb(alpha, 180, 0, 190)     // Violet / Magenta (Diluvien)
-            else               -> Color.argb(alpha, 255, 255, 255)   // Blanc (Extrême / Risque de grêle)
+            intensite < 60.0f  -> Color.argb(alpha, 255, 255, 255)     // Violet / Magenta (Diluvien)
+            else               -> Color.argb(alpha, 255, 255, 255)     // Blanc (Extrême)
         }
     }
 }

@@ -20,8 +20,7 @@ import androidx.compose.ui.tooling.preview.Preview
 @Composable
 fun RainMapLegend(modifier: Modifier = Modifier) {
     val legendItems = listOf(
-        LegendItem("Extrême", Color(0xFFFFFFFF)),
-        LegendItem("Diluvien", Color(0xFFB400BE)),
+        LegendItem("Extrême", Color(0xFF000000)),
         LegendItem("Très forte", Color(0xFFE61E1E)),
         LegendItem("Forte", Color(0xFFFF7800)),
         LegendItem("Soutenue", Color(0xFFFFD200)),
