@@ -4,8 +4,7 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.rainMapActivity
 
-import android.graphics.Color
-import android.location.Location
+import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
@@ -39,7 +38,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,24 +59,18 @@ import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import org.osmdroid.events.MapListener
-import org.osmdroid.events.ScrollEvent
-import org.osmdroid.events.ZoomEvent
-import org.osmdroid.tileprovider.MapTileProviderBasic
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.GroundOverlay
 import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.TilesOverlay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.PI
-import kotlin.math.atan
-import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 class RainMapActivity : ComponentActivity() {
     private lateinit var viewModel: RainMapViewModel
@@ -128,9 +120,7 @@ fun RainMapScreen(viewModel: RainMapViewModel, initialLat: Double, initialLon: D
             }
             is RainMapUiState.Success -> {
                 RainMapContent(
-                    state.host,
                     state.frames,
-                    state.lastPastIndex,
                     initialLat,
                     initialLon
                 )
@@ -141,137 +131,91 @@ fun RainMapScreen(viewModel: RainMapViewModel, initialLat: Double, initialLon: D
 
 @Composable
 fun RainMapContent(
-    host: String,
     frames: List<TimeFrame>,
-    lastPastIndex: Int,
     initialLat: Double,
     initialLon: Double
 ) {
-    var currentIndex by remember(lastPastIndex) { mutableIntStateOf(if (lastPastIndex != -1) lastPastIndex else frames.lastIndex) }
+    var currentIndex by remember { mutableIntStateOf(frames.lastIndex) }
     var isPlaying by remember { mutableStateOf(false) }
     var mapView: MapView? by remember { mutableStateOf(null) }
     
-    // User Location for Radius Check
+    // User Location
     var userGeoPoint by remember { mutableStateOf<GeoPoint?>(GeoPoint(initialLat, initialLon)) }
 
-    // Store overlays and providers
-    val overlays = remember { mutableMapOf<Int, TilesOverlay>() }
-    val providers = remember { mutableMapOf<Int, MapTileProviderBasic>() }
+    // Rendu Radar unique : On recycle une seule Bitmap pour économiser la RAM
+    // Désactivation explicite de l'interpolation linéaire (isFilterBitmap/isAntiAlias = false) pour un rendu de pixels nets
+    val radarOverlay = remember {
+        object : GroundOverlay() {
+            // Safely access the private mPaint field via reflection
+            private val paint: android.graphics.Paint? = try {
+                GroundOverlay::class.java.getDeclaredField("mPaint").let { field ->
+                    field.isAccessible = true
+                    field.get(this) as android.graphics.Paint
+                }
+            } catch (e: Exception) {
+                null
+            }
 
-    // Use current value reference for MapListener
-    val latestIndex = rememberUpdatedState(currentIndex)
+            init {
+                paint?.let {
+                    it.isFilterBitmap = false
+                    it.isAntiAlias = false
+                    it.isDither = false
+                }
+            }
 
-    // Trigger downloads for zoom 4 tiles when map is overzoomed
-    fun triggerDownloads(map: MapView) {
-        if (map.zoomLevelDouble <= 4.0) return
-        val currentIdx = latestIndex.value
-        val provider = providers[currentIdx] ?: return
-        val zoom = 4
-        val bbox = map.boundingBox
-
-        // Formulas for Slippy Map Tilenames
-        val xMin = Math.floor((bbox.lonWest + 180.0) / 360.0 * Math.pow(2.0, zoom.toDouble())).toInt()
-        val xMax = Math.floor((bbox.lonEast + 180.0) / 360.0 * Math.pow(2.0, zoom.toDouble())).toInt()
-        val yMin = Math.floor((1.0 - Math.log(Math.tan(Math.toRadians(bbox.latNorth)) + 1.0 / Math.cos(Math.toRadians(bbox.latNorth))) / Math.PI) / 2.0 * Math.pow(2.0, zoom.toDouble())).toInt()
-        val yMax = Math.floor((1.0 - Math.log(Math.tan(Math.toRadians(bbox.latSouth)) + 1.0 / Math.cos(Math.toRadians(bbox.latSouth))) / Math.PI) / 2.0 * Math.pow(2.0, zoom.toDouble())).toInt()
-
-        val yStart = Math.min(yMin, yMax)
-        val yEnd = Math.max(yMin, yMax)
-        val xStart = Math.min(xMin, xMax)
-        val xEnd = Math.max(xMin, xMax)
-
-        // Sanity check to avoid huge downloads if bbox is weird
-        val count = (xEnd - xStart + 1) * (yEnd - yStart + 1)
-        if (count > 100 || count <= 0) return
-
-        for (x in xStart..xEnd) {
-            for (y in yStart..yEnd) {
-                val tileIndex = MapTileIndex.getTileIndex(zoom, x, y)
-                // Calling getMapTile triggers the download pipeline if missing from cache
-                provider.getMapTile(tileIndex)
+            override fun draw(c: android.graphics.Canvas, p: MapView, shadow: Boolean) {
+                // Ensure properties are set (though init should be enough)
+                paint?.let {
+                    it.isFilterBitmap = false
+                    it.isAntiAlias = false
+                }
+                super.draw(c, p, shadow)
             }
         }
+    }
+    val displayBitmap = remember(frames.firstOrNull()?.width, frames.firstOrNull()?.height) {
+        val f = frames.firstOrNull()
+        if (f != null && f.width > 0 && f.height > 0) {
+            Bitmap.createBitmap(f.width, f.height, Bitmap.Config.ARGB_8888)
+        } else null
     }
 
     // Animation Loop
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
             while (isPlaying) {
-                delay(1000)
+                delay(1000.milliseconds)
                 currentIndex = (currentIndex + 1) % frames.size
             }
         }
     }
 
-    // Effect to update map visibility and initialize overlays
-    LaunchedEffect(currentIndex, mapView, userGeoPoint) {
+    // Mise à jour de l'image sur la carte
+    LaunchedEffect(currentIndex, mapView, displayBitmap) {
         val map = mapView ?: return@LaunchedEffect
-        val userPos = userGeoPoint ?: return@LaunchedEffect
-        
-        // 1. Initialize ALL overlays if not done yet
-        if (overlays.isEmpty()) {
-            frames.forEachIndexed { index, frame ->
-                val tileSource = object : OnlineTileSourceBase(
-                    "RainViewer_Limited_${frame.time}",
-                    3, 4, 256, ".png", // DECLARE 256px to ensure standard scaling behavior
-                    arrayOf("$host${frame.path}/512/")
-                ) {
-                    override fun getTileURLString(pMapTileIndex: Long): String {
-                        val zoom = MapTileIndex.getZoom(pMapTileIndex)
-                        val x = MapTileIndex.getX(pMapTileIndex)
-                        val y = MapTileIndex.getY(pMapTileIndex)
+        val bitmap = displayBitmap ?: return@LaunchedEffect
+        val frame = frames.getOrNull(currentIndex) ?: return@LaunchedEffect
+        val buffer = frame.buffer ?: return@LaunchedEffect
 
-                        // Calculate tile center
-                        val lon = tile2lon(x, zoom) + (tile2lon(x + 1, zoom) - tile2lon(x, zoom)) / 2
-                        val lat = tile2lat(y, zoom) + (tile2lat(y + 1, zoom) - tile2lat(y, zoom)) / 2
+        // 1. Update Bitmap depuis le ByteBuffer natif (ultra-rapide)
+        buffer.rewind()
+        bitmap.copyPixelsFromBuffer(buffer)
 
-                        // RADIUS CHECK: 2000km from user
-                        val results = FloatArray(1)
-                        Location.distanceBetween(userPos.latitude, userPos.longitude, lat, lon, results)
-                        val distanceInKm = results[0] / 1000
-
-                        return if (distanceInKm <= 2000) {
-                            "$baseUrl$zoom/$x/$y/2/1_1.png"
-                        } else {
-                            "" // Forbid download outside 2000km
-                        }
-                    }
-                }
-
-                val provider = MapTileProviderBasic(map.context, tileSource)
-                provider.setTileRequestCompleteHandler(map.tileRequestCompleteHandler)
-                
-                val overlay = TilesOverlay(provider, map.context)
-                overlay.loadingBackgroundColor = Color.TRANSPARENT
-                overlay.loadingLineColor = Color.TRANSPARENT
-                overlay.isEnabled = false
-                
-                providers[index] = provider
-                overlays[index] = overlay
-                map.overlays.add(0, overlay) // Add at bottom
-            }
+        // 2. Configurer le GroundOverlay
+        if (!map.overlays.contains(radarOverlay)) {
+            // Bounding box géographique normalisée de la mosaïque radar sur la métropole (synchronisée avec le serveur)
+            val north = 51.50
+            val south = 41.30
+            val west = -5.50
+            val east = 9.80
+            radarOverlay.setPosition(GeoPoint(north, west), GeoPoint(south, east))
+            radarOverlay.setTransparency(0.2f) // Un peu de transparence pour voir la carte dessous
+            map.overlays.add(0, radarOverlay) // Placer sous le marqueur
         }
 
-        // 2. Toggle Visibility
-        overlays.forEach { (index, overlay) ->
-            if (index == currentIndex) {
-                if (!overlay.isEnabled) {
-                    // Clear memory cache to force retry of failed/partial tiles
-                    providers[index]?.clearTileCache()
-                    overlay.isEnabled = true
-                }
-            } else {
-                if (overlay.isEnabled) {
-                    overlay.isEnabled = false
-                }
-            }
-        }
-        
-        // Trigger downloads for zoom 4 if map is already overzoomed
-        if (map.zoomLevelDouble > 4.0) {
-            triggerDownloads(map)
-        }
-        
+        // 3. Appliquer la nouvelle image et rafraîchir
+        radarOverlay.setImage(bitmap)
         map.invalidate()
     }
 
@@ -285,17 +229,6 @@ fun RainMapContent(
                     setMultiTouchControls(true)
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     
-                    addMapListener(object : MapListener {
-                        override fun onScroll(event: ScrollEvent?): Boolean {
-                            triggerDownloads(this@apply)
-                            return true
-                        }
-                        override fun onZoom(event: ZoomEvent?): Boolean {
-                            triggerDownloads(this@apply)
-                            return true
-                        }
-                    })
-
                     // Base Map
                     val baseSource = object : OnlineTileSourceBase(
                         "CartoDB ${if(isDark) "Dark" else "Light"}",
@@ -312,8 +245,6 @@ fun RainMapContent(
                     
                     controller.setZoom(6.0)
                     controller.setCenter(GeoPoint(initialLat, initialLon))
-                    
-                    // LOCK Min Zoom to 3.0 to align with our download constraints
                     minZoomLevel = 3.0
                     
                     // Add User Marker
@@ -327,9 +258,15 @@ fun RainMapContent(
             },
             onRelease = {
                 mapView = null
-                overlays.clear()
-                providers.clear()
             }
+        )
+
+        // Legend
+        RainMapLegend(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+                .padding(top = 32.dp) // Avoid status bar if not edge-to-edge handled
         )
 
         // Observe Global Location
@@ -351,7 +288,6 @@ fun RainMapContent(
                 }.collect { geoPoint ->
                     if (geoPoint != null) {
                         userGeoPoint = geoPoint
-                        // Update marker position if it exists
                         map.overlays.filterIsInstance<Marker>().firstOrNull()?.position = geoPoint
                         map.invalidate()
                     }
@@ -369,7 +305,7 @@ fun RainMapContent(
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val date = Date(frames[currentIndex].time * 1000)
+            val date = Date(frames.getOrNull(currentIndex)?.time?.let { it * 1000 } ?: System.currentTimeMillis())
             val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
             val dateStr = formatter.format(date)
             
@@ -379,7 +315,7 @@ fun RainMapContent(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (frames[currentIndex].isForecast) "Prévision : $dateStr" else "Passé : $dateStr",
+                    text = "Radar : $dateStr",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -405,38 +341,14 @@ fun RainMapContent(
                     activeTrackColor = MaterialTheme.colorScheme.primary
                 )
             )
+            
+            val attributionString = "Données Radar : MétéoFrance | © OpenStreetMap contributors, © CARTO"
 
-            val uriHandler = LocalUriHandler.current
-            // ZONE D'ATTRIBUTION LÉGALE
-            val attributionString = buildAnnotatedString {
-                append("Données Radar : ")
-                pushStringAnnotation(tag = "URL", annotation = "https://www.rainviewer.com/")
-                withStyle(style = SpanStyle(
-                    color = MaterialTheme.colorScheme.primary,
-                    textDecoration = TextDecoration.Underline
-                )
-                ) {
-                    append("RainViewer")
-                }
-                pop()
-                append(" | © ")
-                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                    append("OpenStreetMap")
-                }
-                append(" contributors, © CARTO")
-            }
-
-            ClickableText(
+            Text(
                 text = attributionString,
                 style = MaterialTheme.typography.bodySmall.copy(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                onClick = { offset ->
-                    attributionString.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                        .firstOrNull()?.let { annotation ->
-                            uriHandler.openUri(annotation.item)
-                        }
-                }
+                )
             )
         }
     }
@@ -457,14 +369,4 @@ fun RainMapContent(
             lifecycle.removeObserver(observer)
         }
     }
-}
-
-// Helper functions for tile math
-private fun tile2lon(x: Int, z: Int): Double {
-    return x / 2.0.pow(z.toDouble()) * 360.0 - 180
-}
-
-private fun tile2lat(y: Int, z: Int): Double {
-    val n = PI - (2.0 * PI * y) / 2.0.pow(z.toDouble())
-    return (180.0 / PI * atan(0.5 * (Math.exp(n) - Math.exp(-n))))
 }

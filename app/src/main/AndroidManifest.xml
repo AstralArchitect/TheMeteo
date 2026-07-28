@@ -12,6 +12,7 @@
     <application
         android:name=".TheMeteo"
         android:allowBackup="true"
+        android:largeHeap="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -77,7 +78,7 @@
             android:label="MapActivity"
             android:theme="@style/AppTheme" />
         <activity android:name=".rainMapActivity.RainMapActivity"
-            android:exported="false"
+            android:exported="true"
             android:theme="@style/AppTheme.Compose"/>
         <activity android:name=".utilsActivities.CreditActivity"
             android:exported="true"

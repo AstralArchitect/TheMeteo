@@ -119,7 +119,14 @@ class WeatherViewModel(
             val mutableOrder = savedOrder.toMutableList()
             
             missing.forEach { missingCard ->
-                if (missingCard == BentoCardType.RAIN_WITHIN_HOUR) {
+                if (missingCard == BentoCardType.RAIN_RADAR) {
+                    val sunIndex = mutableOrder.indexOf(BentoCardType.SUN_DETAILS)
+                    if (sunIndex != -1) {
+                        mutableOrder.add(sunIndex, missingCard)
+                    } else {
+                        mutableOrder.add(missingCard)
+                    }
+                } else if (missingCard == BentoCardType.RAIN_WITHIN_HOUR) {
                     val vigilanceIndex = mutableOrder.indexOf(BentoCardType.VIGILANCE)
                     if (vigilanceIndex != -1) {
                         mutableOrder.add(vigilanceIndex + 1, missingCard)

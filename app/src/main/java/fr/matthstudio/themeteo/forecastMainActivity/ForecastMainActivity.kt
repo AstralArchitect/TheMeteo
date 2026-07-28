@@ -78,6 +78,7 @@ import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.getHourlyData
+import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.data.BentoCardType
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
@@ -163,6 +164,25 @@ fun BentoCardContent(
             environmentalData?.days?.firstOrNull()?.pollen?.let { data ->
                 PollenCard(data = data, onClick = onShowAirQuality)
             }
+        }
+        BentoCardType.RAIN_RADAR -> {
+            val location by viewModel.selectedLocation.collectAsState()
+            val userLocation by viewModel.userLocation.collectAsState()
+            val coords = when (val loc = location) {
+                is LocationIdentifier.CurrentUserLocation -> userLocation
+                is LocationIdentifier.Saved -> fr.matthstudio.themeteo.data.GpsCoordinates(loc.location.latitude, loc.location.longitude)
+            }
+            RainMapPreviewCard(
+                lat = coords?.latitude ?: 48.8566,
+                lon = coords?.longitude ?: 2.3522,
+                onClick = {
+                    val intent = Intent(context, RainMapActivity::class.java).apply {
+                        putExtra("LAT", coords?.latitude ?: 48.8566)
+                        putExtra("LON", coords?.longitude ?: 2.3522)
+                    }
+                    context.startActivity(intent)
+                }
+            )
         }
         BentoCardType.RAIN_WITHIN_HOUR -> RainWithinHourCard(viewModel)
         BentoCardType.ADDITIONAL_INFOS -> AdditionalInfos(viewModel, context)
