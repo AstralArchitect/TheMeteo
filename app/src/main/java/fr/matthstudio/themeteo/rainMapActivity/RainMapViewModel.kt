@@ -28,6 +28,8 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -70,19 +72,6 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         }
     }
 
-    private companion object {
-        const val RADAR_DOWNSAMPLE_FACTOR = 2
-        const val ORIGINAL_SIZE = 3472
-        const val DOWNSAMPLED_SIZE = ORIGINAL_SIZE / RADAR_DOWNSAMPLE_FACTOR
-    }
-
-    // Pool de mémoire pour 8 images de DOWNSAMPLED_SIZE x DOWNSAMPLED_SIZE pixels (ARGB_8888 = 4 bytes par pixel)
-    // Réduit à 8 pour limiter la pression sur la RAM totale du système.
-    private val memoryPool = RadarMemoryPool(DOWNSAMPLED_SIZE * DOWNSAMPLED_SIZE * 4, 8)
-
-    // Bitmap réutilisable pour le décodage (évite la fragmentation du tas JVM)
-    private var reusableBitmap: Bitmap? = null
-
     init {
         fetchAvailableTimestamps()
     }
@@ -92,30 +81,20 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
             try {
                 _uiState.value = RainMapUiState.Loading
 
-                // On limite à 8 frames pour économiser la mémoire
-                val files = getRadarFiles(count = 8)
-                val images = mutableListOf<TimeFrame>()
+                val boundsDeferred = async { fetchMetadataBounds() }
 
-                for (file in files) {
-                    val frame = fetchRadar(file.url, file.timestamp)
-                    if (frame != null) {
-                        images.add(frame)
-                    } else {
-                        break
-                    }
-                    // Laisser le système souffler entre deux gros téléchargements
-                    yield()
+                val files = getRadarFiles(count = 10)
+                val imageDeferreds = files.map { file ->
+                    async { fetchRadar(file.url, file.timestamp) }
                 }
-                
-                for (frame in images) {
-                    frame.buffer?.let {
-                        RadarProcessor.processImage(it, frame.width, frame.height)
-                    }
-                }
-                
-                if (images.isNotEmpty()) {
+
+                val bounds = boundsDeferred.await()
+                val fetchedFrames = imageDeferreds.awaitAll().filterNotNull()
+
+                if (fetchedFrames.isNotEmpty()) {
                     _uiState.value = RainMapUiState.Success(
-                        frames = images
+                        frames = fetchedFrames,
+                        bounds = bounds
                     )
                 } else {
                     _uiState.value = RainMapUiState.Error("No data available")
@@ -128,54 +107,46 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         }
     }
 
+    private suspend fun fetchMetadataBounds(): RadarBounds {
+        return try {
+            val response = client.get("https://radar-images.19374629.xyz/metadata.bin")
+            val bytes = response.body<ByteArray>()
+            if (bytes.size >= 32) {
+                val buffer = ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                RadarBounds(
+                    north = buffer.double,
+                    south = buffer.double,
+                    west = buffer.double,
+                    east = buffer.double
+                )
+            } else {
+                RadarBounds()
+            }
+        } catch (e: Exception) {
+            RadarBounds()
+        }
+    }
+
     override fun onCleared() {
         client.close()
-        memoryPool.clear()
-        reusableBitmap?.recycle()
-        reusableBitmap = null
     }
-    
+
     private suspend fun fetchRadar(url: String, timestamp: Long): TimeFrame? {
         return try {
-            // 1. Streaming au lieu de readBytes()
             val response = client.get(url)
-            val channel = response.bodyAsChannel()
-            
-            val buffer = memoryPool.acquire()
+            val inputStream = response.bodyAsChannel().toInputStream()
 
-            // 2. Configuration du décodage avec réutilisation
             val options = BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.ARGB_8888
-                inMutable = true
-                inSampleSize = RADAR_DOWNSAMPLE_FACTOR
-                // Si on a déjà une bitmap de la bonne taille, on la réutilise
-                reusableBitmap?.let { 
-                    if (it.width == DOWNSAMPLED_SIZE && it.height == DOWNSAMPLED_SIZE) {
-                        inBitmap = it
-                    }
-                }
             }
 
-            val inputStream = channel.toInputStream()
-            val tempBitmap = BitmapFactory.decodeStream(inputStream, null, options) ?: return null
-            
-            // Stocker pour la prochaine fois
-            if (reusableBitmap == null) {
-                reusableBitmap = tempBitmap
-            }
-            
-            // 3. Transfert vers le buffer natif
-            buffer.rewind()
-            tempBitmap.copyPixelsToBuffer(buffer)
-            
-            val width = tempBitmap.width
-            val height = tempBitmap.height
+            val bitmap = BitmapFactory.decodeStream(inputStream, null, options) ?: return null
 
             TimeFrame(
                 time = timestamp,
-                buffer = buffer,
-                width = width,
-                height = height
+                bitmap = bitmap,
+                width = bitmap.width,
+                height = bitmap.height
             )
         } catch (e: Exception) {
             null
@@ -199,23 +170,28 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
         val baseUrl = "https://radar-images.19374629.xyz/"
 
-        // Calcul du dernier timestamp disponible : roundToMod5(T - 5
-        // )
         var latestTime = currentTime.minusMinutes(5)
         val roundedMinute = (latestTime.minute / 5) * 5
         latestTime = latestTime.withMinute(roundedMinute).withSecond(0).withNano(0)
 
         return (0 until count).map { i ->
             val time = latestTime.minusMinutes((i * 5).toLong())
-            val filename = "radar_${time.format(formatter)}00.png"
+            val filename = "radar_${time.format(formatter)}00.webp"
             val timestamp = time.toEpochSecond(ZoneOffset.UTC)
             RadarFile(baseUrl + filename, timestamp)
         }.reversed() // Du plus ancien au plus récent
     }
 }
 
+data class RadarBounds(
+    val north: Double = 51.50,
+    val south: Double = 41.30,
+    val west: Double = -5.50,
+    val east: Double = 9.80
+)
+
 sealed class RainMapUiState {
     object Loading : RainMapUiState()
-    data class Success(val frames: List<TimeFrame>) : RainMapUiState()
+    data class Success(val frames: List<TimeFrame>, val bounds: RadarBounds = RadarBounds()) : RainMapUiState()
     data class Error(val message: String) : RainMapUiState()
 }

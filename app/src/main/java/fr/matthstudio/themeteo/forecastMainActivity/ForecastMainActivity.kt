@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -81,6 +82,7 @@ import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.data.BentoCardType
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.utilClasses.MapUtils
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import kotlinx.coroutines.launch
@@ -728,9 +730,13 @@ fun RainMapPreviewCard(
             .clickable { onClick() }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Background image (Static map tile or placeholder)
+            val isDark = isSystemInDarkTheme()
+            val tileUrl = remember(lat, lon, isDark) {
+                MapUtils.getCartoTileUrl(lat, lon, 6, isDark)
+            }
+            // Background image (Dynamic map tile)
             AsyncImage(
-                model = "https://basemaps.cartocdn.com/dark_all/6/31/21.png", // Generic dark tile
+                model = tileUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -757,13 +763,13 @@ fun RainMapPreviewCard(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 ResponsiveText(
-                    text = "Rain Radar",
+                    text = stringResource(R.string.rain_radar),
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
                 ResponsiveText(
-                    text = "Click to view full screen",
+                    text = stringResource(R.string.click_to_view_full_screen),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )

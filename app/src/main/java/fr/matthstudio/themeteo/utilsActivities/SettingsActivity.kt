@@ -442,11 +442,6 @@ fun SettingsScreen(cache: WeatherCache) {
                 modifier = Modifier.padding(top = 4.dp)
             )
             Text (
-                text = "Version Code: ${BuildConfig.VERSION_CODE}",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-            Text (
                 text = "Build Type: ${BuildConfig.BUILD_TYPE}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)

@@ -1257,7 +1257,7 @@ fun RainAlertCard(hourlyForecast: WeatherDataState) {
     val firstRain = next12Hours.firstOrNull { (it.precipitationData.precipitation ?: 0.0) > 0.1 }
 
     if (firstRain != null) {
-        val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+        val formatter = DateTimeFormatter.ofPattern("HH:mm")
         val rainTime = firstRain.time.format(formatter)
 
         BentoCard(

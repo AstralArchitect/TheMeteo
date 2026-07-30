@@ -4,7 +4,6 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.rainMapActivity
 
-import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
@@ -15,10 +14,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -41,13 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -68,9 +63,12 @@ import org.osmdroid.views.overlay.GroundOverlay
 import org.osmdroid.views.overlay.Marker
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
+import androidx.compose.ui.platform.LocalLocale
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.core.graphics.toColorInt
+import androidx.core.graphics.withSave
 
 class RainMapActivity : ComponentActivity() {
     private lateinit var viewModel: RainMapViewModel
@@ -121,6 +119,7 @@ fun RainMapScreen(viewModel: RainMapViewModel, initialLat: Double, initialLon: D
             is RainMapUiState.Success -> {
                 RainMapContent(
                     state.frames,
+                    state.bounds,
                     initialLat,
                     initialLon
                 )
@@ -132,6 +131,7 @@ fun RainMapScreen(viewModel: RainMapViewModel, initialLat: Double, initialLon: D
 @Composable
 fun RainMapContent(
     frames: List<TimeFrame>,
+    bounds: RadarBounds,
     initialLat: Double,
     initialLon: Double
 ) {
@@ -152,7 +152,7 @@ fun RainMapContent(
                     field.isAccessible = true
                     field.get(this) as android.graphics.Paint
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
 
@@ -174,11 +174,58 @@ fun RainMapContent(
             }
         }
     }
-    val displayBitmap = remember(frames.firstOrNull()?.width, frames.firstOrNull()?.height) {
-        val f = frames.firstOrNull()
-        if (f != null && f.width > 0 && f.height > 0) {
-            Bitmap.createBitmap(f.width, f.height, Bitmap.Config.ARGB_8888)
-        } else null
+    // Masque d'assombrissement Canvas hors-zone (Assombrit tout l'écran sauf le rectangle radar)
+    val maskOverlay = remember(bounds) {
+        object : org.osmdroid.views.overlay.Overlay() {
+            private val maskPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(112, 3, 7, 18) // 140 * 0.8 opacity = 112 pour une teinte 100% identique
+                style = android.graphics.Paint.Style.FILL
+            }
+
+            private val rectF = android.graphics.RectF()
+            private val nwPoint = android.graphics.Point()
+            private val sePoint = android.graphics.Point()
+
+            override fun draw(canvas: android.graphics.Canvas, mapView: MapView, shadow: Boolean) {
+                if (shadow) return
+                val projection = mapView.projection ?: return
+
+                // Conversion des GeoPoints Nord-Ouest et Sud-Est en pixels d'écran
+                projection.toPixels(GeoPoint(bounds.north, bounds.west), nwPoint)
+                projection.toPixels(GeoPoint(bounds.south, bounds.east), sePoint)
+
+                rectF.set(
+                    nwPoint.x.toFloat(),
+                    nwPoint.y.toFloat(),
+                    sePoint.x.toFloat(),
+                    sePoint.y.toFloat()
+                )
+
+                canvas.withSave {
+
+                    canvas.clipOutRect(rectF)
+
+                    canvas.drawPaint(maskPaint)
+                }
+            }
+        }
+    }
+
+    // Contour en pointillés cyan délimitant la zone d'observation
+    val boundsOutlineOverlay = remember(bounds) {
+        org.osmdroid.views.overlay.Polygon().apply {
+            points = listOf(
+                GeoPoint(bounds.north, bounds.west),
+                GeoPoint(bounds.north, bounds.east),
+                GeoPoint(bounds.south, bounds.east),
+                GeoPoint(bounds.south, bounds.west),
+                GeoPoint(bounds.north, bounds.west)
+            )
+            fillPaint.color = android.graphics.Color.TRANSPARENT
+            outlinePaint.color = "#38BDF8".toColorInt()
+            outlinePaint.strokeWidth = 6f
+            outlinePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(15f, 15f), 0f)
+        }
     }
 
     // Animation Loop
@@ -192,29 +239,25 @@ fun RainMapContent(
     }
 
     // Mise à jour de l'image sur la carte
-    LaunchedEffect(currentIndex, mapView, displayBitmap) {
+    LaunchedEffect(currentIndex, mapView, bounds) {
         val map = mapView ?: return@LaunchedEffect
-        val bitmap = displayBitmap ?: return@LaunchedEffect
         val frame = frames.getOrNull(currentIndex) ?: return@LaunchedEffect
-        val buffer = frame.buffer ?: return@LaunchedEffect
+        val bitmap = frame.bitmap ?: return@LaunchedEffect
 
-        // 1. Update Bitmap depuis le ByteBuffer natif (ultra-rapide)
-        buffer.rewind()
-        bitmap.copyPixelsFromBuffer(buffer)
-
-        // 2. Configurer le GroundOverlay
+        // 1. Configurer les calques radar, masque d'écran et contour
         if (!map.overlays.contains(radarOverlay)) {
-            // Bounding box géographique normalisée de la mosaïque radar sur la métropole (synchronisée avec le serveur)
-            val north = 51.50
-            val south = 41.30
-            val west = -5.50
-            val east = 9.80
-            radarOverlay.setPosition(GeoPoint(north, west), GeoPoint(south, east))
+            radarOverlay.setPosition(GeoPoint(bounds.north, bounds.west), GeoPoint(bounds.south, bounds.east))
             radarOverlay.setTransparency(0.2f) // Un peu de transparence pour voir la carte dessous
-            map.overlays.add(0, radarOverlay) // Placer sous le marqueur
+            map.overlays.add(0, radarOverlay)
+        }
+        if (!map.overlays.contains(maskOverlay)) {
+            map.overlays.add(1, maskOverlay)
+        }
+        if (!map.overlays.contains(boundsOutlineOverlay)) {
+            map.overlays.add(2, boundsOutlineOverlay)
         }
 
-        // 3. Appliquer la nouvelle image et rafraîchir
+        // 2. Appliquer la nouvelle image et rafraîchir
         radarOverlay.setImage(bitmap)
         map.invalidate()
     }
@@ -243,9 +286,9 @@ fun RainMapContent(
                     }
                     setTileSource(baseSource)
                     
-                    controller.setZoom(6.0)
+                    controller.setZoom(9.0)
                     controller.setCenter(GeoPoint(initialLat, initialLon))
-                    minZoomLevel = 3.0
+                    minZoomLevel = 6.5
                     
                     // Add User Marker
                     val marker = Marker(this)
@@ -261,8 +304,12 @@ fun RainMapContent(
             }
         )
 
+        var extended by remember{ mutableStateOf(false) }
+
         // Legend
         RainMapLegend(
+            extended,
+            {extended = !extended},
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(16.dp)
@@ -296,65 +343,89 @@ fun RainMapContent(
         }
 
         // Controls
-        Column(
+        Box (
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
                 .padding(16.dp)
-                .padding(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(bottom = 16.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
         ) {
-            val date = Date(frames.getOrNull(currentIndex)?.time?.let { it * 1000 } ?: System.currentTimeMillis())
-            val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-            val dateStr = formatter.format(date)
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = "Radar : $dateStr",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                
-                FilledIconButton(onClick = { isPlaying = !isPlaying }) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = null
-                    )
+                val date = Date(frames.getOrNull(currentIndex)?.time?.let { it * 1000 }
+                    ?: System.currentTimeMillis())
+                val formatter = SimpleDateFormat("HH:mm", LocalLocale.current.platformLocale)
+                val dateStr = formatter.format(date)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row {
+                        val diffMin = (System.currentTimeMillis() - date.time) / 60000
+                        val elapsedStr = if (diffMin >= 60) {
+                            "${diffMin / 60}h${String.format(LocalLocale.current.platformLocale, "%02d", diffMin % 60)}"
+                        } else {
+                            "$diffMin min"
+                        }
+
+                        Text(
+                            text = "Radar : $dateStr",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            modifier = Modifier.align(Alignment.Bottom),
+                            text = "Il y a $elapsedStr",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    FilledIconButton(onClick = { isPlaying = !isPlaying }) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = null
+                        )
+                    }
                 }
+
+                Slider(
+                    value = currentIndex.toFloat(),
+                    onValueChange = {
+                        currentIndex = it.roundToInt()
+                        isPlaying = false
+                    },
+                    valueRange = 0f..frames.lastIndex.toFloat(),
+                    steps = if (frames.size > 2) frames.size - 2 else 0,
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+
+                val attributionString =
+                    "Données Radar : MétéoFrance | © OpenStreetMap contributors, © CARTO"
+
+                Text(
+                    text = attributionString,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
             }
-
-            Slider(
-                value = currentIndex.toFloat(),
-                onValueChange = { 
-                    currentIndex = it.roundToInt()
-                    isPlaying = false
-                },
-                valueRange = 0f..frames.lastIndex.toFloat(),
-                steps = if (frames.size > 2) frames.size - 2 else 0,
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary
-                )
-            )
-            
-            val attributionString = "Données Radar : MétéoFrance | © OpenStreetMap contributors, © CARTO"
-
-            Text(
-                text = attributionString,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            )
         }
     }
     
     // Lifecycle
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, mapView) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {

@@ -123,8 +123,6 @@
     <string name="uv_index_format">Indice UV : %d</string>
     <string name="pollen_index_format">Indice : %d</string>
     <string name="major_pollutant_format">Polluant majeur : %s</string>
-    <string name="sun_event_format" translatable="false">%1$s : %2$s</string>
-    <string name="sun_event_day_format" translatable="false">%1$s (%2$s) : %3$s</string>
     <string name="sun_moon_details">Détails Soleil &amp; Lune</string>
     <string name="sun_path">Trajectoire du Soleil</string>
     <string name="solar_noon">Midi Solaire</string>
@@ -293,4 +291,6 @@
     <string name="rain_rate_low">Faible intensité</string>
     <string name="rain_rate_medium">Intensité modérée</string>
     <string name="rain_rate_high">Forte intensité</string>
+    <string name="rain_radar">Radar de Pluie</string>
+    <string name="click_to_view_full_screen">Cliquez pour passer en plein écran</string>
 </resources>

@@ -4,11 +4,11 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.rainMapActivity
 
-import java.nio.ByteBuffer
+import android.graphics.Bitmap
 
 data class TimeFrame(
     val time: Long,
-    val buffer: ByteBuffer? = null,
+    val bitmap: Bitmap? = null,
     val width: Int = 0,
     val height: Int = 0
 )

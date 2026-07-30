@@ -315,4 +315,6 @@
     <string name="rain_rate_low">Low rain Rate</string>
     <string name="rain_rate_medium">Medium rain Rate</string>
     <string name="rain_rate_high">High rain Rate</string>
+    <string name="rain_radar">Rain Radar</string>
+    <string name="click_to_view_full_screen">Click to view full screen</string>
 </resources>

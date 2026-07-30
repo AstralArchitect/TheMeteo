@@ -811,8 +811,6 @@ fun RenameLocationDialog(
     )
 }
 
-
-// 3. LA BOÎTE DE DIALOGUE POUR LA RECHERCHE ET L'AJOUT
 @Composable
 fun AddLocationDialog(
     searchState: SearchState,
@@ -2212,7 +2210,7 @@ fun mapPhenomenonIdToName(id: String): Int = when (id) {
 fun getPhenomenonIcon(phenomenonId: String): ImageVector {
     return when (phenomenonId) {
         "1" -> Icons.Rounded.Air // Vent
-        "2" -> Icons.Rounded.Water // Pluie / Innondation
+        "2" -> Icons.Rounded.Water // Pluie / Innondations
         "3" -> Icons.Rounded.FlashOn // Orages
         "4" -> Icons.Rounded.Flood // Crues
         "5" -> Icons.Rounded.AcUnit // Neige
