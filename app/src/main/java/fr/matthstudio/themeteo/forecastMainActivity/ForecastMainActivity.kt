@@ -62,10 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -81,21 +78,15 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.getDailyData
 import fr.matthstudio.themeteo.getHourlyData
+import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.data.BentoCardType
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.utilClasses.MapUtils
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
-
-data class WeatherDetailItem(
-    val icon: ImageVector,
-    val label: String,
-    val value: String,
-    val subValue: String? = null
-)
 
 data class NextSunEvent(
     val type: String,
@@ -118,12 +109,10 @@ class ForecastMainActivity : ComponentActivity() {
 
         weatherViewModel.selectLocation(weatherViewModel.userSettings.value.defaultLocation)
 
-        // C'est ici que vous appelez votre fonction Composable principale
         enableEdgeToEdge()
         setContent {
             val userSettings by weatherViewModel.userSettings.collectAsState()
             val hourlyForecast by weatherViewModel.hourlyForecast.collectAsState()
-            val dailyForecast by weatherViewModel.dailyForecast.collectAsState()
             val isNight by weatherViewModel.isNight.collectAsState()
 
             val currentWmo = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
@@ -158,14 +147,13 @@ fun BentoCardContent(
     context: android.content.Context,
     isLauncherActivity: Boolean,
     onShowSunMoonDetails: () -> Unit,
-    onShowDetails: () -> Unit,
     onShowAirQuality: () -> Unit,
     onShowVigilance: () -> Unit
 ) {
     when (cardType) {
         BentoCardType.VIGILANCE -> VigilanceCard(viewModel, onCardClick = onShowVigilance)
         BentoCardType.HOURLY_FORECAST -> HourlyForecastCard(hourlyForecast, context = context, viewModel = viewModel)
-        BentoCardType.SUN_DETAILS -> SunAndDetails(viewModel, context, onShowSunMoonDetails = onShowSunMoonDetails, onShowDetails = onShowDetails)
+        BentoCardType.SUN_DETAILS -> Sun(viewModel, onShowSunMoonDetails = onShowSunMoonDetails)
         BentoCardType.DAILY_FORECAST -> if (isLauncherActivity) DailyForecastCard(viewModel, context)
         BentoCardType.AIR_QUALITY -> {
             val environmentalData by viewModel.environmentalData.collectAsState()
@@ -179,6 +167,26 @@ fun BentoCardContent(
                 PollenCard(data = data, onClick = onShowAirQuality)
             }
         }
+        BentoCardType.RAIN_RADAR -> {
+            val location by viewModel.selectedLocation.collectAsState()
+            val userLocation by viewModel.userLocation.collectAsState()
+            val coords = when (val loc = location) {
+                is LocationIdentifier.CurrentUserLocation -> userLocation
+                is LocationIdentifier.Saved -> fr.matthstudio.themeteo.data.GpsCoordinates(loc.location.latitude, loc.location.longitude)
+            }
+            RainMapPreviewCard(
+                lat = coords?.latitude ?: 48.8566,
+                lon = coords?.longitude ?: 2.3522,
+                onClick = {
+                    val intent = Intent(context, RainMapActivity::class.java).apply {
+                        putExtra("LAT", coords?.latitude ?: 48.8566)
+                        putExtra("LON", coords?.longitude ?: 2.3522)
+                    }
+                    context.startActivity(intent)
+                }
+            )
+        }
+        BentoCardType.RAIN_WITHIN_HOUR -> RainWithinHourCard(viewModel)
         BentoCardType.ADDITIONAL_INFOS -> AdditionalInfos(viewModel, context)
     }
 }
@@ -188,10 +196,10 @@ fun BentoCardContent(
 fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: Boolean) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val isDark = isSystemInDarkTheme()
     val hourlyForecast by viewModel.hourlyForecast.collectAsState()
     val dailyForecast by viewModel.dailyForecast.collectAsState()
     val isNight by viewModel.isNight.collectAsState()
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     // --- LOGIQUE DE RÉSOLUTION DU GPS ---
     val locationSettingsException by viewModel.locationSettingsException.collectAsState()
@@ -216,15 +224,6 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         }
     }
 
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                // Assombrit légèrement les icônes statiques en mode clair
-                setToScale(0.8f, 0.8f, 0.8f, 1f)
-            })
-        } else null
-    }
-
     // Demander les permissions
     LocationPermissionHandler(viewModel)
 
@@ -240,6 +239,9 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
     val description = when(weatherState.word) {
         SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)
+        SimpleWeatherWord.STORMY_HAIL -> "Orage avec Grêle"
+        SimpleWeatherWord.EXTREME_STORMY -> "Orage Fort"
+        SimpleWeatherWord.EXTREME_STORMY_HAIL -> "Orage Fort avec Grêle"
         SimpleWeatherWord.HAIL -> stringResource(R.string.hail)
         SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2 -> stringResource(R.string.light_snow)
         SimpleWeatherWord.SNOWY3 -> stringResource(R.string.heavy_snow)
@@ -250,7 +252,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         SimpleWeatherWord.HAZE -> stringResource(R.string.haze)
         SimpleWeatherWord.FOGGY -> stringResource(R.string.foggy)
         SimpleWeatherWord.CLOUDY -> stringResource(R.string.cloudy)
-        SimpleWeatherWord.SUNNY_CLOUDY -> stringResource(R.string.sunny_cloudy)
+        SimpleWeatherWord.PARTLY_CLOUDY -> stringResource(R.string.sunny_cloudy)
+        SimpleWeatherWord.MOSTLY_CLEAR -> stringResource(R.string.mostly_cloudy)
         SimpleWeatherWord.SUNNY -> stringResource(R.string.clear)
         null -> ""
     }
@@ -260,7 +263,6 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val bentoCardsOrder by viewModel.bentoCardsOrder.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
     var showAddLocationDialog by remember { mutableStateOf(false) }
-    var showDetailsDialog by remember { mutableStateOf(false) }
     var showAirQualityDialog by remember { mutableStateOf(false) }
     var showVigilanceDialog by remember { mutableStateOf(false) }
     var showSunMoonDialog by remember { mutableStateOf(false) }
@@ -300,11 +302,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     }
 
     if (showAddLocationDialog) {
-        val searchResults by viewModel.geocodingResults.collectAsState()
+        val searchState by viewModel.searchState.collectAsState()
         val userLocation by viewModel.userLocation.collectAsState()
 
         AddLocationDialog(
-            searchResults = searchResults,
+            searchState = searchState,
             userLocation = userLocation,
             weatherService = viewModel.weatherService,
             onSearch = { viewModel.searchCity(it) },
@@ -322,8 +324,9 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         // Calculer le flou dynamiquement en fonction de l'offset de la sheet
         val dynamicBlur by remember {
             derivedStateOf {
-                if (!showLocationSheet) {
-                    if (showDetailsDialog || showAirQualityDialog || showVigilanceDialog || showSunMoonDialog)
+                if (isBatterySaverActive) 0.dp
+                else if (!showLocationSheet) {
+                    if (showAirQualityDialog || showVigilanceDialog || showSunMoonDialog)
                         10.dp
                     else 0.dp
                 } else {
@@ -677,16 +680,11 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 context,
                                 isLauncherActivity,
                                 { showSunMoonDialog = true },
-                                { showDetailsDialog = true },
                                 { showAirQualityDialog = true },
                                 { showVigilanceDialog = true }
                             )
                         }
                     }
-                }
-
-                if (showDetailsDialog) {
-                    WeatherDetailsDialog(viewModel, onDismiss = { showDetailsDialog = false })
                 }
 
                 if (showAirQualityDialog) {
@@ -732,9 +730,13 @@ fun RainMapPreviewCard(
             .clickable { onClick() }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Background image (Static map tile or placeholder)
+            val isDark = isSystemInDarkTheme()
+            val tileUrl = remember(lat, lon, isDark) {
+                MapUtils.getCartoTileUrl(lat, lon, 6, isDark)
+            }
+            // Background image (Dynamic map tile)
             AsyncImage(
-                model = "https://basemaps.cartocdn.com/dark_all/6/31/21.png", // Generic dark tile
+                model = tileUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -761,13 +763,13 @@ fun RainMapPreviewCard(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 ResponsiveText(
-                    text = "Rain Radar",
+                    text = stringResource(R.string.rain_radar),
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
                 ResponsiveText(
-                    text = "Click to view full screen",
+                    text = stringResource(R.string.click_to_view_full_screen),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )

@@ -5,7 +5,11 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
@@ -37,11 +41,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Compress
@@ -88,11 +94,18 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.core.net.toUri
 import androidx.fragment.app.strictmode.FragmentStrictMode
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.toSmartString
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Preview()
@@ -111,12 +124,12 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
     val currentDay = data.days.getOrNull(selectedDayIndex) ?: data.days.first()
 
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
                     alpha = 0.6f
                 )
             )
@@ -396,7 +409,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                                     )
                                                     Spacer(modifier = Modifier.width(8.dp))
                                                     Text(
-                                                        text = "${plant.level}/4",
+                                                        text = "${plant.level}/5",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontWeight = FontWeight.Bold,
                                                         color = color,
@@ -468,6 +481,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
 fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
     // Animation state
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     fun animateAndDismiss() {
         visibleState.targetState = false
@@ -478,7 +492,7 @@ fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
                     alpha = 0.6f
                 )
             )
@@ -570,7 +584,7 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
                         factory = { context ->
                             WebView(context).apply {
                                 webViewClient = object : WebViewClient() {
-                                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                         super.onPageStarted(view, url, favicon)
                                         isLoading = true
                                         hasError = false
@@ -588,8 +602,8 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
 
                                     override fun onReceivedError(
                                         view: WebView?,
-                                        request: android.webkit.WebResourceRequest?,
-                                        error: android.webkit.WebResourceError?
+                                        request: WebResourceRequest?,
+                                        error: WebResourceError?
                                     ) {
                                         super.onReceivedError(view, request, error)
                                         isLoading = false
@@ -660,185 +674,206 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
 }
 
 @Composable
-fun WeatherDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
-    val actualReading =
-        (viewModel.hourlyForecast.collectAsState().value as? WeatherDataState.SuccessHourly)?.data?.first()
-            ?: return
-
-    val userSettings by viewModel.userSettings.collectAsState()
-
-    // Créer un état pour gérer l'animation de visibilité
+fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit) {
+    val context = LocalContext.current
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-    // Fonction de fermeture qui attend la fin de l'animation
-    val scope = rememberCoroutineScope()
-    fun animateAndDismiss() {
-        visibleState.targetState = false
-        onDismiss()
-    }
-
-    val details = listOfNotNull(
-        actualReading.temperature?.let {
-            WeatherDetailItem(
-                Icons.Rounded.Thermostat,
-                stringResource(R.string.temperature),
-                UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
-            )
-        },
-        actualReading.apparentTemperature?.let {
-            WeatherDetailItem(
-                Icons.Rounded.DeviceThermostat,
-                stringResource(R.string.a_temperature_unit),
-                UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
-            )
-        },
-        actualReading.skyInfo.uvIndex?.let { uv ->
-            WeatherDetailItem(
-                Icons.Rounded.WbSunny,
-                stringResource(R.string.uv_index),
-                "$uv",
-                getUVDescription(uv)
-            )
-        },
-        actualReading.dewpoint?.let {
-            WeatherDetailItem(
-                Icons.Rounded.Water,
-                stringResource(R.string.dew_point),
-                UnitConverter.formatTemperature(it, userSettings.temperatureUnit, userSettings.roundToInt)
-            )
-        },
-        actualReading.humidity?.let { hu ->
-            WeatherDetailItem(Icons.Rounded.WaterDrop, stringResource(R.string.humidity), "${hu.toSmartString()}%")
-        },
-        actualReading.precipitationData.precipitation?.let { precip ->
-            val subValue = buildString {
-                actualReading.precipitationData.precipitationProbability?.let { append("Prob: $it% ") }
-                actualReading.precipitationData.rain?.takeIf { it > 0 }?.let {
-                    if (isNotEmpty() && !endsWith(" ")) append("\n")
-                    append("Rain: ${it.toSmartString()} mm ")
-                }
-                actualReading.precipitationData.snowfall?.takeIf { it > 0 }?.let {
-                    if (isNotEmpty() && !endsWith(" ")) append("\n")
-                    append("Snow: ${it.toSmartString()} cm")
-                }
-            }.trim()
-            WeatherDetailItem(
-                Icons.Rounded.Umbrella,
-                stringResource(R.string.precipitation),
-                "${precip.toSmartString()} mm",
-                subValue.takeIf { it.isNotEmpty() }
-            )
-        },
-        actualReading.precipitationData.snowDepth?.takeIf { it > 0 }?.let {
-            WeatherDetailItem(Icons.Rounded.SevereCold, stringResource(R.string.snow_depth), "${it.toSmartString()} cm")
-        },
-        actualReading.wind.windspeed?.let { ws ->
-            val subValue = buildString {
-                actualReading.wind.windDirection?.let { append("Direction: $it°") }
-                actualReading.wind.windGusts?.let {
-                    if (isNotEmpty()) append("\n")
-                    append("${stringResource(R.string.gusts)}: ${UnitConverter.formatWind(it, userSettings.windUnit)}")
-                }
-            }
-            WeatherDetailItem(
-                Icons.Rounded.Air,
-                stringResource(R.string.wind_speed),
-                UnitConverter.formatWind(ws, userSettings.windUnit),
-                subValue.takeIf { it.isNotEmpty() }
-            )
-        },
-        actualReading.pressure?.let {
-            WeatherDetailItem(Icons.Rounded.Compress, stringResource(R.string.pressure), "${it.toSmartString()} hPa")
-        },
-        actualReading.skyInfo.cloudcoverTotal?.let { cct ->
-            // If low cloud cover is available, all levels are too
-            val subValue = if (actualReading.skyInfo.cloudcoverLow != null) {
-                "Low: ${actualReading.skyInfo.cloudcoverLow.toSmartString()}%\nMid: ${actualReading.skyInfo.cloudcoverMid?.toSmartString()}%\nHigh: ${actualReading.skyInfo.cloudcoverHigh?.toSmartString()}%"
-            } else null
-            WeatherDetailItem(Icons.Rounded.Cloud, stringResource(R.string.cloud_cover), "${cct.toSmartString()}%", subValue)
-        },
-        actualReading.skyInfo.opacity?.let { op ->
-            WeatherDetailItem(
-                Icons.Rounded.Opacity,
-                stringResource(R.string.opacity),
-                "${op.toSmartString()}%",
-                actualReading.skyInfo.shortwaveRadiation?.let { "Radiation: ${it.roundToInt()} W/m²" }
-            )
-        },
-        actualReading.skyInfo.visibility?.let { vis ->
-            val visibility = if (vis < 1000) vis else (vis.toDouble() / 1000.0).roundToInt()
-            val unit = if (vis >= 1000) "km" else "m"
-            WeatherDetailItem(Icons.Rounded.Visibility, stringResource(R.string.visibility), "$visibility $unit")
-        }
-    )
-
-    // 1. LE SCRIM (Voile de fond)
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(
                     alpha = 0.6f
                 )
             )
             .clickable { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
-        // Utiliser AnimatedVisibility pour le contenu
         AnimatedVisibility(
             visibleState = visibleState,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f), // Zoom progressif
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
             exit = fadeOut() + scaleOut(targetScale = 0.8f)
         ) {
-            // 2. LE CONTENU DU DIALOGUE (Animation de zoom)
-            Box(
+            Surface(
                 modifier = Modifier
                     .padding(24.dp)
-                    .clickable(enabled = false) { } // Empêche de fermer en cliquant sur le blanc
-                    .animateEnterExit(
-                        enter = scaleIn(initialScale = 0.8f) + fadeIn(),
-                        exit = scaleOut(targetScale = 0.8f) + fadeOut()
-                    )
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.8f)
+                    .clickable(enabled = false) { },
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
             ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.8f),
-                    shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.surface, // Couleur Material You pour le Dialog
-                    tonalElevation = 6.dp
-                ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Text(
-                            stringResource(R.string.weather_details),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.vigilance_alerts_dept_code,
+                            vigilanceData.departmentCode
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
 
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(bottom = 16.dp)
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(vigilanceData.alerts) { alert ->
+                            val alertColor = when (alert.maxColorId) {
+                                1 -> Color(0xFF4CAF50)
+                                2 -> Color(0xFFFFEB3B)
+                                3 -> Color(0xFFFF9800)
+                                4 -> Color(0xFFF44336)
+                                else -> MaterialTheme.colorScheme.outline
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        alertColor.copy(alpha = 0.1f),
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .padding(12.dp)
+                            ) {
+                                val isDark = isSystemInDarkTheme()
+                                val itemContentColor = if (!isDark) when (alert.maxColorId) {
+                                    2 -> Color(0xFF422B00) // Marron très foncé
+                                    3 -> Color(0xFFE65100) // Orange foncé
+                                    4 -> Color(0xFFB71C1C) // Rouge foncé
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                } else alertColor
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = getPhenomenonIcon(alert.phenomenonId),
+                                        contentDescription = null,
+                                        tint = itemContentColor,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = stringResource(mapPhenomenonIdToName(alert.phenomenonId)),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = itemContentColor
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                alert.steps.forEach { step ->
+                                    val start = OffsetDateTime.parse(step.beginTime)
+                                    val end = OffsetDateTime.parse(step.endTime)
+
+                                    val stepColor = when (step.colorId) {
+                                        1 -> Color(0xFF4CAF50)
+                                        2 -> Color(0xFFFFEB3B)
+                                        3 -> Color(0xFFFF9800)
+                                        4 -> Color(0xFFF44336)
+                                        else -> Color.Gray
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier
+                                            .size(10.dp)
+                                            .background(stepColor, CircleShape))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${start.format(formatter)} ${if (start.toLocalDate() != LocalDate.now()) "(${start.format(dayFormatter)})" else ""} - " +
+                                                    "${end.format(formatter)} ${if (end.toLocalDate() != LocalDate.now()) "(${end.format(dayFormatter)})" else ""}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://vigilance.meteofrance.fr/fr".toUri())
+                                context.startActivity(intent)
+                            }
                         ) {
-                            items(details) { detail ->
-                                WeatherDetailCard(detail)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.official_website), style = MaterialTheme.typography.labelLarge)
                             }
                         }
 
-                        TextButton(
-                            onClick = { animateAndDismiss() },
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(top = 16.dp)
-                        ) {
-                            Text("Fermer")
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.close))
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+fun RainForecastExplanationDialog(onDismiss: () -> Unit) {
+    AlertDialog(onDismiss,
+        title = { Text(stringResource(R.string.rain_forecast_explanation_title)) },
+        text = {
+            Column() {
+                Text(
+                    stringResource(R.string.rain_forecast_explanation_1),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(5.dp))
+                Row {
+                    Box(
+                        modifier = Modifier.size(20.dp)
+                            .background(color = Color(0xFF90CAF9))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.rain_rate_low))
+                }
+                Spacer(modifier = Modifier.height(1.dp))
+                Row {
+                    Box(
+                        modifier = Modifier.size(20.dp)
+                            .background(color = Color(0xFF42A5F5))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.rain_rate_medium))
+                }
+                Spacer(modifier = Modifier.height(1.dp))
+                Row {
+                    Box(
+                        modifier = Modifier.size(20.dp)
+                            .background(color = Color(0xFF2962FF))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.rain_rate_high))
+                }
+                Spacer(modifier = Modifier.height(5.dp))
+                Text(
+                    stringResource(R.string.rain_forecast_explanation_2),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = {
+
+        }
+    )
 }

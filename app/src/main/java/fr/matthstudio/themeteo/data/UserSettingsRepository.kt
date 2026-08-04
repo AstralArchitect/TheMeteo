@@ -4,6 +4,7 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.data
 
+import android.os.Build
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -61,6 +62,9 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val USE_EUR_AQI = booleanPreferencesKey("use_eur_aqi")
         val BACKGROUND_LOCATION_ASKED = booleanPreferencesKey("background_location_asked")
         val THEME_MODE = intPreferencesKey("theme_mode")
+        val ENABLE_RAIN_NOTIFICATIONS = booleanPreferencesKey("enable_rain_notifications")
+        val ENABLE_VIGILANCE_NOTIFICATIONS = booleanPreferencesKey("enable_vigilance_notifications")
+        val ENABLE_DURATION_EXTENSION = booleanPreferencesKey("enable_duration_extension")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
@@ -78,7 +82,21 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     val themeMode: Flow<ThemeMode> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.THEME_MODE]?.let { index ->
             ThemeMode.entries.getOrNull(index)
-        } ?: ThemeMode.FIXED
+        } ?: (if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) ThemeMode.FIXED else ThemeMode.SYSTEM)
+    }
+
+    /**
+     * Flow pour l'activation des notifications de pluie.
+     */
+    val enableRainNotifications: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENABLE_RAIN_NOTIFICATIONS] ?: true
+    }
+
+    /**
+     * Flow pour l'activation des notifications de vigilance.
+     */
+    val enableVigilanceNotifications: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENABLE_VIGILANCE_NOTIFICATIONS] ?: true
     }
 
     /**
@@ -174,6 +192,13 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /**
+     * Flow pour l'activation de l'extension de durée de prévision.
+     */
+    val enableDurationExtension: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENABLE_DURATION_EXTENSION] ?: false
+    }
+
+    /**
      * Flow pour l'activation du fallback de modèle (complétion des données).
      */
     val enableModelFallback: Flow<Boolean> = dataStore.data.map { preferences ->
@@ -242,6 +267,15 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit {
             preferences ->
             preferences[PreferencesKeys.DEFAULT_LOCATION] = Json.encodeToString(newLocation)
+        }
+    }
+
+    /**
+     * Met à jour le paramètre d'activation de l'extension de durée.
+     */
+    suspend fun updateEnableDurationExtension(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENABLE_DURATION_EXTENSION] = enabled
         }
     }
 
@@ -368,6 +402,24 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateThemeMode(mode: ThemeMode) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.ordinal
+        }
+    }
+
+    /**
+     * Met à jour l'activation des notifications de pluie.
+     */
+    suspend fun updateEnableRainNotifications(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENABLE_RAIN_NOTIFICATIONS] = enabled
+        }
+    }
+
+    /**
+     * Met à jour l'activation des notifications de vigilance.
+     */
+    suspend fun updateEnableVigilanceNotifications(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENABLE_VIGILANCE_NOTIFICATIONS] = enabled
         }
     }
 

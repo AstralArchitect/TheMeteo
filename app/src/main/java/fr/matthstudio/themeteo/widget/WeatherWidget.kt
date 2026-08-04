@@ -6,9 +6,9 @@ package fr.matthstudio.themeteo.widget
 
 import android.annotation.SuppressLint
 import android.content.Context
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
 import androidx.glance.ColorFilter
@@ -18,15 +18,13 @@ import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
+import androidx.glance.LocalSize
 import androidx.glance.action.ActionParameters
-import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
@@ -55,6 +53,7 @@ import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.utilsActivities.LauncherActivity
+import kotlinx.coroutines.flow.first
 import java.time.LocalDateTime
 
 val LocIdentKey = ActionParameters.Key<LocationIdentifier>("location_identifier")
@@ -62,17 +61,27 @@ val LocIdentKey = ActionParameters.Key<LocationIdentifier>("location_identifier"
 class WeatherWidget : GlanceAppWidget() {
 
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
+    override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val manager = WidgetCacheManager(context)
         val app = context.applicationContext as TheMeteo
         val weatherCache = app.weatherCache
+        val userSettings = weatherCache.userSettings.first()
+        val selectedLocation = userSettings.defaultLocation
+
+        // Rafraîchissement en arrière-plan si nécessaire
+        val data = manager.refreshIfNeeded(selectedLocation)
 
         provideContent {
             val prefs = currentState<Preferences>()
-            val userSettings = weatherCache.userSettings.collectAsState().value
-            val selectedLocation = userSettings.defaultLocation
             
-            val forecastState = weatherCache.get(LocalDateTime.now(), 1, selectedLocation).collectAsState(initial = WeatherDataState.Loading).value
+            // Stable key for the flow: current hour
+            val now = LocalDateTime.now()
+            val stableTime = now.withMinute(0).withSecond(0).withNano(0)
+            
+            val forecastState = if (data?.hourly != null) WeatherDataState.SuccessHourly(data.hourly)
+                else WeatherDataState.Error("No data")
 
             val locationName = when (selectedLocation) {
                 is LocationIdentifier.CurrentUserLocation -> context.getString(R.string.current_location)
@@ -81,7 +90,6 @@ class WeatherWidget : GlanceAppWidget() {
 
             val colorTheme = prefs[WidgetUtils.KEY_COLOR_THEME] ?: WidgetUtils.THEME_SYSTEM
             val transparency = prefs[WidgetUtils.KEY_TRANSPARENCY] ?: 0
-            val textSize = prefs[WidgetUtils.KEY_TEXT_SIZE] ?: 1
 
             GlanceTheme {
                 WeatherWidgetContent(
@@ -91,7 +99,6 @@ class WeatherWidget : GlanceAppWidget() {
                     locationName = locationName,
                     selectedLocation = selectedLocation,
                     transparency = transparency,
-                    textSizeIndex = textSize,
                     theme = colorTheme
                 )
             }
@@ -107,13 +114,17 @@ class WeatherWidget : GlanceAppWidget() {
         locationName: String,
         selectedLocation: LocationIdentifier,
         transparency: Int,
-        textSizeIndex: Int,
         theme: String
     ) {
+        val size = LocalSize.current
         val alpha = (100 - transparency) / 100f
-        val baseTextSize = WidgetUtils.getBaseTextSize(textSizeIndex)
-        val bigTextSize = WidgetUtils.getBigTextSize(textSizeIndex)
         
+        // Dynamic sizing based on widget size
+        val dimensionUsed = min(size.width, size.height)
+        val baseTextSize = (dimensionUsed.value / 12f).sp
+        val bigTextSize = (dimensionUsed.value / 6.5f).sp
+        val smallTextSize = (baseTextSize.value - 2).sp
+
         val backgroundProvider = when(theme) {
             WidgetUtils.THEME_BLUE -> ColorProvider(Color(0xFFE3F2FD))
             WidgetUtils.THEME_GREEN -> ColorProvider(Color(0xFFE8F5E9))
@@ -161,27 +172,14 @@ class WeatherWidget : GlanceAppWidget() {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Spacer(modifier = GlanceModifier.defaultWeight())
                     Text(
                         text = locationName,
                         style = TextStyle(
                             color = textColorProvider,
-                            fontSize = (baseTextSize.value - 2).sp,
+                            fontSize = smallTextSize,
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
-                    )
-                    Spacer(modifier = GlanceModifier.defaultWeight())
-                    // Refresh Button
-                    Image(
-                        provider = ImageProvider(R.drawable.ic_refresh),
-                        contentDescription = "Refresh",
-                        modifier = GlanceModifier
-                            .size(16.dp)
-                            .clickable(actionRunCallback<RefreshAction>(
-                                actionParametersOf(LocIdentKey to selectedLocation)
-                            )),
-                        colorFilter = ColorFilter.tint(textColorProvider)
                     )
                 }
 
@@ -193,7 +191,8 @@ class WeatherWidget : GlanceAppWidget() {
                         Text(text = "Error", style = TextStyle(color = GlanceTheme.colors.error, fontSize = baseTextSize))
                     }
                     is WeatherDataState.SuccessHourly -> {
-                        val current = state.data.firstOrNull()
+                        val nowHour = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0)
+                        val current = state.data.find { it.time == nowHour } ?: state.data.firstOrNull()
                         if (current != null) {
                             val weatherWord = weatherCodeToSimpleWord(current.wmo)
                             val temp = current.temperature?.let { UnitConverter.formatTemperature(it, tempUnit, roundToInt = true) } ?: "--"
@@ -205,7 +204,6 @@ class WeatherWidget : GlanceAppWidget() {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                // Larger Icon
                                 Image(
                                     provider = ImageProvider(WidgetUtils.getIconRes(weatherWord)),
                                     contentDescription = null,
@@ -269,27 +267,6 @@ class WeatherWidget : GlanceAppWidget() {
                     else -> {}
                 }
             }
-        }
-    }
-}
-
-class RefreshAction : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        val app = context.applicationContext as TheMeteo
-        val selectedLocation = parameters[LocIdentKey] ?: LocationIdentifier.CurrentUserLocation
-
-        if (selectedLocation !is LocationIdentifier.CurrentUserLocation) {
-            app.weatherCache.rmCacheLoc(selectedLocation)
-
-            WeatherWidget().updateAll(context)
-            DailyWeatherWidget().updateAll(context)
-        } else {
-            app.weatherCache.refreshCurrentLocationSuspend()
-
-            app.weatherCache.rmCacheLoc(selectedLocation)
-
-            WeatherWidget().updateAll(context)
-            DailyWeatherWidget().updateAll(context)
         }
     }
 }

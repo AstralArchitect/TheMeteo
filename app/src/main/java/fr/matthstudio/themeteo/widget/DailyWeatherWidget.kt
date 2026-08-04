@@ -18,6 +18,8 @@ import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
+import androidx.glance.LocalSize
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
@@ -54,6 +56,7 @@ import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.utilsActivities.LauncherActivity
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.format.TextStyle as JavaTextStyle
 import java.util.Locale
@@ -61,16 +64,23 @@ import java.util.Locale
 class DailyWeatherWidget : GlanceAppWidget() {
 
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
+    override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val manager = WidgetCacheManager(context)
         val app = context.applicationContext as TheMeteo
         val weatherCache = app.weatherCache
+        val userSettings = weatherCache.userSettings.first()
+        val selectedLocation = userSettings.defaultLocation
+
+        // Rafraîchissement en arrière-plan si nécessaire
+        val data = manager.refreshIfNeeded(selectedLocation)
 
         provideContent {
             val prefs = currentState<Preferences>()
-            val userSettings = weatherCache.userSettings.collectAsState().value
-            val selectedLocation = userSettings.defaultLocation
-            val dailyState = weatherCache.get(LocalDate.now(), 5, selectedLocation).collectAsState(initial = WeatherDataState.Loading).value
+
+            val dailyState = if (data?.daily != null) WeatherDataState.SuccessDaily(data.daily)
+            else WeatherDataState.Error("No data")
 
             val locationName = when (selectedLocation) {
                 is LocationIdentifier.CurrentUserLocation -> context.getString(R.string.current_location)
@@ -79,7 +89,6 @@ class DailyWeatherWidget : GlanceAppWidget() {
 
             val colorTheme = prefs[WidgetUtils.KEY_COLOR_THEME] ?: WidgetUtils.THEME_SYSTEM
             val transparency = prefs[WidgetUtils.KEY_TRANSPARENCY] ?: 0
-            val textSize = prefs[WidgetUtils.KEY_TEXT_SIZE] ?: 1
 
             GlanceTheme {
                 DailyWidgetContent(
@@ -88,7 +97,6 @@ class DailyWeatherWidget : GlanceAppWidget() {
                     locationName = locationName,
                     selectedLocation = selectedLocation,
                     transparency = transparency,
-                    textSizeIndex = textSize,
                     theme = colorTheme
                 )
             }
@@ -103,11 +111,14 @@ class DailyWeatherWidget : GlanceAppWidget() {
         locationName: String,
         selectedLocation: LocationIdentifier,
         transparency: Int,
-        textSizeIndex: Int,
         theme: String
     ) {
+        val size = LocalSize.current
         val alpha = (100 - transparency) / 100f
-        val baseTextSize = WidgetUtils.getBaseTextSize(textSizeIndex)
+        
+        // Dynamic sizing based on widget size
+        val baseTextSize = (size.width.value / 16f).coerceIn(11f, 15f).sp
+        val smallTextSize = (baseTextSize.value - 2).coerceIn(9f, 13f).sp
 
         val backgroundProvider = when(theme) {
             WidgetUtils.THEME_BLUE -> ColorProvider(Color(0xFFE3F2FD))
@@ -158,22 +169,10 @@ class DailyWeatherWidget : GlanceAppWidget() {
                         text = locationName,
                         style = TextStyle(
                             color = textColorProvider,
-                            fontSize = (baseTextSize.value - 2).sp,
+                            fontSize = smallTextSize,
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
-                    )
-                    Spacer(modifier = GlanceModifier.defaultWeight())
-                    // Refresh Button (Passe maintenant le paramètre de localisation)
-                    Image(
-                        provider = ImageProvider(R.drawable.ic_refresh),
-                        contentDescription = "Refresh",
-                        modifier = GlanceModifier
-                            .size(16.dp)
-                            .clickable(actionRunCallback<RefreshAction>(
-                                actionParametersOf(LocIdentKey to selectedLocation)
-                            )),
-                        colorFilter = ColorFilter.tint(textColorProvider)
                     )
                 }
 
@@ -184,9 +183,10 @@ class DailyWeatherWidget : GlanceAppWidget() {
                         Text(text = "...", style = TextStyle(color = textColorProvider))
                     }
                     is WeatherDataState.SuccessDaily -> {
+                        val today = LocalDate.now()
                         Column(modifier = GlanceModifier.fillMaxWidth()) {
-                            state.data.take(5).forEach { day ->
-                                DailyRow(day, tempUnit, baseTextSize, textColorProvider, textColorVariantProvider)
+                            state.data.filter { !it.date.isBefore(today) }.take(5).forEach { day ->
+                                DailyRow(day, tempUnit, baseTextSize, smallTextSize, textColorProvider, textColorVariantProvider)
                             }
                         }
                     }
@@ -203,6 +203,7 @@ class DailyWeatherWidget : GlanceAppWidget() {
         day: DailyReading,
         tempUnit: TemperatureUnit,
         fontSize: androidx.compose.ui.unit.TextUnit,
+        smallFontSize: androidx.compose.ui.unit.TextUnit,
         textColor: ColorProvider,
         textColorVariant: ColorProvider
     ) {
@@ -234,7 +235,7 @@ class DailyWeatherWidget : GlanceAppWidget() {
             Spacer(modifier = GlanceModifier.width(8.dp))
 
             // Rain if any (Utilisation du textColorVariant)
-            if (day.precipitation != null && day.precipitation!! > 0.1) {
+            if (day.precipitation != null && day.precipitation > 0.1) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.width(45.dp)) {
                     Image(
                         provider = ImageProvider(R.drawable.rainy_1),
@@ -244,7 +245,7 @@ class DailyWeatherWidget : GlanceAppWidget() {
                     )
                     Text(
                         text = day.precipitation.toSmartString(),
-                        style = TextStyle(color = textColorVariant, fontSize = (fontSize.value - 2).sp)
+                        style = TextStyle(color = textColorVariant, fontSize = smallFontSize)
                     )
                 }
             } else {

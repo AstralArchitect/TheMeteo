@@ -4,11 +4,16 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.utilsActivities
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -27,11 +32,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.R
@@ -100,8 +108,58 @@ fun SettingsScreen(cache: WeatherCache) {
 
     // On a besoin d'une coroutine scope pour appeler les fonctions suspend du repository
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var showEnsembleDialog by remember { mutableStateOf(false) }
     var showCrashlyticsDialog by remember { mutableStateOf(false) }
+    var showNotificationPermissionDialog by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        // Permission result handled
+    }
+
+    fun checkAndRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val status = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            if (status != PackageManager.PERMISSION_GRANTED) {
+                showNotificationPermissionDialog = true
+            }
+        } else {
+            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                showNotificationPermissionDialog = true
+            }
+        }
+    }
+
+    if (showNotificationPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotificationPermissionDialog = false },
+            title = { Text(stringResource(R.string.notification_permission_title)) },
+            text = { Text(stringResource(R.string.notification_permission_desc)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showNotificationPermissionDialog = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        // Open app settings for older versions if notifications are disabled
+                        val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        }
+                        context.startActivity(intent)
+                    }
+                }) {
+                    Text(stringResource(R.string.notification_permission_button))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNotificationPermissionDialog = false }) {
+                    Text(stringResource(R.string.ensemble_warning_cancel))
+                }
+            }
+        )
+    }
 
     if (showEnsembleDialog) {
         AlertDialog(
@@ -223,6 +281,18 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            DurationExtensionSetting(
+                isChecked = userSettings.enableDurationExtension,
+                enabled = userSettings.forecastType != ForecastType.ENSEMBLE,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateEnableDurationExtension(enabled)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             AnimatedIconsSetting(
                 isChecked = userSettings.enableAnimatedIcons,
                 onCheckedChange = { enabled ->
@@ -275,7 +345,7 @@ fun SettingsScreen(cache: WeatherCache) {
                     } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
                         scope.launch {
                             cache.userSettingsRepository.updateForecastType(newType)
-                            cache.userSettingsRepository.updateModel("best_match")
+                            cache.userSettingsRepository.updateModel("ecmwf_ifs")
                         }
                     }
                 }
@@ -321,6 +391,38 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            NotificationSetting(
+                title = stringResource(R.string.rain_notifications_title),
+                description = stringResource(R.string.rain_notifications_desc),
+                isChecked = userSettings.enableRainNotifications,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateEnableRainNotifications(enabled)
+                        if (enabled) {
+                            checkAndRequestNotificationPermission()
+                        }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            NotificationSetting(
+                title = stringResource(R.string.vigilance_notifications_title),
+                description = stringResource(R.string.vigilance_notifications_desc),
+                isChecked = userSettings.enableVigilanceNotifications,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        cache.userSettingsRepository.updateEnableVigilanceNotifications(enabled)
+                        if (enabled) {
+                            checkAndRequestNotificationPermission()
+                        }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             FilledTonalButton(
                 onClick = {
                     val intent = android.content.Intent(activity, CreditActivity::class.java)
@@ -336,11 +438,6 @@ fun SettingsScreen(cache: WeatherCache) {
 
             Text (
                 text = "Version Name: ${BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-            Text (
-                text = "Version Code: ${BuildConfig.VERSION_CODE}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -678,6 +775,37 @@ fun SegmentItem(
 }
 
 @Composable
+fun NotificationSetting(
+    title: String,
+    description: String,
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
 fun AnimatedIconsSetting(
     isChecked: Boolean,
     onCheckedChange: (Boolean) -> Unit
@@ -729,6 +857,42 @@ fun ModelFallbackSetting(
             )
             Text(
                 stringResource(R.string.fill_missing_vars_desc),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
+            )
+        }
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
+fun DurationExtensionSetting(
+    isChecked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val alpha = if (enabled) 1f else 0.5f
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.extend_duration_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+            )
+            Text(
+                stringResource(R.string.extend_duration_desc),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)

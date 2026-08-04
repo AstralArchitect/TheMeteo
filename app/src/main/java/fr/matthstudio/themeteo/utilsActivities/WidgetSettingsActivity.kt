@@ -150,7 +150,6 @@ fun WidgetSettingsScreen(
 
     var selectedTheme by remember { mutableStateOf(WidgetUtils.THEME_SYSTEM) }
     var transparency by remember { mutableIntStateOf(0) }
-    var textSize by remember { mutableIntStateOf(0) }
 
     // Load current settings if they exist
     LaunchedEffect(appWidgetId) {
@@ -163,7 +162,6 @@ fun WidgetSettingsScreen(
             )
             prefs[WidgetUtils.KEY_COLOR_THEME]?.let { selectedTheme = it }
             prefs[WidgetUtils.KEY_TRANSPARENCY]?.let { transparency = it }
-            prefs[WidgetUtils.KEY_TEXT_SIZE]?.let { textSize = it }
         }
     }
 
@@ -195,20 +193,6 @@ fun WidgetSettingsScreen(
                 val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
                 updateAppWidgetState(context, glanceId) { prefs ->
                     prefs[WidgetUtils.KEY_TRANSPARENCY] = transparency
-                }
-                WeatherWidget().update(context, glanceId)
-                DailyWeatherWidget().update(context, glanceId)
-            }
-        }
-    }
-
-    fun saveTextSizeToWidget(textS: Int) {
-        textSize = textS
-        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-            scope.launch {
-                val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
-                updateAppWidgetState(context, glanceId) { prefs ->
-                    prefs[WidgetUtils.KEY_TEXT_SIZE] = textSize
                 }
                 WeatherWidget().update(context, glanceId)
                 DailyWeatherWidget().update(context, glanceId)
@@ -292,7 +276,6 @@ fun WidgetSettingsScreen(
                         title = "Current Weather (2x1)",
                         locationName = previewLocationName,
                         transparency = transparency,
-                        textSizeIndex = textSize,
                         isDaily = false,
                         theme = selectedTheme
                     )
@@ -300,7 +283,6 @@ fun WidgetSettingsScreen(
                         title = "Daily Forecast (3x2)",
                         locationName = previewLocationName,
                         transparency = transparency,
-                        textSizeIndex = textSize,
                         isDaily = true,
                         theme = selectedTheme
                     )
@@ -325,30 +307,6 @@ fun WidgetSettingsScreen(
                 },
                 valueRange = 0f..100f,
                 steps = 10
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            val textSizeLabel = when(textSize) {
-                0 -> stringResource(R.string.text_size_small)
-                1 -> stringResource(R.string.text_size_medium)
-                else -> stringResource(R.string.text_size_large)
-            }
-            Text(
-                text = "${stringResource(R.string.widget_text_size)}: $textSizeLabel",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.align(Alignment.Start)
-            )
-            Slider(
-                value = textSize.toFloat(),
-                onValueChange = { 
-                    scope.launch { 
-                        saveTextSizeToWidget(it.toInt())
-                        triggerWidgetUpdate()
-                    }
-                },
-                valueRange = 0f..2f,
-                steps = 1
             )
         }
     }
@@ -380,7 +338,7 @@ fun ThemeOption(label: String, color: Color, isSelected: Boolean, onClick: () ->
 }
 
 @Composable
-fun WidgetPreviewCard(title: String, locationName: String, transparency: Int, textSizeIndex: Int, isDaily: Boolean, theme: String) {
+fun WidgetPreviewCard(title: String, locationName: String, transparency: Int, isDaily: Boolean, theme: String) {
     val alpha = (100 - transparency) / 100f
     
     val backgroundColor = when(theme) {
@@ -404,16 +362,10 @@ fun WidgetPreviewCard(title: String, locationName: String, transparency: Int, te
         else -> Color.White
     }
 
-    val baseTextSize = when(textSizeIndex) {
-        0 -> 10.sp
-        1 -> 12.sp
-        else -> 14.sp
-    }
-    val bigTextSize = when(textSizeIndex) {
-        0 -> 18.sp
-        1 -> 22.sp
-        else -> 28.sp
-    }
+    // Dynamic sizing for preview as well
+    val baseTextSize = if (isDaily) 13.sp else 14.sp
+    val bigTextSize = 24.sp
+    val smallTextSize = (baseTextSize.value - 2).sp
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 4.dp))
@@ -430,7 +382,7 @@ fun WidgetPreviewCard(title: String, locationName: String, transparency: Int, te
                     verticalArrangement = Arrangement.Center,
                     modifier = Modifier.padding(8.dp)
                 ) {
-                    Text(locationName, style = MaterialTheme.typography.labelSmall.copy(fontSize = (baseTextSize.value - 2).sp, fontWeight = FontWeight.Medium))
+                    Text(locationName, style = MaterialTheme.typography.labelSmall.copy(fontSize = smallTextSize, fontWeight = FontWeight.Medium))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(painter = painterResource(id = R.drawable.clear_day), contentDescription = null, modifier = Modifier.size(40.dp), tint = Color.Unspecified)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -455,7 +407,7 @@ fun WidgetPreviewCard(title: String, locationName: String, transparency: Int, te
                             Spacer(modifier = Modifier.width(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.width(40.dp)) {
                                 Icon(imageVector = Icons.Rounded.WaterDrop, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color(0xFF64B5F6))
-                                Text("0.5", style = MaterialTheme.typography.labelSmall.copy(fontSize = (baseTextSize.value - 2).sp))
+                                Text("0.5", style = MaterialTheme.typography.labelSmall.copy(fontSize = smallTextSize))
                             }
                             Spacer(modifier = Modifier.weight(1f))
                             Text("24° / 15°", style = MaterialTheme.typography.labelSmall.copy(fontSize = baseTextSize))

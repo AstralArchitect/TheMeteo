@@ -6,7 +6,6 @@ package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -14,13 +13,7 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.view.Surface
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,7 +30,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,13 +44,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.rounded.AcUnit
@@ -72,10 +62,12 @@ import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Tsunami
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Water
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,7 +75,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -107,19 +98,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.modifier.modifierLocalConsumer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -128,8 +117,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.core.net.toUri
-import coil.compose.AsyncImage
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -142,6 +130,7 @@ import fr.matthstudio.themeteo.AllHourlyVarsReading
 import fr.matthstudio.themeteo.CurrentWeatherReading
 import fr.matthstudio.themeteo.DailyReading
 import fr.matthstudio.themeteo.GeocodingResult
+import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
@@ -155,15 +144,16 @@ import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayGraphsActivity.GenericGraphGlobal
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
 import fr.matthstudio.themeteo.dayGraphsActivity.WeatherIconGraphGlobal
+import fr.matthstudio.themeteo.utilClasses.FullSunData
 import fr.matthstudio.themeteo.utilClasses.PhaseType
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
-import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.toSmartString
+import fr.matthstudio.themeteo.widget.DailyWeatherWidget
+import fr.matthstudio.themeteo.widget.WeatherWidget
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -178,7 +168,10 @@ import kotlin.math.sin
  * Énumération pour représenter les conditions météo de manière simple et robuste.
  */
 enum class SimpleWeatherWord {
-    STORMY,       // Orageux
+    EXTREME_STORMY_HAIL,
+    EXTREME_STORMY,
+    STORMY_HAIL,
+    STORMY,  // Orageux + pluie
     HAIL,         // Grêle
     SNOWY1,        // Neigeux
     SNOWY2,        // Neige
@@ -191,7 +184,8 @@ enum class SimpleWeatherWord {
     HAZE,         // Brume
     FOGGY,        // Brouillard
     CLOUDY,       // Nuageux
-    SUNNY_CLOUDY, // Partiellement nuageux
+    PARTLY_CLOUDY,
+    MOSTLY_CLEAR,
     SUNNY,        // Ensoleillé
 }
 
@@ -205,37 +199,31 @@ fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
     if (code == null) return null
     return when (code) {
         0 -> SimpleWeatherWord.SUNNY
-        1, 2 -> SimpleWeatherWord.SUNNY_CLOUDY
+        1 -> SimpleWeatherWord.MOSTLY_CLEAR
+        2 -> SimpleWeatherWord.PARTLY_CLOUDY
         3 -> SimpleWeatherWord.CLOUDY                 // Overcast
         4 -> SimpleWeatherWord.CLOUDY                 // Smoke
         5 -> SimpleWeatherWord.HAZE                   // Haze
         6, 7, 8, 9 -> SimpleWeatherWord.DUST          // Dust
-        in 10..12 -> SimpleWeatherWord.FOGGY          // Mist/Shallow fog
-        in 13..19 -> SimpleWeatherWord.CLOUDY         // Lightning, Squalls, etc.
-        20 -> SimpleWeatherWord.DRIZZLY               // Past hour: Drizzle/Snow grains
-        21 -> SimpleWeatherWord.RAINY1                // Past hour: Rain
-        22 -> SimpleWeatherWord.SNOWY1                // Past hour: Snow
-        23 -> SimpleWeatherWord.SNOWY_MIX             // Past hour: Rain and Snow
-        24 -> SimpleWeatherWord.DRIZZLY               // Past hour: Freezing rain
-        25 -> SimpleWeatherWord.RAINY2                // Past hour: Showers
-        26 -> SimpleWeatherWord.SNOWY2                // Past hour: Snow showers
-        27 -> SimpleWeatherWord.HAIL                  // Past hour: Hail
-        28 -> SimpleWeatherWord.FOGGY                 // Past hour: Fog
-        29 -> SimpleWeatherWord.STORMY                // Past hour: Thunderstorm
-        in 30..39 -> SimpleWeatherWord.DUST           // Duststorms, sandstorms
-        in 40..49 -> SimpleWeatherWord.FOGGY    // Fog
-        in 50..59 -> SimpleWeatherWord.DRIZZLY  // Drizzle
-        in 60..69 -> SimpleWeatherWord.RAINY1   // Rain
+        in 10..12 -> SimpleWeatherWord.FOGGY     // Mist/Shallow fog
+        in 13..19 -> SimpleWeatherWord.CLOUDY    // Lightning, Squalls, etc.
+        in 30..39 -> SimpleWeatherWord.DUST      // Duststorms, sandstorms
+        in 40..49 -> SimpleWeatherWord.FOGGY     // Fog
+        in 50..59 -> SimpleWeatherWord.DRIZZLY   // Drizzle
+        in 60..69 -> SimpleWeatherWord.RAINY1    // Rain
         70, 71 -> SimpleWeatherWord.SNOWY1            // Light Snow
         72, 73 -> SimpleWeatherWord.SNOWY2            // Snow
         74, 75 -> SimpleWeatherWord.SNOWY3            // Heavy Snow
-        in 76..79 -> SimpleWeatherWord.SNOWY_MIX// Snow Grains
-        in 80..82 -> SimpleWeatherWord.RAINY2   // Rain showers
+        in 76..79 -> SimpleWeatherWord.SNOWY_MIX // Snow Grains
+        in 80..82 -> SimpleWeatherWord.RAINY2    // Rain showers
         83, 84 -> SimpleWeatherWord.SNOWY_MIX         // Rain and snow mixed showers
         85, 86 -> SimpleWeatherWord.SNOWY3            // Snow showers
-        in 87..90 -> SimpleWeatherWord.HAIL     // Hail showers
-        in 91..94 -> SimpleWeatherWord.STORMY   // Rain/Drizzle with Thunderstorm (but we will let STORMY override)
-        in 95..99 -> SimpleWeatherWord.STORMY
+        in 87..90 -> SimpleWeatherWord.HAIL      // Hail showers
+        in 91..94 -> SimpleWeatherWord.RAINY2    // Thunderstorm with rain
+        95 -> SimpleWeatherWord.STORMY
+        96 -> SimpleWeatherWord.STORMY_HAIL
+        97, 98 -> SimpleWeatherWord.EXTREME_STORMY
+        99 -> SimpleWeatherWord.EXTREME_STORMY_HAIL
         else -> SimpleWeatherWord.SUNNY               // Fallback for unknown codes
     }
 }
@@ -336,133 +324,6 @@ enum class ChosenVar {
 }
 
 @Composable
-fun DailyWeatherBox(dayReading: DailyReading, viewModel: WeatherViewModel, onClick: () -> Unit) {
-    val isDark = isSystemInDarkTheme()
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                setToScale(0.8f, 0.8f, 0.8f, 1f)
-            })
-        } else null
-    }
-
-    // Charger les icônes
-    val iconWeatherFolder = "file:///android_asset/icons/weather/"
-    val sunnyDayIconPath: String = iconWeatherFolder + "clear-day.svg"
-    val sunnyCloudyDayIconPath: String = iconWeatherFolder + "cloudy-3-day.svg"
-    val cloudyIconPath: String = iconWeatherFolder + "cloudy.svg"
-    val foggyIconPath: String = iconWeatherFolder + "fog.svg"
-    val hazeIconPath: String = iconWeatherFolder + "haze.svg"
-    val dustIconPath: String = iconWeatherFolder + "dust.svg"
-    val drizzleIconPath: String = iconWeatherFolder + "rainy-1.svg"
-    val rainy1IconPath: String = iconWeatherFolder + "rainy-2.svg"
-    val rainy2IconPath: String = iconWeatherFolder + "rainy-3.svg"
-    val hailIconPath: String = iconWeatherFolder + "hail.svg"
-    val snowy1IconPath: String = iconWeatherFolder + "snowy-1.svg"
-    val snowy2IconPath: String = iconWeatherFolder + "snowy-2.svg"
-    val snowy3IconPath: String = iconWeatherFolder + "snowy-3.svg"
-    val snowyMixIconPath: String = iconWeatherFolder + "rain-and-snow-mix.svg"
-    val stormyIconPath: String = iconWeatherFolder + "thunderstorms.svg"
-
-    Surface(
-        modifier = Modifier
-            .width(85.dp)
-            .padding(4.dp)
-            .clickable { // Make the card clickable
-                onClick()
-            },
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = MaterialTheme.shapes.small
-    ) {
-        Box(
-            modifier = Modifier.padding()
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                // Get the day name (e.g., "Mon.")
-                Text(
-                    text = dayReading.date.dayOfWeek.getDisplayName(
-                        TextStyle.SHORT,
-                        Locale.getDefault()
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
-                val fileName = when (weatherWord) {
-                    SimpleWeatherWord.SUNNY -> sunnyDayIconPath
-                    SimpleWeatherWord.SUNNY_CLOUDY -> sunnyCloudyDayIconPath
-                    SimpleWeatherWord.CLOUDY -> cloudyIconPath
-                    SimpleWeatherWord.FOGGY -> foggyIconPath
-                    SimpleWeatherWord.HAZE -> hazeIconPath
-                    SimpleWeatherWord.DUST -> dustIconPath
-                    SimpleWeatherWord.DRIZZLY -> drizzleIconPath
-                    SimpleWeatherWord.RAINY1 -> rainy1IconPath
-                    SimpleWeatherWord.RAINY2 -> rainy2IconPath
-                    SimpleWeatherWord.HAIL -> hailIconPath
-                    SimpleWeatherWord.SNOWY1 -> snowy1IconPath
-                    SimpleWeatherWord.SNOWY2 -> snowy2IconPath
-                    SimpleWeatherWord.SNOWY3 -> snowy3IconPath
-                    SimpleWeatherWord.SNOWY_MIX -> snowyMixIconPath
-                    SimpleWeatherWord.STORMY -> stormyIconPath
-                    null -> Icons.Default.NotInterested
-                }
-
-                if (dayReading.wmoEnsemble != null) {
-                    val userSettings by viewModel.userSettings.collectAsState()
-                    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
-                    val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
-                    
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        EnsembleIconSmall(dayReading.wmoEnsemble.best, animated, weatherIconFilter)
-                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, animated, weatherIconFilter)
-                    }
-                } else {
-                    if (fileName is String) {
-                        AsyncImage(
-                            model = fileName,
-                            contentDescription = "Icône météo actuelle",
-                            modifier = Modifier
-                                .width(30.dp)
-                                .height(30.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
-                        )
-                    } else {
-                        Image(
-                            imageVector = fileName as ImageVector,
-                            contentDescription = "Icône météo actuelle",
-                            modifier = Modifier
-                                .width(30.dp)
-                                .height(30.dp),
-                            contentScale = ContentScale.Fit,
-                            colorFilter = weatherIconFilter
-                        )
-                    }
-                }
-                val userSettings by viewModel.userSettings.collectAsState()
-                Text(
-                    text = "${UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit,
-                        roundToInt = true,
-                        showUnitSymbol = false,
-                        showDegreeSymbol = true
-                    )} / ${UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit,
-                        roundToInt = true,
-                        showUnitSymbol = false,
-                        showDegreeSymbol = true
-                    )}",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun TemperatureRangeBar(
     minTemp: Double,
     maxTemp: Double,
@@ -478,7 +339,7 @@ fun TemperatureRangeBar(
     val endFactor = (maxTemp - minOverallTemp) / range
 
     Canvas(modifier = modifier
-        .height(4.dp)
+        .height(6.dp)
         .fillMaxWidth()) {
         val width = size.width
         val height = size.height
@@ -498,8 +359,8 @@ fun TemperatureRangeBar(
                 colors = listOf(Color(0xFF64B5F6), Color(0xFFFFD54F), Color(0xFFFF8A65))
             ),
             topLeft = Offset(startX, 0f),
-            size = androidx.compose.ui.geometry.Size(endX - startX, height),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2, height / 2)
+            size = Size(endX - startX, height),
+            cornerRadius = CornerRadius(height / 2, height / 2)
         )
     }
 }
@@ -516,47 +377,39 @@ fun DailyForecastRow(
     expandedContent: @Composable () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
-    val weatherIconFilter = remember(isDark) {
-        if (!isDark) {
-            ColorFilter.colorMatrix(ColorMatrix().apply {
-                // Assombrit légèrement les icônes statiques en mode clair
-                setToScale(0.7f, 0.7f, 0.7f, 1f)
-            })
-        } else null
-    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Jour
             Text(
                 text = if (dayReading.date == LocalDate.now()) stringResource(R.string.today)
                 else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).replaceFirstChar { it.uppercase() },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.width(50.dp)
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
             )
 
             // Icône
             val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
             
-            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.Center) {
                 if (dayReading.wmoEnsemble != null) {
                     Row {
-                        EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
-                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive, weatherIconFilter)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.best, userSettings.enableAnimatedIcons && !isBatterySaverActive)
+                        EnsembleIconSmall(dayReading.wmoEnsemble.worst, userSettings.enableAnimatedIcons && !isBatterySaverActive)
                     }
                 } else if (weatherWord != null) {
                     LottieWeatherIcon(
-                        iconPath = getLottieIconPath(weatherWord, false),
+                        iconPath = getLottieIconPath(weatherWord, false, isSystemInDarkTheme()),
                         animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
@@ -565,21 +418,21 @@ fun DailyForecastRow(
 
             // Précipitations + vent
             Row(
-                modifier = Modifier.width(80.dp),
+                modifier = Modifier.width(90.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start
             ) {
-                if (dayReading.precipitation != null && dayReading.precipitation > 0.1) {
+                if (dayReading.precipitation != null && dayReading.precipitation >= 0.1) {
                     Icon(
-                        Icons.Rounded.Water,
+                        Icons.Rounded.WaterDrop,
                         contentDescription = null,
-                        modifier = Modifier.size(12.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
                     )
                     Spacer(Modifier.width(2.dp))
                     ResponsiveText(
                         text = "${dayReading.precipitation.toSmartString()}mm",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
                         color = if (isDark) Color(0xFF64B5F6) else Color(0xFF356486)
                     )
                 }
@@ -588,39 +441,43 @@ fun DailyForecastRow(
                     Icon(
                         Icons.Rounded.Air,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
             // Températures
-            Text(
-                text = UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.End,
-                modifier = Modifier.width(35.dp)
-            )
-
-            TemperatureRangeBar(
-                minTemp = dayReading.minTemperature ?: 0.0,
-                maxTemp = dayReading.maxTemperature ?: 0.0,
-                minOverallTemp = minOverallTemp,
-                maxOverallTemp = maxOverallTemp,
-                unit = userSettings.temperatureUnit,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp)
-            )
-
-            Text(
-                text = UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.width(35.dp)
-            )
+            Row(
+                modifier = Modifier,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                Text(
+                    text = UnitConverter.formatTemperature(
+                        dayReading.minTemperature,
+                        userSettings.temperatureUnit,
+                        true,
+                        showUnitSymbol = false
+                    ) + "/",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(45.dp)
+                )
+                Text(
+                    text = UnitConverter.formatTemperature(
+                        dayReading.maxTemperature,
+                        userSettings.temperatureUnit,
+                        true,
+                        showUnitSymbol = false
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.width(45.dp)
+                )
+            }
         }
 
         AnimatedVisibility(visible = isExpanded) {
@@ -632,53 +489,16 @@ fun DailyForecastRow(
 }
 
 @Composable
-fun EnsembleIconSmall(wmo: Int?, animated: Boolean, filter: ColorFilter?) {
+fun EnsembleIconSmall(wmo: Int?, animated: Boolean) {
     if (wmo == null) return
     val weatherWord = weatherCodeToSimpleWord(wmo)!!
 
     LottieWeatherIcon(
-        iconPath = getLottieIconPath(weatherWord, false),
+        iconPath = getLottieIconPath(weatherWord, false, isSystemInDarkTheme()),
         animate = animated,
         modifier = Modifier.size(30.dp)
     )
 }
-
-/*@Composable
-fun FifteenMinutelyForecastCard(viewModel: WeatherViewModel) {
-    if (viewModel.minutelyForecast15.collectAsState().value.isEmpty() ||
-        (viewModel.minutelyForecast15.collectAsState().value.maxOf{it.rain} == 0.0 &&
-                viewModel.minutelyForecast15.collectAsState().value.maxOf{it.snowfall} == 0.0)
-        )
-        return
-
-    Card(
-        modifier = Modifier.padding(24.dp)
-    ) {
-        if (viewModel._isLoadingHourly.collectAsState().value) {
-            Box(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                CircularProgressIndicator()
-            }
-            return@Card
-        }
-
-        Text(
-            text = stringResource(R.string._15_minutely_precipitation_forecast),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(start = 16.dp, top = 5.dp, bottom = 5.dp)
-        )
-
-        if (viewModel.hourlyForecast.collectAsState().value.isEmpty())
-            return@Card
-
-        Column (
-            modifier = Modifier.padding(start = 8.dp, end= 16.dp, bottom = 16.dp, top = 0.dp)
-        ) {
-            BarsGraph(viewModel)
-        }
-    }
-}*/
 
 // Helper function for UV levels
 @Composable
@@ -724,6 +544,7 @@ fun LocationManagementSheet(
     var listState by remember(savedLocations) { mutableStateOf(savedLocations) }
     val lazyListState = rememberLazyListState()
     var renamingLocation by remember { mutableStateOf<SavedLocation?>(null) }
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     if (renamingLocation != null) {
         RenameLocationDialog(
@@ -739,8 +560,8 @@ fun LocationManagementSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MaterialTheme.colorScheme.secondaryContainer.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
-        scrimColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(alpha = 0.5f)
+        containerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) MaterialTheme.colorScheme.secondaryContainer.copy (alpha = 0.7f) else MaterialTheme.colorScheme.surface,
+        scrimColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isBatterySaverActive) Color.Transparent else Color.Black.copy(alpha = 0.5f)
     ) {
         Column(modifier = Modifier
             .fillMaxWidth()
@@ -990,11 +811,9 @@ fun RenameLocationDialog(
     )
 }
 
-
-// 3. LA BOÎTE DE DIALOGUE POUR LA RECHERCHE ET L'AJOUT
 @Composable
 fun AddLocationDialog(
-    searchResults: List<GeocodingResult>, // Remplacez par votre type réel de résultat
+    searchState: SearchState,
     userLocation: GpsCoordinates?,
     weatherService: WeatherService,
     onSearch: (String) -> Unit,
@@ -1034,32 +853,72 @@ fun AddLocationDialog(
                         onSearch(it) // Déclenche la recherche via le ViewModel
                     },
                     label = { Text(stringResource(R.string.search_city)) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
                 )
                 Spacer(Modifier.height(16.dp))
-                LazyColumn {
-                    items(searchResults) { result ->
-                        Text(
-                            text = "${result.name}, ${result.region}, ${result.countryCode}",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val newLocation = SavedLocation(
-                                        name = result.name,
-                                        latitude = result.latitude,
-                                        longitude = result.longitude,
-                                        country = result.countryCode
+                
+                Box(modifier = Modifier.height(200.dp).fillMaxWidth()) {
+                    when (searchState) {
+                        is SearchState.Loading -> {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                        }
+                        is SearchState.Success -> {
+                            LazyColumn {
+                                items(searchState.results) { result ->
+                                    Text(
+                                        text = "${result.name}, ${result.region}, ${result.countryCode}",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                val newLocation = SavedLocation(
+                                                    name = result.name,
+                                                    latitude = result.latitude,
+                                                    longitude = result.longitude,
+                                                    country = result.countryCode
+                                                )
+                                                onAddLocation(newLocation)
+                                                onLocationSelected(LocationIdentifier.Saved(newLocation))
+                                                onDismiss()
+                                            }
+                                            .padding(vertical = 8.dp)
                                     )
-                                    onAddLocation(newLocation)
-                                    onLocationSelected(LocationIdentifier.Saved(newLocation))
-                                    onDismiss()
                                 }
-                                .padding(vertical = 8.dp)
-                        )
+                            }
+                        }
+                        is SearchState.Empty -> {
+                            Text(
+                                text = stringResource(R.string.no_results),
+                                modifier = Modifier.align(Alignment.Center),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        is SearchState.Error -> {
+                            Text(
+                                text = searchState.message,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
+                        is SearchState.Idle -> {
+                            if (searchQuery.length >= 1 && searchQuery.length < 2) {
+                                Text(
+                                    text = stringResource(R.string.type_more_chars),
+                                    modifier = Modifier.align(Alignment.Center),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
+                
                 // Bouton pour ouvrir la carte
-                Button(onClick = { showMapPicker = true }) {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { showMapPicker = true }
+                ) {
                     Text(stringResource(R.string.pick_on_map))
                 }
             }
@@ -1186,12 +1045,19 @@ fun MapPickerScreen(
 fun LocationPermissionHandler(
     viewModel: WeatherViewModel
 ) {
-    val locationPermissionState = rememberMultiplePermissionsState(
-        listOf(
+    val context = LocalContext.current
+    val permissions = remember {
+        val list = mutableListOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION
         )
-    )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        list
+    }
+
+    val locationPermissionState = rememberMultiplePermissionsState(permissions)
 
     // Background permission state (separate request as required by Android)
     val backgroundLocationPermissionState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -1214,11 +1080,17 @@ fun LocationPermissionHandler(
     LaunchedEffect(anyForegroundGranted) {
         if (anyForegroundGranted) {
             viewModel.refreshLocation()
-            // Check if we should suggest background location for widgets
+
+            // Check if there are any widgets added
+            val hasWidgets = GlanceAppWidgetManager(context).getGlanceIds(WeatherWidget::class.java).isNotEmpty() ||
+                    GlanceAppWidgetManager(context).getGlanceIds(DailyWeatherWidget::class.java).isNotEmpty()
+
+            // Only suggest background location if widgets exist and we haven't asked yet
             val settings = viewModel.userSettings.value
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                 backgroundLocationPermissionState?.status?.isGranted == false &&
-                !settings.backgroundLocationAsked) {
+                !settings.backgroundLocationAsked &&
+                hasWidgets) {
                 showBackgroundRationale = true
             }
         }
@@ -1326,7 +1198,7 @@ fun WeatherIconGraph(
     viewModel: WeatherViewModel,
     forecast: WeatherDataState?,
     scrollState: ScrollState = rememberScrollState(),
-    contentWidth: Dp = 1000.dp,
+    contentWidth: Dp = 1250.dp,
     showPairsOnly: Boolean = false
 ) {
     // Get the forecast
@@ -1368,6 +1240,93 @@ fun EnvironmentalSectionHeader(title: String, icon: ImageVector, color: Color) {
     }
 }
 
+
+@Composable
+fun SunGraph(data: FullSunData, modifier: Modifier = Modifier) {
+    val isDarkTheme = isSystemInDarkTheme()
+    val totalSecondsDay = 24 * 3600f
+    val now = LocalDateTime.now()
+    val currentSeconds = now.hour * 3600f + now.minute * 60f + now.second
+
+    val today = data.dailyData.getOrNull(1)
+    val tomorrow = data.dailyData.getOrNull(2)
+
+    val sr0 = today?.sunrise?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (6f * 3600f)
+    val ss0 = today?.sunset?.let { it.hour * 3600f + it.minute * 60f + it.second } ?: (18f * 3600f)
+
+    val isShifted = ss0 < sr0
+
+    val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second }
+        val ss1Shifted = ss1 + totalSecondsDay
+        val noon = (sr0 + ss1Shifted) / 2f
+        listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
+    } else {
+        val ss0Fixed = if (ss0 < sr0) ss0 + totalSecondsDay else ss0
+        listOf(sr0, ss0Fixed, 0f, totalSecondsDay)
+    }
+
+    val noonSecs = (srUsed + ssUsed) / 2f
+
+    var sunSecs = currentSeconds
+    while (sunSecs < windowStart) sunSecs += totalSecondsDay
+    while (sunSecs > windowEnd) sunSecs -= totalSecondsDay
+    val sunProgress = (sunSecs - windowStart) / totalSecondsDay
+
+    Canvas(modifier = modifier) {
+        val strokeWidth = 1.dp.toPx()
+        val horizonY = size.height * 0.7f
+
+        val crossingCos = cos(2.0 * PI * (srUsed - noonSecs) / totalSecondsDay).toFloat()
+        val scaleY = (size.height * 0.4f) / (1f + abs(crossingCos))
+
+        val path = Path()
+        val segments = 60
+        for (i in 0..segments) {
+            val tSecs = windowStart + (i.toFloat() / segments) * totalSecondsDay
+            val x = (i.toFloat() / segments) * size.width
+            val yOffset = cos(2.0 * PI * (tSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+            val y = horizonY - yOffset * scaleY
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+
+        drawPath(
+            path = path,
+            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
+            style = Stroke(
+                width = strokeWidth,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+            )
+        )
+
+        drawLine(
+            color = if (isDarkTheme) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f),
+            start = Offset(0f, horizonY),
+            end = Offset(size.width, horizonY),
+            strokeWidth = 1.dp.toPx()
+        )
+
+        val currentYOffset = cos(2.0 * PI * (sunSecs - noonSecs) / totalSecondsDay).toFloat() - crossingCos
+        val sunY = horizonY - currentYOffset * scaleY
+
+        val isDay = currentYOffset > 0
+        val sunColor = if (isDay) Color(0xFFFFD700) else Color(0xFFB0C4DE)
+
+        drawCircle(
+            color = sunColor,
+            radius = 3.dp.toPx(),
+            center = Offset(sunProgress * size.width, sunY)
+        )
+
+        if (isDay) {
+            drawCircle(
+                color = sunColor.copy(alpha = 0.3f),
+                radius = 6.dp.toPx(),
+                center = Offset(sunProgress * size.width, sunY)
+            )
+        }
+    }
+}
 @Composable
 fun SunPathVisualization(viewModel: WeatherViewModel) {
     val sunData by viewModel.sunData.collectAsState()
@@ -1393,7 +1352,7 @@ fun SunPathVisualization(viewModel: WeatherViewModel) {
 
     val (srUsed, ssUsed, windowStart, windowEnd) = if (isShifted && tomorrow != null) {
         // Logique Shifting : centré sur le midi solaire
-        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second } ?: ss0
+        val ss1 = tomorrow.sunset.let { it.hour * 3600f + it.minute * 60f + it.second }
         val ss1Shifted = ss1 + totalSecondsDay
         val noon = (sr0 + ss1Shifted) / 2f
         listOf(sr0, ss1Shifted, noon - totalSecondsDay / 2, noon + totalSecondsDay / 2)
@@ -1750,7 +1709,7 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
                 // Add display rotation
                 val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
-                        context.display?.rotation ?: Surface.ROTATION_0
+                        context.display.rotation ?: Surface.ROTATION_0
                     } catch (e: Exception) {
                         Surface.ROTATION_0
                     }
@@ -1881,7 +1840,7 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
 
                 // Current Moon Position
                 drawAzimuthPointer(
-                    center, radius * cos(moonPos.elevation.toDouble() * (PI / 180.0)).toFloat(), moonPos.azimuth,
+                    center, radius * cos(moonPos.elevation * (PI / 180.0)).toFloat(), moonPos.azimuth,
                     color = if (moonPos.elevation >= 0 ) Color(0xFFB0C4DE) else Color(0x00B0C4DE),
                     iconRadius = 6.dp.toPx()
                 )
@@ -2162,157 +2121,38 @@ fun MoonDetailsSection(viewModel: WeatherViewModel) {
 }
 
 @Composable
-fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-    val formatter = DateTimeFormatter.ofPattern("HH:mm")
-    val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
+fun ResponsiveText(
+    text: AnnotatedString,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontWeight: FontWeight? = null,
+    textAlign: TextAlign? = null,
+    maxLines: Int = 1,
+    targetTextSizeHeight: TextUnit = style.fontSize
+) {
+    var textSize by remember { mutableStateOf(targetTextSizeHeight) }
+    var readyToDraw by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Color.Transparent else Color.Black.copy(
-                    alpha = 0.6f
-                )
-            )
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        AnimatedVisibility(
-            visibleState = visibleState,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f),
-            exit = fadeOut() + scaleOut(targetScale = 0.8f)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.8f)
-                    .clickable(enabled = false) { },
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        stringResource(
-                            R.string.vigilance_alerts_dept_code,
-                            vigilanceData.departmentCode
-                        ),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        items(vigilanceData.alerts) { alert ->
-                            val alertColor = when (alert.maxColorId) {
-                                1 -> Color(0xFF4CAF50)
-                                2 -> Color(0xFFFFEB3B)
-                                3 -> Color(0xFFFF9800)
-                                4 -> Color(0xFFF44336)
-                                else -> MaterialTheme.colorScheme.outline
-                            }
-
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        alertColor.copy(alpha = 0.1f),
-                                        RoundedCornerShape(16.dp)
-                                    )
-                                    .padding(12.dp)
-                            ) {
-                                val isDark = isSystemInDarkTheme()
-                                val itemContentColor = if (!isDark) when (alert.maxColorId) {
-                                    2 -> Color(0xFF422B00) // Marron très foncé
-                                    3 -> Color(0xFFE65100) // Orange foncé
-                                    4 -> Color(0xFFB71C1C) // Rouge foncé
-                                    else -> MaterialTheme.colorScheme.onSurface
-                                } else alertColor
-
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = getPhenomenonIcon(alert.phenomenonId),
-                                        contentDescription = null,
-                                        tint = itemContentColor,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = stringResource(mapPhenomenonIdToName(alert.phenomenonId)),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = itemContentColor
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                alert.steps.forEach { step ->
-                                    val start = OffsetDateTime.parse(step.beginTime)
-                                    val end = OffsetDateTime.parse(step.endTime)
-                                    val isToday = start.toLocalDate() == LocalDate.now()
-
-                                    val stepColor = when (step.colorId) {
-                                        1 -> Color(0xFF4CAF50)
-                                        2 -> Color(0xFFFFEB3B)
-                                        3 -> Color(0xFFFF9800)
-                                        4 -> Color(0xFFF44336)
-                                        else -> Color.Gray
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(modifier = Modifier
-                                            .size(10.dp)
-                                            .background(stepColor, CircleShape))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "${start.format(formatter)} - ${end.format(formatter)} ${if (!isToday) "(${start.format(dayFormatter)})" else ""}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://vigilance.meteofrance.fr/fr".toUri())
-                                context.startActivity(intent)
-                            }
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(stringResource(R.string.official_website), style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-
-                        TextButton(onClick = onDismiss) {
-                            Text(stringResource(R.string.close))
-                        }
-                    }
-                }
+    Text(
+        text = text,
+        modifier = modifier,
+        color = color,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        fontSize = textSize,
+        style = style,
+        maxLines = maxLines,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        onTextLayout = { textLayoutResult ->
+            if (textLayoutResult.hasVisualOverflow) {
+                textSize = (textSize.value * 0.9f).sp
+            } else {
+                readyToDraw = true
             }
         }
-    }
+    )
 }
 
 @Composable
@@ -2370,7 +2210,7 @@ fun mapPhenomenonIdToName(id: String): Int = when (id) {
 fun getPhenomenonIcon(phenomenonId: String): ImageVector {
     return when (phenomenonId) {
         "1" -> Icons.Rounded.Air // Vent
-        "2" -> Icons.Rounded.Water // Pluie / Innondation
+        "2" -> Icons.Rounded.Water // Pluie / Innondations
         "3" -> Icons.Rounded.FlashOn // Orages
         "4" -> Icons.Rounded.Flood // Crues
         "5" -> Icons.Rounded.AcUnit // Neige

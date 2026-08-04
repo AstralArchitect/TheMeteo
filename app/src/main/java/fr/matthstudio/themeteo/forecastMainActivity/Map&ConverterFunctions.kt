@@ -33,7 +33,7 @@ import java.time.ZonedDateTime
 
 fun getStateIconFromWord(word: SimpleWeatherWord): ImageVector {
     return when (word) {
-        SimpleWeatherWord.STORMY -> Icons.Rounded.Thunderstorm
+        SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_HAIL, SimpleWeatherWord.EXTREME_STORMY, SimpleWeatherWord.EXTREME_STORMY_HAIL -> Icons.Rounded.Thunderstorm
         SimpleWeatherWord.HAIL, SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2, SimpleWeatherWord.SNOWY3 -> Icons.Rounded.AcUnit // Flocon
         SimpleWeatherWord.SNOWY_MIX -> Icons.Rounded.Grain // Pluie + Neige (approximation)
         SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2 -> Icons.Rounded.Umbrella
@@ -42,20 +42,21 @@ fun getStateIconFromWord(word: SimpleWeatherWord): ImageVector {
         SimpleWeatherWord.HAZE -> Icons.Rounded.Dehaze // Brume
         SimpleWeatherWord.FOGGY -> Icons.Rounded.Visibility // Brouillard
         SimpleWeatherWord.CLOUDY -> Icons.Rounded.Cloud
-        SimpleWeatherWord.SUNNY_CLOUDY -> Icons.Rounded.WbCloudy
+        SimpleWeatherWord.PARTLY_CLOUDY, SimpleWeatherWord.MOSTLY_CLEAR -> Icons.Rounded.WbCloudy
         SimpleWeatherWord.SUNNY -> Icons.Rounded.WbSunny
     }
 }
 
-fun getLottieIconPath(word: SimpleWeatherWord, isNight: Boolean = false): String {
-    val baseFolder = "icons/weather/"
+fun getLottieIconPath(word: SimpleWeatherWord, isNight: Boolean = false, darkTheme: Boolean = false): String {
+    val baseFolder = if (darkTheme) "icons/weather/night/" else "icons/weather/day/"
     return baseFolder + when (word) {
         SimpleWeatherWord.SUNNY -> if (isNight) "clear-night.json" else "clear-day.json"
-        SimpleWeatherWord.SUNNY_CLOUDY -> if (isNight) "partly-cloudy-night.json" else "partly-cloudy-day.json"
+        SimpleWeatherWord.MOSTLY_CLEAR -> if (isNight) "mostly-clear-night.json" else "mostly-clear-day.json"
+        SimpleWeatherWord.PARTLY_CLOUDY -> if (isNight) "partly-cloudy-night.json" else "partly-cloudy-day.json"
         SimpleWeatherWord.CLOUDY -> "cloudy.json"
         SimpleWeatherWord.FOGGY -> if (isNight) "fog-night.json" else "fog-day.json"
         SimpleWeatherWord.HAZE -> if (isNight) "haze-night.json" else "haze-day.json"
-        SimpleWeatherWord.DUST -> if (isNight) "dust-night.json" else "dust-day.json"
+        SimpleWeatherWord.DUST -> "dust.json"
         SimpleWeatherWord.DRIZZLY -> "drizzle.json"
         SimpleWeatherWord.RAINY1 -> "rain.json"
         SimpleWeatherWord.RAINY2 -> "extreme-rain.json"
@@ -64,7 +65,10 @@ fun getLottieIconPath(word: SimpleWeatherWord, isNight: Boolean = false): String
         SimpleWeatherWord.SNOWY2 -> "extreme-snow.json"
         SimpleWeatherWord.SNOWY3 -> "snow.json"
         SimpleWeatherWord.SNOWY_MIX -> "extreme-sleet.json"
-        SimpleWeatherWord.STORMY -> if (isNight) "thunderstorms-night.json" else "thunderstorms-day.json"
+        SimpleWeatherWord.STORMY -> "thunderstorms-rain.json"
+        SimpleWeatherWord.STORMY_HAIL -> "thunderstorms-hail.json"
+        SimpleWeatherWord.EXTREME_STORMY -> "thunderstorms-extreme-rain.json"
+        SimpleWeatherWord.EXTREME_STORMY_HAIL -> "thunderstorms-extreme-hail.json"
     }
 }
 

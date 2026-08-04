@@ -21,6 +21,7 @@ import fr.matthstudio.themeteo.utilClasses.AirQualityPeriod
 import fr.matthstudio.themeteo.utilClasses.AirQualityRequest
 import fr.matthstudio.themeteo.utilClasses.AlertStep
 import fr.matthstudio.themeteo.utilClasses.GovernmentInvertedGeocodingAPIResponse
+import fr.matthstudio.themeteo.utilClasses.MeteoFranceRainResponse
 import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
@@ -151,6 +152,14 @@ data class GeocodingResult(
     @SerialName("country_code") val countryCode: String,
     @SerialName("admin1") val region: String
 )
+
+sealed class SearchState {
+    object Idle : SearchState()
+    object Loading : SearchState()
+    data class Success(val results: List<GeocodingResult>) : SearchState()
+    data class Error(val message: String) : SearchState()
+    object Empty : SearchState()
+}
 
 fun Double?.nanToNull(): Double? {
     return if (this == null || this.isNaN()) null else this
@@ -423,13 +432,6 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             if (response.status.value == 200) {
                 val fullResponse = response.body<VigilanceMapResponse>()
 
-                // 1. On récupère les données du département pour toutes les périodes (J et J1)
-                val deptInPeriods = fullResponse.product.periods.mapNotNull { period ->
-                    period.timelaps.domainIds.find { it.domainId == departmentCode }
-                }
-
-                if (deptInPeriods.isEmpty()) return null
-
                 val now = OffsetDateTime.now()
 
                 // 1. On récupère les périodes qui contiennent notre département
@@ -461,7 +463,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             try {
                                 OffsetDateTime.parse(it.endTime).isAfter(now)
                             } catch (e: Exception) {
-            if (e is CancellationException) throw e
+                            if (e is CancellationException) throw e
                                 true
                             }
                         }.sortedBy { it.beginTime }
@@ -475,10 +477,8 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         )
                     }
 
-                if (mergedAlerts.isEmpty()) return null
-
-                // 3. Déterminer le maxColorId global sur les alertes restantes
-                val globalMaxColor = mergedAlerts.maxOf { it.maxColorId }
+                // 3. Déterminer le maxColorId global sur les alertes restantes (1 par défaut si vide)
+                val globalMaxColor = mergedAlerts.maxOfOrNull { it.maxColorId } ?: 1
 
                 VigilanceInfos(
                     departmentCode = departmentCode,
@@ -495,6 +495,34 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             if (e is CancellationException) throw e
             Log.e("WeatherService", "Exception lors de la récupération de la carte vigilance", e)
             telemetryManager?.logException(e)
+            null
+        }
+    }
+
+    /**
+     * Récupère les prévisions de pluie dans l'heure de Météo-France.
+     */
+    suspend fun getRainWithinHour(lat: Double, lon: Double): MeteoFranceRainResponse? {
+        val url = "https://webservice.meteofrance.com/v3/rain"
+        val token = "__Wj7dVSTjV9YGu1guveLyDq0g7S7TfTjaHBTPTpO0kj8__"
+
+        return try {
+            val response = client.get(url) {
+                parameter("lat", lat)
+                parameter("lon", lon)
+                parameter("token", token)
+            }
+
+            if (response.status.value == 200) {
+                response.body<MeteoFranceRainResponse>()
+            } else {
+                val errorBody = response.body<String>()
+                Log.e("WeatherService", "Erreur API Rain Within Hour : ${response.status} - $errorBody")
+                null
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Exception lors de la récupération de la pluie dans l'heure : ${e.message}")
             null
         }
     }

@@ -4,9 +4,11 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.dayChoserActivity
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fr.matthstudio.themeteo.GeocodingResult
+import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
@@ -162,25 +164,38 @@ class WeatherViewModel(
     // Le terme de recherche entré par l'utilisateur.
     private val _searchQuery = MutableStateFlow("")
 
-    // Les résultats de la recherche retournés par l'API Geocoding.
-    private val _geocodingResults = MutableStateFlow<List<GeocodingResult>>(emptyList())
-    val geocodingResults: StateFlow<List<GeocodingResult>> = _geocodingResults.asStateFlow()
+    /**
+     * État de la recherche de villes, réactif au changement de _searchQuery.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val searchState: StateFlow<SearchState> = _searchQuery
+        .debounce(300)
+        .flatMapLatest { query ->
+            if (query.length >= 2) {
+                kotlinx.coroutines.flow.flow<SearchState> {
+                    Log.d("WeatherViewModel", "Recherche lancée pour : $query (DayChooser)")
+                    emit(SearchState.Loading)
+                    val results = weatherService.searchCity(query)
+                    if (results == null) {
+                        emit(SearchState.Error("Erreur réseau"))
+                    } else if (results.isEmpty()) {
+                        emit(SearchState.Empty)
+                    } else {
+                        emit(SearchState.Success(results))
+                    }
+                }
+            } else {
+                kotlinx.coroutines.flow.flowOf(SearchState.Idle)
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = SearchState.Idle
+        )
 
 
     init {
-        // On observe le terme de recherche pour lancer un appel à l'API de geocoding.
-        viewModelScope.launch {
-            _searchQuery
-                .debounce(300) // Attend 300ms de silence de l'utilisateur avant de lancer la recherche pour éviter les appels inutiles.
-                .collect { query ->
-                    if (query.length > 2) {
-                        val results = weatherService.searchCity(query)
-                        _geocodingResults.value = results ?: emptyList()
-                    } else {
-                        _geocodingResults.value = emptyList()
-                    }
-                }
-        }
     }
 
     // --- 3. ACTIONS INITIÉES PAR L'UI ---
@@ -197,7 +212,6 @@ class WeatherViewModel(
      */
     fun clearSearch() {
         _searchQuery.value = ""
-        _geocodingResults.value = emptyList()
     }
 
     /**

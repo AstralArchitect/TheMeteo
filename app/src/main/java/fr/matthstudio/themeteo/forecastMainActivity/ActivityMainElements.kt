@@ -15,6 +15,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,19 +34,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.filled.Air
-import androidx.compose.material.icons.rounded.AddCircleOutline
-import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Grass
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocalFlorist
-import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Nature
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Water
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -57,6 +54,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -72,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.matthstudio.themeteo.LocationIdentifier
@@ -85,8 +84,9 @@ import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
-import fr.matthstudio.themeteo.satImgs.MapActivity
 import fr.matthstudio.themeteo.utilClasses.AirQualityUI
+import fr.matthstudio.themeteo.utilClasses.FullSunData
+import fr.matthstudio.themeteo.utilClasses.MeteoFranceRainResponse
 import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import java.time.Duration
@@ -95,11 +95,12 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.ui.platform.LocalLocale
 
 @Composable
 fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
     val (baseColor, meshColors) = when (state) {
-        SimpleWeatherWord.STORMY -> if (isNight) {
+        SimpleWeatherWord.STORMY, SimpleWeatherWord.STORMY_HAIL, SimpleWeatherWord.EXTREME_STORMY, SimpleWeatherWord.EXTREME_STORMY_HAIL -> if (isNight) {
             Color(0xFF0D001A) to listOf(
                 Color(0xFF311B92).copy(alpha = 0.7f),
                 Color(0xFF1A237E).copy(alpha = 0.5f),
@@ -177,7 +178,7 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
                 Color(0xFF78909C).copy(alpha = 0.5f)
             )
         }
-        SimpleWeatherWord.SUNNY_CLOUDY, SimpleWeatherWord.SUNNY -> if (isNight) {
+        SimpleWeatherWord.PARTLY_CLOUDY, SimpleWeatherWord.MOSTLY_CLEAR, SimpleWeatherWord.SUNNY -> if (isNight) {
             Color(0xFF000814) to listOf(
                 Color(0xFF001D3D).copy(alpha = 0.8f),
                 Color(0xFF003566).copy(alpha = 0.6f),
@@ -196,18 +197,49 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
             MaterialTheme.colorScheme.background
         )
     }
+    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || state == null) {
-        // Dégradé simple pour les versions anciennes ou lorsque state est null
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || state == null || isBatterySaverActive) {
+        // Mode optimisé : Mélange de dégradés radiaux (Mesh simulé) et linéaire (profondeur)
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
+                .background(baseColor)
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                // 1. Dégradé de profondeur pour éviter un rendu trop plat
+                drawRect(
                     brush = Brush.verticalGradient(
-                        colors = meshColors
+                        0.0f to Color.Black.copy(alpha = 0.1f),
+                        0.5f to Color.Transparent,
+                        1.0f to Color.Black.copy(alpha = 0.1f)
                     )
                 )
-        )
+
+                // 2. Simulation de l'effet "Mesh" avec des dégradés radiaux larges (très léger en CPU)
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[0], Color.Transparent),
+                        center = Offset(size.width * 0.1f, size.height * 0.2f),
+                        radius = size.maxDimension * 0.8f
+                    )
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[1], Color.Transparent),
+                        center = Offset(size.width * 0.9f, size.height * 0.4f),
+                        radius = size.maxDimension * 0.7f
+                    )
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[2], Color.Transparent),
+                        center = Offset(size.width * 0.4f, size.height * 0.8f),
+                        radius = size.maxDimension * 0.8f
+                    )
+                )
+            }
+        }
     } else {
         // Effet de cercles floutés (Mesh) pour les versions récentes
         Box(
@@ -240,6 +272,7 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
     }
 }
 
+
 @Composable
 fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewModel: WeatherViewModel) {
 
@@ -269,7 +302,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
             })
     ) {
         Column(
-            modifier = Modifier.padding(start = 8.dp, top = 0.dp)
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 0.dp)
         ) {
             Row (
                 modifier = Modifier.fillMaxWidth(),
@@ -384,10 +417,11 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
     }
 }
 
+
 // --- Sun & Details ---
 // Main Component
 @Composable
-fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDetails: () -> Unit, onShowDetails: () -> Unit) {
+fun Sun(viewModel: WeatherViewModel, onShowSunMoonDetails: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val sunData by viewModel.sunData.collectAsState()
         if (sunData == null)
@@ -491,115 +525,114 @@ fun SunAndDetails(viewModel: WeatherViewModel, context: Context, onShowSunMoonDe
                 event1 = displayEvent1,
                 event2 = displayEvent2,
                 text,
+                sunData = sunData!!,
                 onClick = onShowSunMoonDetails
             )
         }
-
-        // La card regroupée (Détails)
-        SummaryDetailsCard(
-            modifier = Modifier.weight(1f),
-            onClick = { onShowDetails() }
-        )
     }
 }
 
+
 // Sun Card
 @Composable
-fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunEvent?, text: String, onClick: () -> Unit) {
+fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunEvent?, text: String, sunData: FullSunData, onClick: () -> Unit) {
     // Helper function to format the time string required (HH:mm)
     fun LocalDateTime.formatTime(): String {
         return String.format(Locale.getDefault(), "%02d:%02d", this.hour, this.minute)
     }
 
     BentoCard(modifier = modifier.height(140.dp), onClick = onClick) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.sun), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            ResponsiveText(
-                text = text,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-
-            // Next event (Event 1)
-            Column {
-                val time1 = event1.dateTime.formatTime()
-
-                val label1 = if (event1.dayLabel == stringResource(R.string.today)) {
-                    stringResource(R.string.sun_event_format, event1.type, time1)
-                } else {
-                    stringResource(R.string.sun_event_day_format, event1.type, event1.dayLabel, time1)
-                }
-
-                ResponsiveText(
-                    label1,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
-
-                // Second next event (Event 2)
-                event2?.let { event ->
-                    val time2 = event.dateTime.formatTime()
-                    val label2 = if (event.dayLabel == stringResource(R.string.today)) {
-                        stringResource(R.string.sun_event_format, event.type, time2)
-                    } else {
-                        stringResource(R.string.sun_event_day_format, event.type, event.dayLabel, time2)
-                    }
-
-                    ResponsiveText(
-                        label2,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+        Row() {
+            Column(
+                modifier = Modifier.fillMaxHeight().padding(16.dp),
+                verticalArrangement = Arrangement.Top
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.WbSunny,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.sun),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    ResponsiveText(
+                        text = text,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Next event (Event 1)
+                    Column {
+                        val time1 = event1.dateTime.formatTime()
+
+                        val label1 = if (event1.dayLabel == stringResource(R.string.today)) {
+                            stringResource(R.string.sun_event_format, event1.type, time1)
+                        } else {
+                            stringResource(
+                                R.string.sun_event_day_format,
+                                event1.type,
+                                event1.dayLabel,
+                                time1
+                            )
+                        }
+
+                        ResponsiveText(
+                            label1,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // Second next event (Event 2)
+                        event2?.let { event ->
+                            val time2 = event.dateTime.formatTime()
+                            val label2 = if (event.dayLabel == stringResource(R.string.today)) {
+                                stringResource(R.string.sun_event_format, event.type, time2)
+                            } else {
+                                stringResource(
+                                    R.string.sun_event_day_format,
+                                    event.type,
+                                    event.dayLabel,
+                                    time2
+                                )
+                            }
+
+                            ResponsiveText(
+                                label2,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
             }
+
+            // Background Visualization
+            SunGraph(
+                data = sunData,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+            )
         }
     }
 }
 
-// Details Card
-@Composable
-fun SummaryDetailsCard(modifier: Modifier, onClick: () -> Unit) {
-    BentoCard(
-        modifier = modifier
-            .height(140.dp)
-            .clickable { onClick() }
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.AddCircleOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.details), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                // Icons from previous cards to hint content
-                Icon(Icons.Rounded.Air, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                Icon(Icons.Rounded.WaterDrop, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                Icon(Icons.Rounded.Compress, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-            }
-            Text(stringResource(R.string.show_more), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        }
-    }
-}
 
 // --- Daily Forecast Card ---
 @Composable
@@ -630,7 +663,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
         val userSettings by viewModel.userSettings.collectAsState()
         val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
-        var expandedDayIndex by remember { mutableStateOf(-1) }
+        var expandedDayIndex by remember { mutableIntStateOf(-1) }
 
         Column(modifier = Modifier.padding(vertical = 16.dp)) {
             Row(
@@ -749,14 +782,14 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
                                 GraphType.TEMP,
                                 Color(0xFFFFF176),
                                 scrollState = scrollState,
-                                contentWidth = 500.dp,
+                                contentWidth = 700.dp,
                                 contentHeight = 80.dp,
                                 compactHourFormat = false
                             )
                             WeatherIconGraph(viewModel,
                                 hourlyForecast,
                                 scrollState,
-                                500.dp,
+                                700.dp,
                                 true
                             )
                         }
@@ -805,22 +838,18 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
                             // Sun
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
-                                    Icons.Rounded.Timer,
+                                    Icons.Rounded.WbSunny,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.secondary
                                 )
+                                val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+                                val sunriseTime = dayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.format(timeFormatter) ?: "--:--"
+                                val sunsetTime = dayReading.sunset.toEventLocalDateTime(context.applicationContext)?.format(timeFormatter) ?: "--:--"
+                                
                                 Text(
-                                    "${dayReading.sunrise.toEventLocalDateTime(context.applicationContext)?.hour}:${
-                                        dayReading.sunrise.toEventLocalDateTime(
-                                            context.applicationContext
-                                        )?.minute
-                                    } " +
-                                            "/ ${dayReading.sunset.toEventLocalDateTime(context.applicationContext)?.hour}:${
-                                                dayReading.sunset.toEventLocalDateTime(
-                                                    context.applicationContext
-                                                )?.minute
-                                            }", style = MaterialTheme.typography.labelSmall
+                                    text = "$sunriseTime / $sunsetTime",
+                                    style = MaterialTheme.typography.labelSmall
                                 )
                             }
                         }
@@ -837,6 +866,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
         }
     }
 }
+
 
 // --- Air Quality And Pollen ---
 @Composable
@@ -917,6 +947,7 @@ fun AirQualityCard(
     }
 }
 
+
 @Composable
 fun PollenCard(
     data: PollenUI,
@@ -994,6 +1025,7 @@ fun PollenCard(
     }
 }
 
+
 @Composable
 fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     val context = LocalContext.current
@@ -1012,7 +1044,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     // Si l'alerte a un niveau strictement inférieur 2 (jaune) on n'affiche pas, car c'est vigilance verte (pas d'alerte).
     if (mainAlert.maxColorId < 2) return
 
-    // On récupère les heures de début et de fin (première et dernière étape > Vert)
+    // On récupère les heures de début et de fin (première et dernière étape > Vert).
     val activeSteps = mainAlert.steps.filter { it.colorId > 1 }
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
     val now = LocalDate.now()
@@ -1030,9 +1062,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     val showDate = startDateTime?.toLocalDate() != LocalDate.now() || endDateTime?.toLocalDate() != LocalDate.now()
 
     val startLabel = if (showDate && startDateTime != null) {
-        val label = if (startDateTime.toLocalDate() == now) stringResource(R.string.today_lower) else stringResource(
-            R.string.tomorrow_lower
-        )
+        val label = if (startDateTime.toLocalDate() == now) stringResource(R.string.today_lower) else stringResource(R.string.tomorrow_lower)
         " ($label)"
     } else ""
 
@@ -1078,7 +1108,6 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     BentoCard(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (isMinified) 64.dp else 130.dp)
             .padding(vertical = 4.dp)
             .clickable { onCardClick() }
     ) {
@@ -1087,7 +1116,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(alertColor.copy(alpha = 0.2f))
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -1116,7 +1145,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(alertColor.copy(alpha = 0.2f))
-                    .padding(16.dp),
+                    .padding(16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -1156,57 +1185,6 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     }
 }
 
-@Composable
-fun WeatherDetailCard(item: WeatherDetailItem) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(110.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(12.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        item.icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        item.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1
-                    )
-                }
-                Text(
-                    item.value,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-            }
-            item.subValue?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                    maxLines = 3,
-                    lineHeight = 14.sp
-                )
-            }
-        }
-    }
-}
 
 // --- Additional Infos ---
 @Composable
@@ -1246,7 +1224,7 @@ fun AdditionalInfos(viewModel: WeatherViewModel, context: Context) {
             color = Color.White.copy(alpha = 0.7f)
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        /*Spacer(modifier = Modifier.height(8.dp))
 
         Button(
             onClick = {
@@ -1262,9 +1240,10 @@ fun AdditionalInfos(viewModel: WeatherViewModel, context: Context) {
             Icon(Icons.Rounded.Map, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.open_satellite_map))
-        }
+        }*/
     }
 }
+
 
 @Composable
 fun RainAlertCard(hourlyForecast: WeatherDataState) {
@@ -1278,7 +1257,7 @@ fun RainAlertCard(hourlyForecast: WeatherDataState) {
     val firstRain = next12Hours.firstOrNull { (it.precipitationData.precipitation ?: 0.0) > 0.1 }
 
     if (firstRain != null) {
-        val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+        val formatter = DateTimeFormatter.ofPattern("HH:mm")
         val rainTime = firstRain.time.format(formatter)
 
         BentoCard(
@@ -1326,10 +1305,206 @@ fun RainAlertCard(hourlyForecast: WeatherDataState) {
 }
 
 @Composable
+fun RainWithinHourCard(viewModel: WeatherViewModel) {
+    val appContext = LocalContext.current.applicationContext as TheMeteo
+    val rainState by viewModel.rainWithinHour.collectAsState()
+
+    if (rainState !is WeatherDataState.SuccessRainWithinHour) return
+
+    val rainData = (rainState as WeatherDataState.SuccessRainWithinHour).data
+    val forecast = rainData.properties.forecast
+    if (forecast.isEmpty()) return
+
+    // On ne montre la carte que s'il y a de la pluie prévue (intensité > 1).
+    val hasRain = forecast.any { it.rainIntensity > 1 }
+    if (!hasRain) return
+
+    var showDialog by remember { mutableStateOf(false) }
+
+    if (showDialog) {
+        RainForecastExplanationDialog(onDismiss = { showDialog = false })
+    }
+
+    BentoCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    showDialog = true
+                },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.WaterDrop,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.precipitation_forecast),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Icon(
+                    Icons.Rounded.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            val rowHeight = 40.dp
+
+            BoxWithConstraints {
+                val parentWidth = maxWidth
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(rowHeight),
+                        horizontalArrangement = Arrangement.Start,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        for (i in forecast.indices) {
+                            val interval = forecast[i]
+                            val localDateTime = interval.time.toEventLocalDateTime(appContext)
+                                ?: return@BoxWithConstraints
+
+                            val localMinutes = localDateTime.minute
+                            val previousMinutes = if (i > 0) {
+                                forecast[i - 1].time.toEventLocalDateTime(appContext)?.minute
+                                    ?: return@BoxWithConstraints
+                            } else {
+                                localMinutes - 5
+                            }
+
+                            val diffMinutes = (localMinutes - previousMinutes + 60) % 60
+                            val multiplicator = if (diffMinutes == 10) 2 else 1
+                            val itemWidth = (parentWidth / 12) * multiplicator
+
+                            val color = when (interval.rainIntensity) {
+                                1 -> Color.Transparent // Sec
+                                2 -> Color(0xFF90CAF9) // Light blue
+                                3 -> Color(0xFF42A5F5) // Blue
+                                4 -> Color(0xFF2962FF) // Dark blue
+                                else -> Color.Transparent
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .width(itemWidth)
+                                    .padding(end = 2.dp)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.BottomCenter
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(
+                                            when (interval.rainIntensity) {
+                                                1 -> 0.dp
+                                                2 -> (rowHeight / 3) * 1
+                                                3 -> (rowHeight / 3) * 2
+                                                4 -> (rowHeight / 3) * 3
+                                                else -> rowHeight
+                                            }
+                                        )
+                                        .background(
+                                            color = color,
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        var i = 0
+                        while (i < forecast.size) {
+                            val interval = forecast[i]
+                            val localDateTime = interval.time.toEventLocalDateTime(appContext)
+
+                            val localMinutes = localDateTime?.minute ?: 0
+                            val previousMinutes = if (i > 0) {
+                                forecast[i - 1].time.toEventLocalDateTime(appContext)?.minute ?: (localMinutes - 5)
+                            } else {
+                                localMinutes - 5
+                            }
+                            val diffMinutes = (localMinutes - previousMinutes + 60) % 60
+                            val multiplicator = if (diffMinutes == 10) 2 else 1
+                            val currentWidth = (parentWidth / 12) * multiplicator
+
+                            // Si c'est un intervalle de 5 min, on fusionne la largeur de 2 cases
+                            val (labelWidth, step) = if (multiplicator == 2) {
+                                currentWidth to 1
+                            } else if (i + 1 < forecast.size) {
+                                val nextInterval = forecast[i + 1]
+                                val nextDateTime = nextInterval.time.toEventLocalDateTime(appContext)
+                                val nextLocalMinutes = nextDateTime?.minute ?: (localMinutes + 5)
+                                val nextDiff = (nextLocalMinutes - localMinutes + 60) % 60
+                                val nextMultiplicator = if (nextDiff == 10) 2 else 1
+                                val nextWidth = (parentWidth / 12) * nextMultiplicator
+
+                                (currentWidth + nextWidth) to 2
+                            } else {
+                                currentWidth to 1
+                            }
+
+                            if (localDateTime != null) {
+                                val formattedTime = String.format(
+                                    Locale.getDefault(),
+                                    "%02dh%02d",
+                                    localDateTime.hour,
+                                    localDateTime.minute
+                                )
+                                Box(
+                                    modifier = Modifier.width(labelWidth),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = formattedTime,
+                                        style = MaterialTheme.typography.labelMedium, // Texte plus grand et lisible
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+
+                            i += step
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun BentoCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     Surface(
         modifier = if (onClick != null) modifier.clickable { onClick() } else modifier,
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f),
         shape = RoundedCornerShape(28.dp),
         tonalElevation = 12.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))

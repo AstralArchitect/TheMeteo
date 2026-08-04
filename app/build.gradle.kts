@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.20" // Utilisez la même version que votre Kotlin
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0" // Utilisez la même version que votre Kotlin
     id("kotlin-parcelize")
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     alias(libs.plugins.google.services)
@@ -28,8 +28,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 48
-        versionName = "2.4.2"
+        versionCode = 762
+        versionName = "2.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,10 +47,6 @@ android {
 
         // Configuration pour le build de production
         release {
-            // Ajout du suffixe pour la version de release
-            // Note : Pas de suffixe pour l'applicationID en release
-            versionNameSuffix = "-${getBuildDate()}"
-
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

@@ -107,3 +107,36 @@ data class PhenomenonSummaryItem(
     @SerialName("any_color_count") val anyColorCount: Int,
     @SerialName("phenomenon_counts") val phenomenonCounts: List<ColorSummaryItem>
 )
+
+@Serializable
+data class MeteoFranceRainResponse(
+    @SerialName("update_time") val updateTime: String,
+    val type: String,
+    val geometry: RainGeometry,
+    val properties: RainProperties
+)
+
+@Serializable
+data class RainGeometry(
+    val type: String,
+    val coordinates: List<Double>
+)
+
+@Serializable
+data class RainProperties(
+    val altitude: Int,
+    val name: String,
+    val country: String,
+    @SerialName("french_department") val frenchDepartment: String,
+    @SerialName("rain_product_available") val rainProductAvailable: Int,
+    val timezone: String,
+    val confidence: Int,
+    val forecast: List<RainForecast>
+)
+
+@Serializable
+data class RainForecast(
+    val time: String,
+    @SerialName("rain_intensity") val rainIntensity: Int,
+    @SerialName("rain_intensity_description") val rainIntensityDescription: String
+)

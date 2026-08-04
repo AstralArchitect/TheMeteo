@@ -11,17 +11,20 @@ import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.getHourlyData
+import fr.matthstudio.themeteo.getDailyData
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
@@ -32,14 +35,16 @@ import java.time.LocalDateTime
 @OptIn(FlowPreview::class) // Nécessaire pour l'opérateur debounce
 class WeatherViewModel(
     weatherCache: WeatherCache,
-    startDateTime: LocalDateTime,
-    fullPeriod: Boolean,
+    initialStartDateTime: LocalDateTime,
+    val fullPeriod: Boolean,
     telemetryManager: TelemetryManager
 ) : ViewModel() {
 
     private val weatherService = WeatherService(telemetryManager)
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
+
+    val currentStartDateTime = MutableStateFlow(initialStartDateTime)
 
     /**
      * Expose les paramètres utilisateur (modèle, arrondi, etc.) directement depuis le WeatherCache.
@@ -61,7 +66,9 @@ class WeatherViewModel(
      * Forecast pour 24 heures à partir de l'heure actuelle, ou pour toute la durée du modèle.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val hourlyForecast = userSettings.flatMapLatest { settings ->
+    val hourlyForecast = combine(userSettings, currentStartDateTime) { settings, startDate ->
+        Pair(settings, startDate)
+    }.flatMapLatest { (settings, startDate) ->
         val durationHours = if (fullPeriod) {
             val model = WeatherModelRegistry.getModel(
                 settings.model,
@@ -71,8 +78,24 @@ class WeatherViewModel(
         } else {
             24L
         }
-        weatherCache.get(startDateTime, durationHours.toInt())
+        weatherCache.get(startDate, durationHours.toInt())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
+
+    /**
+     * Liste des jours disponibles pour le sélecteur.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val availableDays = userSettings.flatMapLatest { settings ->
+        val model = WeatherModelRegistry.getModel(
+            settings.model,
+            settings.forecastType == ForecastType.ENSEMBLE
+        )
+        weatherCache.get(LocalDate.now(), model.predictionDays.toLong())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
+
+    fun updateStartDate(dateTime: LocalDateTime) {
+        currentStartDateTime.value = dateTime
+    }
 
     /**
      * État "Nuit" centralisé.

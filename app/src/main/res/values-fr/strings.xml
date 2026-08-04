@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="temperature_forecast">Prévision de température</string>
-    <string name="precipitation_forecast">Prévision de pluie</string>
+    <string name="precipitation_forecast">Pluie dans l\'heure</string>
     <string name="wind_forecast">Prévision du vent</string>
     <string name="actual_situation">Situation Actuelle</string>
     <string name="open_satellite_view">Ouvrir les vues Satellites</string>
@@ -123,8 +123,6 @@
     <string name="uv_index_format">Indice UV : %d</string>
     <string name="pollen_index_format">Indice : %d</string>
     <string name="major_pollutant_format">Polluant majeur : %s</string>
-    <string name="sun_event_format" translatable="false">%1$s : %2$s</string>
-    <string name="sun_event_day_format" translatable="false">%1$s (%2$s) : %3$s</string>
     <string name="sun_moon_details">Détails Soleil &amp; Lune</string>
     <string name="sun_path">Trajectoire du Soleil</string>
     <string name="solar_noon">Midi Solaire</string>
@@ -197,8 +195,10 @@
     <string name="animated_icons_title">Icônes animées</string>
     <string name="animated_icons_desc">Animer les icônes météo, désactivé lorsque l\'économiseur de batterie est activé</string>
     <string name="fill_missing_vars_title">Compléter les variables manquantes</string>
-    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisit avec les donné du modèle \"Auto\"</string>
-    <string name="meilleur_mod_le_par_d_faut">Auto (par défaut)</string>
+    <string name="fill_missing_vars_desc">Compléter les variables manquantes du modèle choisi avec les données des modèles par défaut (ECMWF/GFS)</string>
+    <string name="extend_duration_title">Prolonger la durée des prévisions</string>
+    <string name="extend_duration_desc">Prolonge la durée de prévision du modèle choisi (ex: AROME) en utilisant les modèles globaux (ECMWF/GFS).</string>
+    <string name="meilleur_mod_le_par_d_faut">ECMWF IFS (Recommandé)</string>
     <string name="major_polluant">Polluant Majeur: %1$s</string>
     <string name="gusts">Rafales</string>
     <string name="forecast_type_title">Type de prévision</string>
@@ -246,6 +246,7 @@
     <string name="moderate">Modéré</string>
     <string name="high">Fort</string>
     <string name="very_high">Très fort</string>
+    <string name="none">Aucun</string>
     <string name="extreme">Extrême</string>
     <string name="error_gps_unavailable">Position GPS indisponible. Veuillez vérifier les permissions de localisation.</string>
     <string name="background_location_rationale_title">Mises à jour des widgets</string>
@@ -258,4 +259,38 @@
     <string name="theme_fixed">Fixe</string>
     <string name="theme_system">Système</string>
     <string name="theme_weather">Météo</string>
+
+    <!-- Notifications Settings -->
+    <string name="rain_notifications_title">Notifications de pluie</string>
+    <string name="rain_notifications_desc">Soyez notifié de la pluie ou de la neige à venir.</string>
+    <string name="vigilance_notifications_title">Notifications de vigilance</string>
+    <string name="vigilance_notifications_desc">Soyez notifié des phénomènes dangereux (Vigilance).</string>
+    <string name="notification_permission_title">Activer les Notifications</string>
+    <string name="notification_permission_desc">Pour recevoir les alertes de vigilance et les notifications de pluie, l\'application doit avoir l\'autorisation d\'envoyer des notifications.</string>
+    <string name="notification_permission_button">Autoriser</string>
+
+    <!-- Notifications -->
+    <string name="vigilance_yellow_channel_name">Vigilance Météo (Jaune)</string>
+    <string name="vigilance_yellow_channel_description">Notifications pour les vigilances jaunes.</string>
+    <string name="vigilance_high_channel_name">Vigilance Météo (Élevée)</string>
+    <string name="vigilance_high_channel_description">Notifications pour les alertes orange et rouges.</string>
+    <string name="rain_channel_name">Précipitations</string>
+    <string name="rain_channel_description">Notifications pour la pluie ou la neige à venir.</string>
+    <string name="vigilance_alert_title">Alerte Météo : %1$s</string>
+    <string name="vigilance_duration">De %1$s à %2$s - A %3$s</string>
+    <string name="rain_alert_title">Alerte Pluie</string>
+    <string name="rain_within_the_hour">Pluie dans l\'heure</string>
+    <string name="now">Maintenant</string>
+    <string name="mostly_cloudy">Globalement Ensoleillé</string>
+    <string name="no_results">Aucun résultat trouvé</string>
+    <string name="type_more_chars">Entrez au moins 2 caractères pour rechercher</string>
+
+    <string name="rain_forecast_explanation_title">Informations sur la pluie dans l\'heure</string>
+    <string name="rain_forecast_explanation_1">La prévision de pluie est fournie par Météo France et n\'est donc disponible qu\'en France.\n\nElle indique les prévisions de précipitations pour l\'heure suivante en 3 niveaux :</string>
+    <string name="rain_forecast_explanation_2">La prévision de précipitations est généralement de meilleure qualité et plus fiable que les prévisions horaires.</string>
+    <string name="rain_rate_low">Faible intensité</string>
+    <string name="rain_rate_medium">Intensité modérée</string>
+    <string name="rain_rate_high">Forte intensité</string>
+    <string name="rain_radar">Radar de Pluie</string>
+    <string name="click_to_view_full_screen">Cliquez pour passer en plein écran</string>
 </resources>
