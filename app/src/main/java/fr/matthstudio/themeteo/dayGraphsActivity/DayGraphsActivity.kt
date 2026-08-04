@@ -1138,7 +1138,10 @@ fun WeatherIconGraphGlobal(
     val hourlyData = if (showPairsOnly && rawHourlyData != null) aggregateHourlyData(rawHourlyData) else rawHourlyData
 
     val density = LocalDensity.current
-    val iconsSize = if (!showPairsOnly) contentWidth / 20f else contentWidth / 11f
+    // contentWidth = size(24 : 00h->23h) * 53.dp = 24 * 53.dp = 1272.dp
+    // iconSize (when showPairsOnly = false) = 1272 / 20 = 63.6
+    // iconSize (when showPairsOnly = true) = 1272 / 11 = 115.63
+    val iconsSize: Dp = if (!showPairsOnly) 63.6.dp else 115.63.dp
     val xPaddingPx = with(density) { 20.dp.toPx() }
     val daySeparatorColor = Color.Gray.copy(alpha = 0.7f)
     
@@ -1153,12 +1156,12 @@ fun WeatherIconGraphGlobal(
             val canvasWidthPx = with(density) { contentWidth.toPx() }
             val xStepPx = (canvasWidthPx - 2 * xPaddingPx) / (rawHourlyData.size - 1)
             
-            for (i in 0..<hourlyData.size) {
+            for ((i, element) in hourlyData.withIndex()) {
                 val xPosPx = xPaddingPx + (i * (if(showPairsOnly) 2 else 1) * xStepPx)
                 val xPosDp = with(density) { xPosPx.toDp() }
                 
-                val weatherWord = getSimpleWeather(hourlyData[i]).word
-                val radiation = hourlyData[i].skyInfo.shortwaveRadiation
+                val weatherWord = getSimpleWeather(element).word
+                val radiation = element.skyInfo.shortwaveRadiation
                 val isDay = if (radiation != null) radiation >= 1.0 else null
 
                 Box(
@@ -1167,11 +1170,11 @@ fun WeatherIconGraphGlobal(
                         .size(iconsSize),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (hourlyData[i].wmoEnsemble != null) {
+                    if (element.wmoEnsemble != null) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             LottieWeatherIcon(
                                 iconPath = getLottieIconPath(
-                                    weatherCodeToSimpleWord(hourlyData[i].wmoEnsemble?.best)!!,
+                                    weatherCodeToSimpleWord(element.wmoEnsemble?.best)!!,
                                     (isDay == false),
                                     isSystemInDarkTheme()
                                 ),
@@ -1180,7 +1183,7 @@ fun WeatherIconGraphGlobal(
                             )
                             LottieWeatherIcon(
                                 iconPath = getLottieIconPath(
-                                    weatherCodeToSimpleWord(hourlyData[i].wmoEnsemble?.worst)!!,
+                                    weatherCodeToSimpleWord(element.wmoEnsemble?.worst)!!,
                                     (isDay == false),
                                     isSystemInDarkTheme()
                                 ),
