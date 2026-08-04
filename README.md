@@ -2,6 +2,8 @@
 
 TheMeteo est une application météo complète pour Android offrant des prévisions d'une précision chirurgicale, un large choix de modèles météorologiques, des radars de pluie interactifs et une multitude de données environnementales (Pollen, Qualité de l'Air, Vigilance). Le tout dans une interface moderne et personnalisable.
 
+[![Disponible sur Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/fr_badge_web_generic.png)](https://play.google.com/store/apps/details?id=fr.matthstudio.themeteo)
+
 ## Identité Visuelle : La Fusion Hardware-Météo
 TheMeteo arbore une identité visuelle unique : **Le Hardware Cloud**. 
 - **Le côté gauche** du logo (nuage) laisse apparaître des pistes de circuits intégrés et des terminaux circulaires, symbolisant la puissance de calcul, les modèles numériques complexes et la précision technologique des algorithmes de prévision.
