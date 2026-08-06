@@ -70,11 +70,12 @@ class WeatherViewModel(
         Pair(settings, startDate)
     }.flatMapLatest { (settings, startDate) ->
         val durationHours = if (fullPeriod) {
-            val model = WeatherModelRegistry.getModel(
+            val maxDays = WeatherModelRegistry.getMaxPredictionDays(
                 settings.model,
-                settings.forecastType == ForecastType.ENSEMBLE
+                settings.forecastType == ForecastType.ENSEMBLE,
+                settings.enableDurationExtension
             )
-            model.predictionDays * 24L
+            maxDays * 24L
         } else {
             24L
         }
@@ -86,11 +87,12 @@ class WeatherViewModel(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val availableDays = userSettings.flatMapLatest { settings ->
-        val model = WeatherModelRegistry.getModel(
+        val maxDays = WeatherModelRegistry.getMaxPredictionDays(
             settings.model,
-            settings.forecastType == ForecastType.ENSEMBLE
+            settings.forecastType == ForecastType.ENSEMBLE,
+            settings.enableDurationExtension
         )
-        weatherCache.get(LocalDate.now(), model.predictionDays.toLong())
+        weatherCache.get(LocalDate.now(), maxDays.toLong())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
 
     fun updateStartDate(dateTime: LocalDateTime) {
@@ -124,6 +126,11 @@ class WeatherViewModel(
             else -> null
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * Expose le nom de la ville actuelle récupéré via géocodage inverse.
+     */
+    val currentCityName: StateFlow<String?> = weatherCache.currentCityName
 
     // --- 2. NETTOYAGE ---
     /**

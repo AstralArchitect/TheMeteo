@@ -317,4 +317,5 @@
     <string name="rain_rate_high">High rain Rate</string>
     <string name="rain_radar">Rain Radar</string>
     <string name="click_to_view_full_screen">Click to view full screen</string>
+    <string name="sun_details">Sun Details</string>
 </resources>

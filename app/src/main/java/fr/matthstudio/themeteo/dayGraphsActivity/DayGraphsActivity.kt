@@ -1138,10 +1138,11 @@ fun WeatherIconGraphGlobal(
     val hourlyData = if (showPairsOnly && rawHourlyData != null) aggregateHourlyData(rawHourlyData) else rawHourlyData
 
     val density = LocalDensity.current
-    // contentWidth = size(24 : 00h->23h) * 53.dp = 24 * 53.dp = 1272.dp
+    // contentWidth (when showPairsOnly = false) = size(24 : 00h->23h) * 53.dp = 24 * 53.dp = 1272.dp
     // iconSize (when showPairsOnly = false) = 1272 / 20 = 63.6
-    // iconSize (when showPairsOnly = true) = 1272 / 11 = 115.63
-    val iconsSize: Dp = if (!showPairsOnly) 63.6.dp else 115.63.dp
+    // contentWidth (when showPairsOnly = true) = size(12 : 00h->22h) * 53.dp = 12 * 53.dp = 636.dp
+    // iconSize (when showPairsOnly = true) = 636 / 11 = 57.82
+    val iconsSize: Dp = if (!showPairsOnly) 63.6.dp else 57.82.dp
     val xPaddingPx = with(density) { 20.dp.toPx() }
     val daySeparatorColor = Color.Gray.copy(alpha = 0.7f)
     

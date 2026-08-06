@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
@@ -260,6 +261,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
     // --- GESTION DE L'ÉTAT DE L'UI ---
     val selectedLocation by viewModel.selectedLocation.collectAsState()
+    val currentCityName by viewModel.currentCityName.collectAsState()
     val bentoCardsOrder by viewModel.bentoCardsOrder.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
     var showAddLocationDialog by remember { mutableStateOf(false) }
@@ -280,6 +282,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         val currentWeathers by viewModel.currentWeather.collectAsState()
         val userSettings by viewModel.userSettings.collectAsState()
         val isPermissionGranted by viewModel.isLocationPermissionGranted.collectAsState()
+        val currentCityName by viewModel.currentCityName.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
@@ -287,6 +290,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             currentWeathers = currentWeathers,
             userSettings = userSettings,
             isPermissionGranted = isPermissionGranted,
+            currentCityName = currentCityName,
             onSelectLocation = { viewModel.selectLocation(it) },
             onRemoveLocation = { viewModel.removeLocation(it) },
             onRenameLocation = { location, newName -> viewModel.renameLocation(location, newName) },
@@ -513,7 +517,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = when (val loc = selectedLocation) {
-                                            is LocationIdentifier.CurrentUserLocation -> stringResource(
+                                            is LocationIdentifier.CurrentUserLocation -> currentCityName ?: stringResource(
                                                 R.string.current_location
                                             )
 
@@ -521,6 +525,21 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         },
                                         style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
                                     )
+                                    if (selectedLocation is LocationIdentifier.CurrentUserLocation) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Surface(
+                                            modifier = Modifier.align(Alignment.CenterVertically),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "GPS",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
                                     Icon(
                                         Icons.Default.ArrowDropDown,
                                         contentDescription = null,

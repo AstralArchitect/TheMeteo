@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -531,6 +532,7 @@ fun LocationManagementSheet(
     currentWeathers: WeatherDataState,
     userSettings: UserSettings,
     isPermissionGranted: Boolean,
+    currentCityName: String? = null,
     onSelectLocation: (LocationIdentifier) -> Unit,
     onRemoveLocation: (SavedLocation) -> Unit,
     onRenameLocation: (SavedLocation, String) -> Unit,
@@ -582,6 +584,7 @@ fun LocationManagementSheet(
                             isDefault = userSettings.defaultLocation is LocationIdentifier.CurrentUserLocation,
                             temperatureUnit = userSettings.temperatureUnit,
                             roundToInt = userSettings.roundToInt,
+                            isGps = true,
                             onClick = {
                                 onSelectLocation(LocationIdentifier.CurrentUserLocation)
                                 onDismiss()
@@ -688,6 +691,7 @@ fun LocationRow(
     currentWeatherReading: CurrentWeatherReading? = null,
     temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
     roundToInt: Boolean = true,
+    isGps: Boolean = false,
     onSetAsDefault: () -> Unit,
     onClick: () -> Unit,
     onDelete: (() -> Unit)?, 
@@ -706,7 +710,7 @@ fun LocationRow(
             )
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -723,6 +727,21 @@ fun LocationRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (isGps) {
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.Surface(
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "GPS",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
             }
             Row (verticalAlignment = Alignment.CenterVertically) {
                 if (currentWeatherReading != null) {

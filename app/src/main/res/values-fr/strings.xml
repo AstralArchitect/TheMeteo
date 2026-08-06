@@ -293,4 +293,5 @@
     <string name="rain_rate_high">Forte intensité</string>
     <string name="rain_radar">Radar de Pluie</string>
     <string name="click_to_view_full_screen">Cliquez pour passer en plein écran</string>
+    <string name="sun_details">Détails Soleil et Lune</string>
 </resources>

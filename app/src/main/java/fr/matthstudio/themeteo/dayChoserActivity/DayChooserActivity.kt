@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
@@ -153,6 +154,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
         val currentWeathers by weatherViewModel.currentWeather.collectAsState()
         val isPermissionGranted by weatherViewModel.isLocationPermissionGranted.collectAsState()
+        val currentCityName by weatherViewModel.currentCityName.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
@@ -160,6 +162,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
             currentWeathers = currentWeathers,
             userSettings = weatherViewModel.userSettings.collectAsState().value,
             isPermissionGranted = isPermissionGranted,
+            currentCityName = currentCityName,
             onSelectLocation = { weatherViewModel.selectLocation(it) },
             onRemoveLocation = { weatherViewModel.removeLocation(it) },
             onRenameLocation = { location, newName -> weatherViewModel.renameLocation(location, newName) },
@@ -251,13 +254,28 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                     )
                     Spacer(Modifier.width(8.dp))
                     // Affiche le nom du lieu actuellement sélectionné
+                    val currentCityName by weatherViewModel.currentCityName.collectAsState()
                     Text(
                         text = when (val loc = selectedLocation) {
-                            is LocationIdentifier.CurrentUserLocation -> stringResource(R.string.current_location)
+                            is LocationIdentifier.CurrentUserLocation -> currentCityName ?: stringResource(R.string.current_location)
                             is LocationIdentifier.Saved -> loc.location.name
                         },
                         style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     )
+                    if (selectedLocation is LocationIdentifier.CurrentUserLocation) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "GPS",
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
                     Icon(
                         Icons.Default.ArrowDropDown,
                         contentDescription = "Change location icon",

@@ -11,7 +11,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Parcelable
 import android.os.PowerManager
-import android.util.Log
 import androidx.glance.appwidget.updateAll
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
@@ -192,6 +191,8 @@ class WeatherCache(
     // --- StateFlow pour la position GPS réelle ---
     private val _currentGpsPosition = MutableStateFlow<GpsCoordinates?>(null)
     val currentGpsPosition: StateFlow<GpsCoordinates?> = _currentGpsPosition.asStateFlow()
+    private val _currentCityName = MutableStateFlow<String?>(null)
+    val currentCityName: StateFlow<String?> = _currentCityName.asStateFlow()
     private val lastGpsPosFetch = MutableStateFlow<LocalDateTime?>(null)
     private val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val _isBatterySaverActive = MutableStateFlow(powerManager.isPowerSaveMode)
@@ -456,20 +457,7 @@ class WeatherCache(
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         var effectiveModel = currentSettings.model
         
-        val maxPredictionDays = if (currentSettings.enableDurationExtension && !isEnsembleMode) {
-            val modelChainForDuration = mutableListOf<String>()
-            modelChainForDuration.add(effectiveModel)
-            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
-            while (currentM.secondaryModelApiName != null && !modelChainForDuration.contains(currentM.secondaryModelApiName)) {
-                modelChainForDuration.add(currentM.secondaryModelApiName!!)
-                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
-            }
-            if (!modelChainForDuration.contains("gfs_seamless")) modelChainForDuration.add("gfs_seamless")
-            
-            modelChainForDuration.map { WeatherModelRegistry.getModel(it, false).predictionDays }.maxOrNull() ?: 14
-        } else {
-            WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays
-        }
+        val maxPredictionDays = WeatherModelRegistry.getMaxPredictionDays(effectiveModel, isEnsembleMode, currentSettings.enableDurationExtension)
 
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
             .plusDays(maxPredictionDays.toLong())
@@ -480,21 +468,7 @@ class WeatherCache(
         }
 
         // --- 1. Construction de la chaîne de modèles ---
-        val modelChain = mutableListOf<String>()
-        modelChain.add(effectiveModel)
-        
-        if ((currentSettings.enableModelFallback || currentSettings.enableDurationExtension) && !isEnsembleMode) {
-            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
-            while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
-                modelChain.add(currentM.secondaryModelApiName!!)
-                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
-            }
-            // Sécurité : s'assurer que gfs_seamless est à la fin si pas déjà présent.
-            if (!modelChain.contains("gfs_seamless")) {
-                modelChain.add("gfs_seamless")
-            }
-            if (modelChain.size > 3) Log.w("WeatherCache", "Model chain is too long: $modelChain")
-        }
+        val modelChain = WeatherModelRegistry.getModelChain(effectiveModel, isEnsembleMode, currentSettings.enableModelFallback || currentSettings.enableDurationExtension)
 
         // --- 2. Récupération depuis le cache et fusion ---
         val cachedDataByModel = mutableMapOf<String, List<AllHourlyVarsReading>>()
@@ -666,20 +640,7 @@ class WeatherCache(
         val isEnsembleMode = currentSettings.forecastType == ForecastType.ENSEMBLE
         var effectiveModel = currentSettings.model
 
-        val maxPredictionDays = if (currentSettings.enableDurationExtension && !isEnsembleMode) {
-            val modelChainForDuration = mutableListOf<String>()
-            modelChainForDuration.add(effectiveModel)
-            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
-            while (currentM.secondaryModelApiName != null && !modelChainForDuration.contains(currentM.secondaryModelApiName)) {
-                modelChainForDuration.add(currentM.secondaryModelApiName!!)
-                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
-            }
-            if (!modelChainForDuration.contains("gfs_seamless")) modelChainForDuration.add("gfs_seamless")
-            
-            modelChainForDuration.map { WeatherModelRegistry.getModel(it, false).predictionDays }.maxOrNull() ?: 14
-        } else {
-            WeatherModelRegistry.getModel(effectiveModel, isEnsembleMode).predictionDays
-        }
+        val maxPredictionDays = WeatherModelRegistry.getMaxPredictionDays(effectiveModel, isEnsembleMode, currentSettings.enableDurationExtension)
 
         val maxAllowedDate = LocalDateTime.now(ZoneId.of("UTC"))
             .plusDays(maxPredictionDays.toLong())
@@ -688,19 +649,7 @@ class WeatherCache(
         if (endDate.isAfter(maxAllowedDate)) endDate = maxAllowedDate
 
         // --- 1. Construction de la chaîne de modèles ---
-        val modelChain = mutableListOf<String>()
-        modelChain.add(effectiveModel)
-        
-        if ((currentSettings.enableModelFallback || currentSettings.enableDurationExtension) && !isEnsembleMode) {
-            var currentM = WeatherModelRegistry.getModel(effectiveModel, false)
-            while (currentM.secondaryModelApiName != null && !modelChain.contains(currentM.secondaryModelApiName)) {
-                modelChain.add(currentM.secondaryModelApiName!!)
-                currentM = WeatherModelRegistry.getModel(currentM.secondaryModelApiName!!, false)
-            }
-            if (!modelChain.contains("gfs_seamless")) {
-                modelChain.add("gfs_seamless")
-            }
-        }
+        val modelChain = WeatherModelRegistry.getModelChain(effectiveModel, isEnsembleMode, currentSettings.enableModelFallback || currentSettings.enableDurationExtension)
 
         // --- 2. Récupération depuis le cache et fusion ---
         val cachedDataByModel = mutableMapOf<String, List<DailyReading>>()
@@ -1121,7 +1070,25 @@ class WeatherCache(
         if (selectedLocation.value is LocationIdentifier.CurrentUserLocation || force) {
             applicationScope.launch {
                 val newCoordinates = locationProvider.getCurrentLocation()
-                if (newCoordinates != null) _currentGpsPosition.value = newCoordinates
+                if (newCoordinates != null) {
+                    val oldCoords = _currentGpsPosition.value
+                    _currentGpsPosition.value = newCoordinates
+                    
+                    // Géocodage inverse si la position a changé ou si on n'a pas de nom
+                    if (_currentCityName.value == null || oldCoords == null || 
+                        Math.abs(oldCoords.latitude - newCoordinates.latitude) > 0.01 || 
+                        Math.abs(oldCoords.longitude - newCoordinates.longitude) > 0.01) {
+                        
+                        val cityName = weatherService.getCityNameFromCoords(
+                            newCoordinates.latitude,
+                            newCoordinates.longitude,
+                            applicationContext
+                        )
+                        if (cityName != null) {
+                            _currentCityName.value = cityName
+                        }
+                    }
+                }
             }
         }
     }
@@ -1133,6 +1100,15 @@ class WeatherCache(
         val newCoordinates = locationProvider.getCurrentLocation()
         if (newCoordinates != null) {
             _currentGpsPosition.value = newCoordinates
+            
+            val cityName = weatherService.getCityNameFromCoords(
+                newCoordinates.latitude,
+                newCoordinates.longitude,
+                applicationContext
+            )
+            if (cityName != null) {
+                _currentCityName.value = cityName
+            }
         }
     }
 }

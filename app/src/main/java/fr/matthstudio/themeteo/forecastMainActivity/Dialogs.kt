@@ -256,11 +256,12 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxWidth( if (air.value != 0)
-                                                (air.value.toFloat() / 100f).coerceIn(
-                                                    0f,
-                                                    1f
-                                                )
+                                            .fillMaxWidth(
+                                                if (air.value != 0)
+                                                    (air.value.toFloat() / 100f).coerceIn(
+                                                        0f,
+                                                        1f
+                                                    )
                                                 else 1f
                                             )
                                             .fillMaxHeight()
@@ -519,7 +520,7 @@ fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
                         .padding(24.dp)
                 ) {
                     Text(
-                        "Sun Details",
+                        stringResource(R.string.sun_details),
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
@@ -634,7 +635,9 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
 
                     if (hasError) {
                         Column(
-                            modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
@@ -841,7 +844,8 @@ fun RainForecastExplanationDialog(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(5.dp))
                 Row {
                     Box(
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier
+                            .size(20.dp)
                             .background(color = Color(0xFF90CAF9))
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -850,7 +854,8 @@ fun RainForecastExplanationDialog(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(1.dp))
                 Row {
                     Box(
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier
+                            .size(20.dp)
                             .background(color = Color(0xFF42A5F5))
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -859,7 +864,8 @@ fun RainForecastExplanationDialog(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(1.dp))
                 Row {
                     Box(
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier
+                            .size(20.dp)
                             .background(color = Color(0xFF2962FF))
                     )
                     Spacer(modifier = Modifier.width(4.dp))

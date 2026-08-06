@@ -104,6 +104,11 @@ class WeatherViewModel(
     val userLocation: StateFlow<GpsCoordinates?> = weatherCache.currentGpsPosition
 
     /**
+     * Expose le nom de la ville actuelle récupéré via géocodage inverse.
+     */
+    val currentCityName: StateFlow<String?> = weatherCache.currentCityName
+
+    /**
      * Expose si la permission de localisation est accordée.
      */
     val isLocationPermissionGranted: StateFlow<Boolean> = weatherCache.isLocationPermissionGranted
@@ -207,12 +212,11 @@ class WeatherViewModel(
         userSettings,
         refreshCounter
     ) { _, settings, _ ->
-        // On récupère les settings ici pour calculer la durée
-        if (settings.enableDurationExtension && settings.forecastType != ForecastType.ENSEMBLE) {
-            14L // On demande 14 jours (ECMWF IFS) si l'extension est activée
-        } else {
-            WeatherModelRegistry.getModel(settings.model, userSettings.value.forecastType == ForecastType.ENSEMBLE).predictionDays.toLong()
-        }
+        WeatherModelRegistry.getMaxPredictionDays(
+            settings.model,
+            settings.forecastType == ForecastType.ENSEMBLE,
+            settings.enableDurationExtension
+        ).toLong()
     }.flatMapLatest { duration ->
         weatherCache.get(LocalDate.now(), duration)
     }.stateIn(
