@@ -270,8 +270,8 @@ fun SettingsScreen(cache: WeatherCache) {
             Spacer(modifier = Modifier.height(24.dp))
 
             ModelFallbackSetting(
-                isChecked = userSettings.enableModelFallback,
-                enabled = userSettings.forecastType != ForecastType.ENSEMBLE,
+                isChecked = userSettings.enableModelFallback || userSettings.enableDurationExtension,
+                enabled = userSettings.forecastType != ForecastType.ENSEMBLE && !userSettings.enableDurationExtension,
                 onCheckedChange = { enabled ->
                     scope.launch {
                         cache.userSettingsRepository.updateEnableModelFallback(enabled)
@@ -287,6 +287,9 @@ fun SettingsScreen(cache: WeatherCache) {
                 onCheckedChange = { enabled ->
                     scope.launch {
                         cache.userSettingsRepository.updateEnableDurationExtension(enabled)
+                        if (enabled) {
+                            cache.userSettingsRepository.updateEnableModelFallback(true)
+                        }
                     }
                 }
             )

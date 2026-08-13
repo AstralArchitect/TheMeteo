@@ -262,6 +262,26 @@ class WeatherCache(
     }.stateIn(applicationScope, SharingStarted.WhileSubscribed(5000), null)
     
     init {
+        // Routine de vérification de l'intégrité de la localisation par défaut
+        // Si le lieu par défaut est un lieu sauvegardé qui n'existe plus, on le réinitialise
+        applicationScope.launch {
+            savedLocations.collect { locations ->
+                val settings = userSettings.value
+                val defaultLoc = settings.defaultLocation
+                if (defaultLoc is LocationIdentifier.Saved) {
+                    val exists = locations.any { it.latitude == defaultLoc.location.latitude && it.longitude == defaultLoc.location.longitude }
+                    if (!exists) {
+                        val newDefault = if (locations.isNotEmpty()) {
+                            LocationIdentifier.Saved(locations.first())
+                        } else {
+                            LocationIdentifier.CurrentUserLocation
+                        }
+                        setDefaultLocation(newDefault)
+                    }
+                }
+            }
+        }
+
         // Initialiser la localisation sélectionnée avec la valeur par défaut sauvegardée
         applicationScope.launch {
             userSettingsRepository.defaultLocation.collect { defaultLoc ->
@@ -844,10 +864,16 @@ class WeatherCache(
                 maxTemperature = p.maxTemperature.nanToNull() ?: f.maxTemperature.nanToNull(),
                 minTemperature = p.minTemperature.nanToNull() ?: f.minTemperature.nanToNull(),
                 precipitation = p.precipitation.nanToNull() ?: f.precipitation.nanToNull(),
+                maxWind = p.maxWind.copy(
+                    windspeed = p.maxWind.windspeed.nanToNull() ?: f.maxWind.windspeed.nanToNull(),
+                    windGusts = p.maxWind.windGusts.nanToNull() ?: f.maxWind.windGusts.nanToNull(),
+                    windDirection = p.maxWind.windDirection.nanToNull() ?: f.maxWind.windDirection.nanToNull()
+                ),
                 maxUvIndex = p.maxUvIndex ?: f.maxUvIndex,
                 wmo = p.wmo ?: f.wmo,
                 sunset = p.sunset.ifEmpty { f.sunset },
-                sunrise = p.sunrise.ifEmpty { f.sunrise }
+                sunrise = p.sunrise.ifEmpty { f.sunrise },
+                wmoEnsemble = p.wmoEnsemble ?: f.wmoEnsemble
             )
         }
     }

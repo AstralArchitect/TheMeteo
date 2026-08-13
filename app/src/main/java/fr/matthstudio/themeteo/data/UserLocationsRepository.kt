@@ -91,15 +91,17 @@ class UserLocationsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { preferences ->
             val currentListJson = preferences[LOCATIONS_KEY]
             val currentList = if (currentListJson != null) {
-                Json.decodeFromString<List<SavedLocation>>(currentListJson)
+                try {
+                    Json.decodeFromString<List<SavedLocation>>(currentListJson)
+                } catch (e: Exception) {
+                    emptyList()
+                }
             } else {
                 return@edit // Rien à faire si la liste est vide
             }
 
             // 1. Filtrer la liste pour supprimer l'élément
             val newList = currentList.filterNot { it == location }
-
-            // 2. Sauvegarder la nouvelle liste
             preferences[LOCATIONS_KEY] = Json.encodeToString(newList)
         }
     }

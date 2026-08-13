@@ -81,6 +81,7 @@
     <string name="weather_details">Weather Details</string>
     <string name="manage_locations">Manage Locations</string>
     <string name="pick_on_map">Pick on the map</string>
+    <string name="default_location">Default</string>
     <string name="heavy_snow">Heavy Snow</string>
     <string name="rainy">Rainy</string>
     <string name="drizzle">Drizzle</string>

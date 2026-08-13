@@ -71,6 +71,7 @@
     <string name="weather_details">Détails Météo</string>
     <string name="manage_locations">Gérer les lieux</string>
     <string name="pick_on_map">Choisir sur la carte</string>
+    <string name="default_location">Par défaut</string>
     <string name="drizzle">Bruine</string>
     <string name="stormy">Orageux</string>
     <string name="hail">Grêle</string>

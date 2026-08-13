@@ -264,7 +264,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val currentCityName by viewModel.currentCityName.collectAsState()
     val bentoCardsOrder by viewModel.bentoCardsOrder.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
-    var showAddLocationDialog by remember { mutableStateOf(false) }
+    var showMapPicker by remember { mutableStateOf(false) }
     var showAirQualityDialog by remember { mutableStateOf(false) }
     var showVigilanceDialog by remember { mutableStateOf(false) }
     var showSunMoonDialog by remember { mutableStateOf(false) }
@@ -283,6 +283,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         val userSettings by viewModel.userSettings.collectAsState()
         val isPermissionGranted by viewModel.isLocationPermissionGranted.collectAsState()
         val currentCityName by viewModel.currentCityName.collectAsState()
+        val searchState by viewModel.searchState.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
@@ -290,38 +291,39 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             currentWeathers = currentWeathers,
             userSettings = userSettings,
             isPermissionGranted = isPermissionGranted,
+            searchState = searchState,
             currentCityName = currentCityName,
+            onSearch = { viewModel.searchCity(it) },
             onSelectLocation = { viewModel.selectLocation(it) },
             onRemoveLocation = { viewModel.removeLocation(it) },
             onRenameLocation = { location, newName -> viewModel.renameLocation(location, newName) },
             onReorderLocations = { viewModel.reorderLocations(it) },
             onSetDefaultLocation = { viewModel.setDefaultLocation(it) },
-            onDismiss = { showLocationSheet = false },
-            onAddLocationClick = {
-                showLocationSheet = false // Ferme le premier panneau
-                showAddLocationDialog = true // Ouvre le second
+            onAddLocation = { viewModel.addLocation(it) },
+            onMapClick = {
+                showLocationSheet = false
+                showMapPicker = true
             },
+            onDismiss = { showLocationSheet = false },
             sheetState = sheetState
         )
     }
 
-    if (showAddLocationDialog) {
-        val searchState by viewModel.searchState.collectAsState()
+    if (showMapPicker) {
         val userLocation by viewModel.userLocation.collectAsState()
-
-        AddLocationDialog(
-            searchState = searchState,
-            userLocation = userLocation,
-            weatherService = viewModel.weatherService,
-            onSearch = { viewModel.searchCity(it) },
-            onLocationSelected = { viewModel.selectLocation(it) },
-            onAddLocation = { viewModel.addLocation(it) },
-            onMapLocationAdded = { gpsCoordinates, name ->
-                viewModel.addLocationFromMap(gpsCoordinates, name)
-            },
-            onDismiss = { showAddLocationDialog = false },
-        )
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showMapPicker = false }) {
+            MapPickerScreen(
+                initialLocation = userLocation,
+                weatherService = viewModel.weatherService,
+                onLocationSelected = { coords, name ->
+                    viewModel.addLocationFromMap(coords, name)
+                    showMapPicker = false
+                },
+                onDismiss = { showMapPicker = false }
+            )
+        }
     }
+
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenHeightPx = constraints.maxHeight.toFloat()
