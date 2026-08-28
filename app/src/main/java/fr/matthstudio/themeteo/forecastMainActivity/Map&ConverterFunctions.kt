@@ -95,12 +95,12 @@ fun LottieWeatherIcon(
 // Helper function to convert ISO8601 string (e.g., "2024-05-30T05:58:00+02:00") to LocalDateTime
 fun String.toEventLocalDateTime(appContext: Context): LocalDateTime? {
     return try {
-        // Try parsing with timezone offset (OffsetDateTime)
-        OffsetDateTime.parse(this).toLocalDateTime()
+        // Try parsing with timezone offset (OffsetDateTime) and convert to system local time
+        OffsetDateTime.parse(this).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDateTime()
     } catch (e: Exception) {
         try {
-            // Fallback: ZonedDateTime (if zone ID is used)
-            ZonedDateTime.parse(this).toLocalDateTime()
+            // Fallback: ZonedDateTime (if zone ID is used) and convert to system local time
+            ZonedDateTime.parse(this).withZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDateTime()
         } catch (e2: Exception) {
             try {
                 // Fallback: Simple LocalDateTime (if no offset/zone is included)

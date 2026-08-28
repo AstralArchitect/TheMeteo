@@ -40,7 +40,6 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocalFlorist
 import androidx.compose.material.icons.rounded.Nature
 import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material.icons.rounded.Water
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,7 +59,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -77,16 +75,15 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.getDailyData
-import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
+import fr.matthstudio.themeteo.getDailyData
+import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.utilClasses.AirQualityUI
 import fr.matthstudio.themeteo.utilClasses.FullSunData
-import fr.matthstudio.themeteo.utilClasses.MeteoFranceRainResponse
 import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import java.time.Duration
@@ -95,7 +92,6 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import androidx.compose.ui.platform.LocalLocale
 
 @Composable
 fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
@@ -227,45 +223,54 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
                 drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(meshColors[1], Color.Transparent),
-                        center = Offset(size.width * 0.9f, size.height * 0.4f),
-                        radius = size.maxDimension * 0.7f
+                        center = Offset(size.width * 0.9f, size.height * 0.1f),
+                        radius = size.maxDimension * 0.8f
                     )
                 )
                 drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(meshColors[2], Color.Transparent),
-                        center = Offset(size.width * 0.4f, size.height * 0.8f),
+                        center = Offset(size.width * 0.5f, size.height * 0.9f),
                         radius = size.maxDimension * 0.8f
                     )
                 )
             }
         }
     } else {
-        // Effet de cercles floutés (Mesh) pour les versions récentes
+        // Mode Mesh optimisé (Fallback si non défini)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(baseColor)
         ) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(100.dp)
-            ) {
-                drawCircle(
-                    color = meshColors[0],
-                    radius = size.width * 0.9f,
-                    center = Offset(size.width * 0.1f, size.height * 0.2f)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.0f to Color.Black.copy(alpha = 0.1f),
+                        0.5f to Color.Transparent,
+                        1.0f to Color.Black.copy(alpha = 0.1f)
+                    )
                 )
-                drawCircle(
-                    color = meshColors[1],
-                    radius = size.width * 0.7f,
-                    center = Offset(size.width * 0.9f, size.height * 0.4f)
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[0], Color.Transparent),
+                        center = Offset(size.width * 0.1f, size.height * 0.2f),
+                        radius = size.maxDimension * 0.8f
+                    )
                 )
-                drawCircle(
-                    color = meshColors[2],
-                    radius = size.width * 0.8f,
-                    center = Offset(size.width * 0.4f, size.height * 0.8f)
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[1], Color.Transparent),
+                        center = Offset(size.width * 0.9f, size.height * 0.1f),
+                        radius = size.maxDimension * 0.8f
+                    )
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(meshColors[2], Color.Transparent),
+                        center = Offset(size.width * 0.5f, size.height * 0.9f),
+                        radius = size.maxDimension * 0.8f
+                    )
                 )
             }
         }
@@ -275,7 +280,6 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
 
 @Composable
 fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewModel: WeatherViewModel) {
-
     val hourlyData = hourlyForecast.getHourlyData()
     if (hourlyForecast is WeatherDataState.Loading && hourlyData == null) {
         CircularProgressIndicator()
@@ -291,6 +295,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
     BentoCard(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(bottom = 16.dp)
             .clickable(true, onClick = { // Make the card clickable
                 // Create an Intent to launch DayGraphsActivity
                 val intent = Intent(context, DayGraphsActivity::class.java).apply {
@@ -521,7 +526,7 @@ fun Sun(viewModel: WeatherViewModel, onShowSunMoonDetails: () -> Unit) {
 
         if (text != "" && displayEvent1 != null) {
             SunriseSunsetCard(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).padding(bottom = 16.dp),
                 event1 = displayEvent1,
                 event2 = displayEvent2,
                 text,
@@ -643,6 +648,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
     BentoCard(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(bottom = 16.dp)
     ) {
         val nDays = 7
         if (dailyForecast is WeatherDataState.Loading && dailyData == null) {
@@ -878,6 +884,7 @@ fun AirQualityCard(
     BentoCard(
         modifier = modifier
             .fillMaxWidth()
+            .padding(bottom = 16.dp)
             .height(110.dp)
             .clickable { onClick() }
     ) {
@@ -957,6 +964,7 @@ fun PollenCard(
     BentoCard(
         modifier = modifier
             .fillMaxWidth()
+            .padding(bottom = 16.dp)
             .height(160.dp)
             .clickable { onClick() }
     ) {
@@ -1108,7 +1116,7 @@ fun VigilanceCard(viewModel: WeatherViewModel, onCardClick: () -> Unit) {
     BentoCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(bottom = 16.dp)
             .clickable { onCardClick() }
     ) {
         if (isMinified) {
@@ -1195,7 +1203,7 @@ fun AdditionalInfos(viewModel: WeatherViewModel, context: Context) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 32.dp),
+            .padding(bottom = 32.dp + 16.dp), // Added 16dp extra for consistency
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1263,7 +1271,7 @@ fun RainAlertCard(hourlyForecast: WeatherDataState) {
         BentoCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp)
+                .padding(bottom = 16.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -1328,7 +1336,7 @@ fun RainWithinHourCard(viewModel: WeatherViewModel) {
     BentoCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(bottom = 16.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -1372,62 +1380,84 @@ fun RainWithinHourCard(viewModel: WeatherViewModel) {
 
                 Column(modifier = Modifier.fillMaxWidth()) {
 
-                    Row(
+                    val isDark = isSystemInDarkTheme()
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(rowHeight),
-                        horizontalArrangement = Arrangement.Start,
-                        verticalAlignment = Alignment.Bottom
+                            .height(rowHeight)
                     ) {
-                        for (i in forecast.indices) {
-                            val interval = forecast[i]
-                            val localDateTime = interval.time.toEventLocalDateTime(appContext)
-                                ?: return@BoxWithConstraints
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val gridColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.1f)
+                            val strokeWidth = 0.5.dp.toPx()
+                            val stepX = size.width / 12f
 
-                            val localMinutes = localDateTime.minute
-                            val previousMinutes = if (i > 0) {
-                                forecast[i - 1].time.toEventLocalDateTime(appContext)?.minute
-                                    ?: return@BoxWithConstraints
-                            } else {
-                                localMinutes - 5
+                            // Dessine une ligne toutes les 5 minutes (12 segments au total)
+                            for (i in 0..12) {
+                                val x = i * stepX
+                                drawLine(
+                                    color = gridColor,
+                                    start = Offset(x, 0f),
+                                    end = Offset(x, size.height),
+                                    strokeWidth = strokeWidth
+                                )
                             }
+                        }
 
-                            val diffMinutes = (localMinutes - previousMinutes + 60) % 60
-                            val multiplicator = if (diffMinutes == 10) 2 else 1
-                            val itemWidth = (parentWidth / 12) * multiplicator
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            for (i in forecast.indices) {
+                                val interval = forecast[i]
+                                val localDateTime = interval.time.toEventLocalDateTime(appContext)
+                                    ?: return@Row
 
-                            val color = when (interval.rainIntensity) {
-                                1 -> Color.Transparent // Sec
-                                2 -> Color(0xFF90CAF9) // Light blue
-                                3 -> Color(0xFF42A5F5) // Blue
-                                4 -> Color(0xFF2962FF) // Dark blue
-                                else -> Color.Transparent
-                            }
+                                val localMinutes = localDateTime.minute
+                                val previousMinutes = if (i > 0) {
+                                    forecast[i - 1].time.toEventLocalDateTime(appContext)?.minute
+                                        ?: return@Row
+                                } else {
+                                    localMinutes - 5
+                                }
 
-                            Box(
-                                modifier = Modifier
-                                    .width(itemWidth)
-                                    .padding(end = 2.dp)
-                                    .fillMaxHeight(),
-                                contentAlignment = Alignment.BottomCenter
-                            ) {
+                                val diffMinutes = (localMinutes - previousMinutes + 60) % 60
+                                val multiplicator = if (diffMinutes == 10) 2 else 1
+                                val itemWidth = (parentWidth / 12) * multiplicator
+
+                                val color = when (interval.rainIntensity) {
+                                    1 -> Color.Transparent // Sec
+                                    2 -> Color(0xFF90CAF9) // Light blue
+                                    3 -> Color(0xFF42A5F5) // Blue
+                                    4 -> Color(0xFF2962FF) // Dark blue
+                                    else -> Color.Transparent
+                                }
+
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(
-                                            when (interval.rainIntensity) {
-                                                1 -> 0.dp
-                                                2 -> (rowHeight / 3) * 1
-                                                3 -> (rowHeight / 3) * 2
-                                                4 -> (rowHeight / 3) * 3
-                                                else -> rowHeight
-                                            }
-                                        )
-                                        .background(
-                                            color = color,
-                                            shape = RoundedCornerShape(6.dp)
-                                        )
-                                )
+                                        .width(itemWidth)
+                                        .padding(end = 2.dp)
+                                        .fillMaxHeight(),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(
+                                                when (interval.rainIntensity) {
+                                                    1 -> 0.dp
+                                                    2 -> (rowHeight / 3) * 1
+                                                    3 -> (rowHeight / 3) * 2
+                                                    4 -> (rowHeight / 3) * 3
+                                                    else -> rowHeight
+                                                }
+                                            )
+                                            .background(
+                                                color = color,
+                                                shape = RoundedCornerShape(6.dp)
+                                            )
+                                    )
+                                }
                             }
                         }
                     }
@@ -1470,11 +1500,16 @@ fun RainWithinHourCard(viewModel: WeatherViewModel) {
                             }
 
                             if (localDateTime != null) {
+                                val timeToShow = if (multiplicator == 2) {
+                                    localDateTime.minusMinutes(5)
+                                } else {
+                                    localDateTime
+                                }
                                 val formattedTime = String.format(
                                     Locale.getDefault(),
                                     "%02dh%02d",
-                                    localDateTime.hour,
-                                    localDateTime.minute
+                                    timeToShow.hour,
+                                    timeToShow.minute
                                 )
                                 Box(
                                     modifier = Modifier.width(labelWidth),

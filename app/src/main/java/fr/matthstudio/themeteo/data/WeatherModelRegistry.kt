@@ -85,6 +85,37 @@ object WeatherModelRegistry {
     fun getModel(apiName: String, isEnsemble: Boolean = false) = 
         models.find { it.apiName == apiName && it.isEnsemble == isEnsemble } ?: models[0]
     
+    fun getModelChain(modelName: String, isEnsemble: Boolean, enableExtension: Boolean): List<String> {
+        val chain = mutableListOf<String>()
+        chain.add(modelName)
+        if (enableExtension && !isEnsemble) {
+            var currentM = getModel(modelName, false)
+            var nextModel = currentM.secondaryModelApiName
+            while (nextModel != null && !chain.contains(nextModel)) {
+                chain.add(nextModel)
+                currentM = getModel(nextModel, false)
+                nextModel = currentM.secondaryModelApiName
+            }
+            // Sécurité : s'assurer que gfs_seamless est à la fin si pas déjà présent pour avoir au moins 15j.
+            if (!chain.contains("gfs_seamless")) {
+                chain.add("gfs_seamless")
+            }
+        }
+        return chain
+    }
+
+    fun getMaxPredictionDays(modelName: String, isEnsemble: Boolean, enableExtension: Boolean): Int {
+        if (isEnsemble) return getModel(modelName, true).predictionDays
+        
+        return if (enableExtension) {
+            getModelChain(modelName, false, true)
+                .map { getModel(it, false).predictionDays }
+                .maxOrNull() ?: 14
+        } else {
+            getModel(modelName, false).predictionDays
+        }
+    }
+
     fun getAvailableModels(lat: Double, lon: Double, isEnsemble: Boolean) = 
         models.filter { it.isAvailableAt(lat, lon) && it.isEnsemble == isEnsemble }
 }

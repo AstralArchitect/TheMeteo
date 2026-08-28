@@ -63,7 +63,6 @@
     <string name="uv_extreme">Extrême</string>
     <string name="uv_index">Indice UV</string>
     <string name="visibility">Visibilité (km)</string>
-    <string name="opacity_graph">Opacité (%)</string>
     <string name="details">Détails</string>
     <string name="show_more">Voir plus</string>
     <string name="current_location">Position Actuelle</string>
@@ -71,6 +70,7 @@
     <string name="weather_details">Détails Météo</string>
     <string name="manage_locations">Gérer les lieux</string>
     <string name="pick_on_map">Choisir sur la carte</string>
+    <string name="default_location">Par défaut</string>
     <string name="drizzle">Bruine</string>
     <string name="stormy">Orageux</string>
     <string name="hail">Grêle</string>
@@ -293,4 +293,5 @@
     <string name="rain_rate_high">Forte intensité</string>
     <string name="rain_radar">Radar de Pluie</string>
     <string name="click_to_view_full_screen">Cliquez pour passer en plein écran</string>
+    <string name="sun_details">Détails Soleil et Lune</string>
 </resources>

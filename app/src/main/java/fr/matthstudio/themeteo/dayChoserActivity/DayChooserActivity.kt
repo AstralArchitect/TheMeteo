@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
@@ -71,10 +72,10 @@ import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.utilClasses.toSmartString
-import fr.matthstudio.themeteo.forecastMainActivity.AddLocationDialog
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
 import fr.matthstudio.themeteo.forecastMainActivity.LocationManagementSheet
 import fr.matthstudio.themeteo.forecastMainActivity.LottieWeatherIcon
+import fr.matthstudio.themeteo.forecastMainActivity.MapPickerScreen
 import fr.matthstudio.themeteo.forecastMainActivity.ResponsiveText
 import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.getLottieIconPath
@@ -142,7 +143,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
     // --- GESTION DE L'ÉTAT DE L'UI ---
     val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
-    var showAddLocationDialog by remember { mutableStateOf(false) }
+    var showMapPicker by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
@@ -153,6 +154,8 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
         val currentWeathers by weatherViewModel.currentWeather.collectAsState()
         val isPermissionGranted by weatherViewModel.isLocationPermissionGranted.collectAsState()
+        val currentCityName by weatherViewModel.currentCityName.collectAsState()
+        val searchState by weatherViewModel.searchState.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
@@ -160,37 +163,39 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
             currentWeathers = currentWeathers,
             userSettings = weatherViewModel.userSettings.collectAsState().value,
             isPermissionGranted = isPermissionGranted,
+            searchState = searchState,
+            currentCityName = currentCityName,
+            onSearch = { weatherViewModel.searchCity(it) },
             onSelectLocation = { weatherViewModel.selectLocation(it) },
             onRemoveLocation = { weatherViewModel.removeLocation(it) },
             onRenameLocation = { location, newName -> weatherViewModel.renameLocation(location, newName) },
             onReorderLocations = { weatherViewModel.reorderLocations(it) },
             onSetDefaultLocation = { weatherViewModel.setDefaultLocation(it) },
-            onDismiss = { showLocationSheet = false },
-            onAddLocationClick = {
-                showLocationSheet = false // Ferme le premier panneau
-                showAddLocationDialog = true // Ouvre le second
+            onAddLocation = { weatherViewModel.addLocation(it) },
+            onMapClick = {
+                showLocationSheet = false
+                showMapPicker = true
             },
+            onDismiss = { showLocationSheet = false },
             sheetState = sheetState
         )
     }
 
-    if (showAddLocationDialog) {
-        val searchState by weatherViewModel.searchState.collectAsState()
+    if (showMapPicker) {
         val userLocation by weatherViewModel.userLocation.collectAsState()
-
-        AddLocationDialog(
-            searchState = searchState,
-            userLocation = userLocation,
-            weatherService = weatherViewModel.weatherService,
-            onSearch = { weatherViewModel.searchCity(it) },
-            onLocationSelected = { weatherViewModel.selectLocation(it) },
-            onAddLocation = { weatherViewModel.addLocation(it) },
-            onMapLocationAdded = { gpsCoordinates, name ->
-                weatherViewModel.addLocationFromMap(gpsCoordinates, name)
-            },
-            onDismiss = { showAddLocationDialog = false },
-        )
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showMapPicker = false }) {
+            MapPickerScreen(
+                initialLocation = userLocation,
+                weatherService = weatherViewModel.weatherService,
+                onLocationSelected = { coords, name ->
+                    weatherViewModel.addLocationFromMap(coords, name)
+                    showMapPicker = false
+                },
+                onDismiss = { showMapPicker = false }
+            )
+        }
     }
+
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenHeightPx = constraints.maxHeight.toFloat()
@@ -251,13 +256,28 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                     )
                     Spacer(Modifier.width(8.dp))
                     // Affiche le nom du lieu actuellement sélectionné
+                    val currentCityName by weatherViewModel.currentCityName.collectAsState()
                     Text(
                         text = when (val loc = selectedLocation) {
-                            is LocationIdentifier.CurrentUserLocation -> stringResource(R.string.current_location)
+                            is LocationIdentifier.CurrentUserLocation -> currentCityName ?: stringResource(R.string.current_location)
                             is LocationIdentifier.Saved -> loc.location.name
                         },
                         style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     )
+                    if (selectedLocation is LocationIdentifier.CurrentUserLocation) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "GPS",
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
                     Icon(
                         Icons.Default.ArrowDropDown,
                         contentDescription = "Change location icon",

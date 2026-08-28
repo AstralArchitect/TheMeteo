@@ -5,13 +5,14 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
-import android.view.Surface
+import android.view.Surface as ViewSurface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
@@ -19,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,7 +50,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.House
+import androidx.compose.material.icons.filled.HouseSiding
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.OtherHouses
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.rounded.AcUnit
@@ -75,6 +80,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -106,6 +112,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -194,6 +201,25 @@ data class SimpleWeather (
     var word: SimpleWeatherWord?,
     var image: ImageBitmap? = null
 )
+
+fun SimpleWeatherWord.isStorm(): Boolean {
+    return this == SimpleWeatherWord.STORMY ||
+            this == SimpleWeatherWord.STORMY_HAIL ||
+            this == SimpleWeatherWord.EXTREME_STORMY ||
+            this == SimpleWeatherWord.EXTREME_STORMY_HAIL
+}
+
+fun SimpleWeatherWord.isPrecipitation(): Boolean {
+    return this == SimpleWeatherWord.RAINY1 ||
+            this == SimpleWeatherWord.RAINY2 ||
+            this == SimpleWeatherWord.DRIZZLY ||
+            this == SimpleWeatherWord.SNOWY1 ||
+            this == SimpleWeatherWord.SNOWY2 ||
+            this == SimpleWeatherWord.SNOWY3 ||
+            this == SimpleWeatherWord.SNOWY_MIX ||
+            this == SimpleWeatherWord.HAIL ||
+            this.isStorm()
+}
 
 fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
     if (code == null) return null
@@ -389,9 +415,11 @@ fun DailyForecastRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Jour
+            val locale = LocalContext.current.resources.configuration.locales[0]
             Text(
+                modifier = Modifier.width(40.dp),
                 text = if (dayReading.date == LocalDate.now()) stringResource(R.string.today)
-                else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).replaceFirstChar { it.uppercase() },
+                else dayReading.date.dayOfWeek.getDisplayName(TextStyle.SHORT, locale).replaceFirstChar { it.uppercase() },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -531,12 +559,16 @@ fun LocationManagementSheet(
     currentWeathers: WeatherDataState,
     userSettings: UserSettings,
     isPermissionGranted: Boolean,
+    searchState: SearchState,
+    currentCityName: String? = null,
+    onSearch: (String) -> Unit,
     onSelectLocation: (LocationIdentifier) -> Unit,
     onRemoveLocation: (SavedLocation) -> Unit,
     onRenameLocation: (SavedLocation, String) -> Unit,
     onReorderLocations: (List<SavedLocation>) -> Unit,
     onSetDefaultLocation: (LocationIdentifier) -> Unit,
-    onAddLocationClick: () -> Unit,
+    onAddLocation: (SavedLocation) -> Unit,
+    onMapClick: () -> Unit,
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState()
 ) {
@@ -544,6 +576,7 @@ fun LocationManagementSheet(
     var listState by remember(savedLocations) { mutableStateOf(savedLocations) }
     val lazyListState = rememberLazyListState()
     var renamingLocation by remember { mutableStateOf<SavedLocation?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
     val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
 
     if (renamingLocation != null) {
@@ -565,119 +598,186 @@ fun LocationManagementSheet(
     ) {
         Column(modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp))
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 16.dp))
         {
-            Text(stringResource(R.string.manage_locations), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
-            
-            LazyColumn(
-                state = lazyListState,
-                modifier = Modifier.weight(1f, fill = false)
-            ) {
-                // Item pour la position actuelle - Visible uniquement si permission accordée
-                if (isPermissionGranted) {
-                    item {
-                        LocationRow(
-                            name = stringResource(R.string.current_location),
-                            isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
-                            isDefault = userSettings.defaultLocation is LocationIdentifier.CurrentUserLocation,
-                            temperatureUnit = userSettings.temperatureUnit,
-                            roundToInt = userSettings.roundToInt,
-                            onClick = {
-                                onSelectLocation(LocationIdentifier.CurrentUserLocation)
-                                onDismiss()
-                            },
-                            onDelete = null, // On ne peut pas supprimer la position actuelle
-                            onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.CurrentUserLocation) }
-                        )
+            Text(
+                text = stringResource(R.string.manage_locations),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+
+            // Barre de recherche intégrée
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = {
+                    searchQuery = it
+                    onSearch(it)
+                },
+                placeholder = { Text(stringResource(R.string.search_city)) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = ""; onSearch("") }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                        }
+                    } else {
+                        IconButton(onClick = onMapClick) {
+                            Icon(Icons.Rounded.Explore, contentDescription = "Map")
+                        }
                     }
-                }
+                },
+                singleLine = true
+            )
 
-                // Liste des lieux sauvegardés
-                items(listState.size, key = { listState[it].name + listState[it].latitude + listState[it].longitude }) { index ->
-                    val location = listState[index]
-                    val isDefault = (userSettings.defaultLocation as? LocationIdentifier.Saved)?.location == location
-                    val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
-                    
-                    var itemOffset by remember { mutableStateOf(0f) }
-                    val currentIndex by rememberUpdatedState(index)
-                    val itemHeight = 64f // Matching the Modifier.height(64.dp) below
-
-                    LocationRow(
-                        name = location.name,
-                        isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
-                        currentWeatherReading = currentWeather,
-                        temperatureUnit = userSettings.temperatureUnit,
-                        roundToInt = userSettings.roundToInt,
-                        isDefault = isDefault,
-                        onClick = {
-                            onSelectLocation(LocationIdentifier.Saved(location))
-                            onDismiss()
-                        },
-                        onDelete = { onRemoveLocation(location) },
-                        onRename = { renamingLocation = location },
-                        onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) },
-                        modifier = Modifier
-                            .animateItem()
-                            .offset(y = itemOffset.dp)
-                            .pointerInput(Unit) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { /* Optionnel : retour haptique, non utilisé ici */ },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        itemOffset += dragAmount.y / density
-
-                                        // Logique de swap corrigée
-                                        val threshold =
-                                            32f // Seuil pour déclencher le swap (moitié de la hauteur)
-                                        if (itemOffset > threshold && currentIndex < listState.size - 1) {
-                                            val newList = listState.toMutableList()
-                                            val item = newList.removeAt(currentIndex)
-                                            newList.add(currentIndex + 1, item)
-                                            listState = newList
-                                            // Ajustement de l'offset pour compenser le changement de position "home"
-                                            itemOffset -= itemHeight
-                                            onReorderLocations(newList)
-                                        } else if (itemOffset < -threshold && currentIndex > 0) {
-                                            val newList = listState.toMutableList()
-                                            val item = newList.removeAt(currentIndex)
-                                            newList.add(currentIndex - 1, item)
-                                            listState = newList
-                                            // Ajustement de l'offset pour compenser le changement de position "home"
-                                            itemOffset += itemHeight
-                                            onReorderLocations(newList)
-                                        }
-                                    },
-                                    onDragEnd = { itemOffset = 0f },
-                                    onDragCancel = { itemOffset = 0f }
-                                )
-                            },
-                        dragHandle = {
-                            Icon(
-                                imageVector = Icons.Default.DragHandle,
-                                contentDescription = "Réorganiser",
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .padding(4.dp)
+            Spacer(Modifier.height(16.dp))
+            
+            Box(modifier = Modifier.weight(1f, fill = false)) {
+                if (searchQuery.isNotEmpty()) {
+                    // Affichage des résultats de recherche
+                    when (searchState) {
+                        is SearchState.Loading -> {
+                            Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                        is SearchState.Success -> {
+                            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                                items(searchState.results) { result ->
+                                    val newLoc = SavedLocation(
+                                        name = result.name,
+                                        latitude = result.latitude,
+                                        longitude = result.longitude,
+                                        country = result.countryCode
+                                    )
+                                    LocationRow(
+                                        name = "${result.name}, ${result.region ?: ""}",
+                                        isSelected = false,
+                                        isDefault = false,
+                                        onClick = {
+                                            onAddLocation(newLoc)
+                                            onSelectLocation(LocationIdentifier.Saved(newLoc))
+                                            onDismiss()
+                                        },
+                                        onSetAsDefault = {},
+                                        onDelete = null,
+                                        isGps = false
+                                    )
+                                }
+                            }
+                        }
+                        is SearchState.Empty -> {
+                            Text(
+                                stringResource(R.string.no_results),
+                                modifier = Modifier.padding(16.dp).align(Alignment.Center)
                             )
                         }
-                    )
-                }
-            }
+                        is SearchState.Error -> {
+                            Text(
+                                searchState.message,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(16.dp).align(Alignment.Center)
+                            )
+                        }
+                        else -> {}
+                    }
+                } else {
+                    // Liste normale (Position actuelle + Lieux sauvegardés)
+                    LazyColumn(
+                        state = lazyListState,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isPermissionGranted) {
+                            item {
+                                LocationRow(
+                                    name = currentCityName ?: stringResource(R.string.current_location),
+                                    isSelected = selectedLocation is LocationIdentifier.CurrentUserLocation,
+                                    isDefault = userSettings.defaultLocation is LocationIdentifier.CurrentUserLocation,
+                                    temperatureUnit = userSettings.temperatureUnit,
+                                    roundToInt = userSettings.roundToInt,
+                                    isGps = true,
+                                    onClick = {
+                                        onSelectLocation(LocationIdentifier.CurrentUserLocation)
+                                        onDismiss()
+                                    },
+                                    onDelete = null,
+                                    onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.CurrentUserLocation) }
+                                )
+                            }
+                        }
 
-            Button(
-                onClick = onAddLocationClick,
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(vertical = 16.dp)
-                    .size(56.dp),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(24.dp))
+                        items(listState.size, key = { listState[it].name + listState[it].latitude + listState[it].longitude }) { index ->
+                            val location = listState[index]
+                            val isDefault = (userSettings.defaultLocation as? LocationIdentifier.Saved)?.location == location
+                            val currentWeather = (currentWeathers as? WeatherDataState.SuccessCurrent)?.data[Pair(location.latitude, location.longitude)]
+                            
+                            var itemOffset by remember { mutableStateOf(0f) }
+                            val currentIndex by rememberUpdatedState(index)
+                            val itemHeight = 64f
+
+                            LocationRow(
+                                name = location.name,
+                                isSelected = (selectedLocation as? LocationIdentifier.Saved)?.location == location,
+                                currentWeatherReading = currentWeather,
+                                temperatureUnit = userSettings.temperatureUnit,
+                                roundToInt = userSettings.roundToInt,
+                                isDefault = isDefault,
+                                onClick = {
+                                    onSelectLocation(LocationIdentifier.Saved(location))
+                                    onDismiss()
+                                },
+                                onDelete = { onRemoveLocation(location) },
+                                onRename = { renamingLocation = location },
+                                onSetAsDefault = { onSetDefaultLocation(LocationIdentifier.Saved(location)) },
+                                modifier = Modifier
+                                    .animateItem()
+                                    .offset(y = itemOffset.dp)
+                                    .pointerInput(Unit) {
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = { },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                itemOffset += dragAmount.y / density
+                                                val threshold = 32f
+                                                if (itemOffset > threshold && currentIndex < listState.size - 1) {
+                                                    val newList = listState.toMutableList()
+                                                    val item = newList.removeAt(currentIndex)
+                                                    newList.add(currentIndex + 1, item)
+                                                    listState = newList
+                                                    itemOffset -= itemHeight
+                                                    onReorderLocations(newList)
+                                                } else if (itemOffset < -threshold && currentIndex > 0) {
+                                                    val newList = listState.toMutableList()
+                                                    val item = newList.removeAt(currentIndex)
+                                                    newList.add(currentIndex - 1, item)
+                                                    listState = newList
+                                                    itemOffset += itemHeight
+                                                    onReorderLocations(newList)
+                                                }
+                                            },
+                                            onDragEnd = { itemOffset = 0f },
+                                            onDragCancel = { itemOffset = 0f }
+                                        )
+                                    },
+                                dragHandle = {
+                                    Icon(
+                                        imageVector = Icons.Default.DragHandle,
+                                        contentDescription = "Réorganiser",
+                                        modifier = Modifier.size(24.dp).padding(4.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
+
 
 @Composable
 fun LocationRow(
@@ -688,87 +788,102 @@ fun LocationRow(
     currentWeatherReading: CurrentWeatherReading? = null,
     temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
     roundToInt: Boolean = true,
+    isGps: Boolean = false,
     onSetAsDefault: () -> Unit,
     onClick: () -> Unit,
     onDelete: (() -> Unit)?, 
     onRename: (() -> Unit)? = null,
     dragHandle: (@Composable () -> Unit)? = null
 ) {
-    Box(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp)
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .5f) else Color.Transparent,
-                MaterialTheme.shapes.small
-            )
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        onClick = onClick
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .height(48.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                if (dragHandle != null) {
-                    dragHandle()
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (isSelected) MaterialTheme.colorScheme.tertiary else Color.Unspecified,
-                    fontWeight = if (isSelected) FontWeight.Bold else null,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            if (dragHandle != null) {
+                dragHandle()
+                Spacer(Modifier.width(8.dp))
             }
-            Row (verticalAlignment = Alignment.CenterVertically) {
-                if (currentWeatherReading != null) {
-                    Icon(
-                        imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)!!),
-                        contentDescription = "Icône météo actuelle",
-                        tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp)
-                    )
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = UnitConverter.formatTemperature(currentWeatherReading.temperature, temperatureUnit, roundToInt),
+                        text = name,
                         style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (isSelected) FontWeight.Bold else null
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                }
-                if (onRename != null) {
-                    IconButton(onClick = onRename) {
+                    if (isGps) {
+                        Spacer(Modifier.width(8.dp))
                         Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "Renommer le lieu",
-                            tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
-                Icon (
-                    imageVector = if (isDefault) Icons.Default.Star else Icons.Default.StarOutline,
-                    contentDescription = null,
-                    tint = if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.clickable(
-                        enabled = true,
-                        onClick = onSetAsDefault
+                if (isDefault) {
+                    Text(
+                        text = stringResource(R.string.default_location),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+
+            if (currentWeatherReading != null) {
+                Icon(
+                    imageVector = getStateIconFromWord(weatherCodeToSimpleWord(currentWeatherReading.wmo)!!),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = UnitConverter.formatTemperature(currentWeatherReading.temperature, temperatureUnit, roundToInt),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.width(16.dp))
+            }
+
+            Row {
+                if (onRename != null) {
+                    IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(18.dp))
+                    }
+                }
+                
+                IconButton(onClick = onSetAsDefault, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = if (isDefault) Icons.Default.House else HouseOutline,
+                        contentDescription = "Default",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 if (onDelete != null) {
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Supprimer le lieu",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         }
     }
 }
+
 
 @Composable
 fun RenameLocationDialog(
@@ -811,123 +926,7 @@ fun RenameLocationDialog(
     )
 }
 
-@Composable
-fun AddLocationDialog(
-    searchState: SearchState,
-    userLocation: GpsCoordinates?,
-    weatherService: WeatherService,
-    onSearch: (String) -> Unit,
-    onLocationSelected: (LocationIdentifier) -> Unit,
-    onAddLocation: (SavedLocation) -> Unit,
-    onMapLocationAdded: (GpsCoordinates, String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
 
-    var showMapPicker by remember { mutableStateOf(false) }
-
-    if (showMapPicker) {
-        Dialog(onDismissRequest = { showMapPicker = false }) {
-            MapPickerScreen(
-                initialLocation = userLocation,
-                weatherService = weatherService,
-                onLocationSelected = { coords, name ->
-                    onMapLocationAdded(coords, name)
-                    showMapPicker = false
-                    onDismiss()
-                },
-                onDismiss = { showMapPicker = false ; onDismiss() }
-            )
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.add_city)) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = {
-                        searchQuery = it
-                        onSearch(it) // Déclenche la recherche via le ViewModel
-                    },
-                    label = { Text(stringResource(R.string.search_city)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Spacer(Modifier.height(16.dp))
-                
-                Box(modifier = Modifier.height(200.dp).fillMaxWidth()) {
-                    when (searchState) {
-                        is SearchState.Loading -> {
-                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                        }
-                        is SearchState.Success -> {
-                            LazyColumn {
-                                items(searchState.results) { result ->
-                                    Text(
-                                        text = "${result.name}, ${result.region}, ${result.countryCode}",
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                val newLocation = SavedLocation(
-                                                    name = result.name,
-                                                    latitude = result.latitude,
-                                                    longitude = result.longitude,
-                                                    country = result.countryCode
-                                                )
-                                                onAddLocation(newLocation)
-                                                onLocationSelected(LocationIdentifier.Saved(newLocation))
-                                                onDismiss()
-                                            }
-                                            .padding(vertical = 8.dp)
-                                    )
-                                }
-                            }
-                        }
-                        is SearchState.Empty -> {
-                            Text(
-                                text = stringResource(R.string.no_results),
-                                modifier = Modifier.align(Alignment.Center),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        is SearchState.Error -> {
-                            Text(
-                                text = searchState.message,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.align(Alignment.Center)
-                            )
-                        }
-                        is SearchState.Idle -> {
-                            if (searchQuery.length >= 1 && searchQuery.length < 2) {
-                                Text(
-                                    text = stringResource(R.string.type_more_chars),
-                                    modifier = Modifier.align(Alignment.Center),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-                
-                // Bouton pour ouvrir la carte
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { showMapPicker = true }
-                ) {
-                    Text(stringResource(R.string.pick_on_map))
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
-        }
-    )
-}
 
 @Composable
 fun EnvironmentalGauge(
@@ -976,6 +975,7 @@ fun getPollenShortDescFromLevel(level: Int): String {
     }
 }
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun MapPickerScreen(
     initialLocation: GpsCoordinates?,
@@ -1394,9 +1394,10 @@ fun SunPathVisualization(viewModel: WeatherViewModel) {
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        val locale = LocalContext.current.resources.configuration.locales[0]
                         Text(
                             text = String.format(
-                                Locale.getDefault(),
+                                locale,
                                 "%dh %dmin",
                                 today.dayLength.toHours(), today.dayLength.toMinutes() % 60
                             ),
@@ -1709,19 +1710,19 @@ fun SunMoonCompass(viewModel: WeatherViewModel) {
                 // Add display rotation
                 val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
-                        context.display.rotation ?: Surface.ROTATION_0
+                        context.display.rotation ?: ViewSurface.ROTATION_0
                     } catch (e: Exception) {
-                        Surface.ROTATION_0
+                        ViewSurface.ROTATION_0
                     }
                 } else {
-                    Surface.ROTATION_0
+                    ViewSurface.ROTATION_0
                 }
 
                 val rotationDegrees = when (rotation) {
-                    Surface.ROTATION_0 -> 0f
-                    Surface.ROTATION_90 -> 90f
-                    Surface.ROTATION_180 -> 180f
-                    Surface.ROTATION_270 -> 270f
+                    ViewSurface.ROTATION_0 -> 0f
+                    ViewSurface.ROTATION_90 -> 90f
+                    ViewSurface.ROTATION_180 -> 180f
+                    ViewSurface.ROTATION_270 -> 270f
                     else -> 0f
                 }
                 deg = (deg + rotationDegrees + 360f) % 360f

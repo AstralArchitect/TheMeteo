@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -67,6 +66,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -167,9 +167,6 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
     val currentStartDateTime by viewModel.currentStartDateTime.collectAsState()
 
     val verticalScrollState = rememberScrollState()
-    val showTemperatureDetailsGraphs = remember { mutableStateOf(false) }
-    val showPrecipitationDetailsGraphs = remember { mutableStateOf(false) }
-    val showUvDetailsGraphs = remember { mutableStateOf(false) }
 
     // Auto-scroll to 6 AM if starting at 00h and if full-period disabled
     val hasScrolled = remember { mutableStateOf(false) }
@@ -284,26 +281,15 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                         CircularProgressIndicator(modifier = Modifier.padding(vertical = 50.dp))
                     } else if (forecast is WeatherDataState.SuccessHourly && (forecast as WeatherDataState.SuccessHourly).data.isNotEmpty()) {
                         val hourlyData = (forecast as WeatherDataState.SuccessHourly).data
-                        
-                        // --- TEMPERATURE GROUP ---
-                        Row (
-                            modifier = Modifier
-                                .clickable {
-                                    showTemperatureDetailsGraphs.value =
-                                        !showTemperatureDetailsGraphs.value
-                                }
-                                .padding(vertical = 4.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(stringResource(R.string.temperature)+ " (${UnitConverter.getSymbolWithDegree(
-                                viewModel.userSettings.collectAsState().value.temperatureUnit
-                            )})", style = MaterialTheme.typography.titleMedium)
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                modifier = Modifier.rotate(if (showTemperatureDetailsGraphs.value) 180f else 0f)
-                            )
-                        }
+
+                        // 1. Temperature
+                        Text(
+                            stringResource(R.string.temperature) + " (${
+                                UnitConverter.getSymbolWithDegree(
+                                    viewModel.userSettings.collectAsState().value.temperatureUnit
+                                )
+                            })", modifier = titleModifier
+                        )
                         GenericGraph(
                             viewModel,
                             GraphType.TEMP,
@@ -311,47 +297,17 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                             scrollState = scrollState,
                             contentWidth = contentWidth
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        if (showTemperatureDetailsGraphs.value) {
-                            Column(modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f))) {
-                                if (hourlyData.first().dewpoint != null) {
-                                    Text(
-                                        stringResource(
-                                            R.string.dew_point)
-                                                + " (${UnitConverter.getSymbolWithDegree(
-                                                    viewModel.userSettings.collectAsState().value.temperatureUnit
-                                                )})",
-                                        modifier = titleModifier
-                                    )
-                                    GenericGraph(
-                                        viewModel,
-                                        GraphType.DEW_POINT,
-                                        Color(0xFFFF8A65),
-                                        scrollState = scrollState,
-                                        contentWidth = contentWidth
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-                                if (hourlyData.first().humidity != null) {
-                                    Text(stringResource(R.string.humidity), modifier = titleModifier)
-                                    GenericGraph(
-                                        viewModel,
-                                        GraphType.HUMIDITY,
-                                        Color(0xFF4DD0E1),
-                                        scrollState = scrollState,
-                                        valueRange = 0f..100f,
-                                        contentWidth = contentWidth
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-                            }
-                        }
-
+                        // 2. Apparent Temperature
                         if (hourlyData.first().apparentTemperature != null) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(stringResource(R.string.apparent_temperature)+ " (${UnitConverter.getSymbolWithDegree(
-                                viewModel.userSettings.collectAsState().value.temperatureUnit
-                            )})", modifier = titleModifier)
+                            Text(
+                                stringResource(R.string.apparent_temperature) + " (${
+                                    UnitConverter.getSymbolWithDegree(
+                                        viewModel.userSettings.collectAsState().value.temperatureUnit
+                                    )
+                                })", modifier = titleModifier
+                            )
                             GenericGraph(
                                 viewModel,
                                 GraphType.A_TEMP,
@@ -359,28 +315,26 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                                 scrollState = scrollState,
                                 contentWidth = contentWidth
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
 
-                        // --- PRECIPITATION GROUP ---
+                        // 3. Precipitation Probability
+                        if (hourlyData.first().precipitationData.precipitationProbability != null) {
+                            Text(stringResource(R.string.precipitation_prob), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.PRECIPITATION_PROB,
+                                Color(0xFF64B5F6),
+                                scrollState = scrollState,
+                                valueRange = 0f..100f,
+                                contentWidth = contentWidth
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        // 4. Precipitation
                         if ((hourlyData.mapNotNull { it.precipitationData.precipitation }.maxOrNull() ?: 0.0) != 0.0) {
-                            Row (
-                                modifier = Modifier
-                                    .clickable {
-                                        showPrecipitationDetailsGraphs.value =
-                                            !showPrecipitationDetailsGraphs.value
-                                    }
-                                    .padding(vertical = 4.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(stringResource(R.string.precipitation), style = MaterialTheme.typography.titleMedium)
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    modifier = Modifier.rotate(if (showPrecipitationDetailsGraphs.value) 180f else 0f)
-                                )
-                            }
+                            Text(stringResource(R.string.precipitation), modifier = titleModifier)
                             GenericGraph(
                                 viewModel,
                                 GraphType.PRECIPITATION,
@@ -391,72 +345,32 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                         } else {
-                            Text(stringResource(R.string.no_precipitations), modifier = titleModifier)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                                        shape = MaterialTheme.shapes.medium
+                                    )
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.no_precipitations),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                             Spacer(modifier = Modifier.height(16.dp))
                         }
-                        
-                        if (showPrecipitationDetailsGraphs.value) {
-                            Column(modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f))) {
-                                if (hourlyData.first().precipitationData.precipitationProbability != null)
-                                {
-                                    Text(stringResource(R.string.precipitation_prob), modifier = titleModifier)
-                                    GenericGraph(
-                                        viewModel,
-                                        GraphType.PRECIPITATION_PROB,
-                                        Color(0xFF64B5F6),
-                                        scrollState = scrollState,
-                                        valueRange = 0f..100f,
-                                        contentWidth = contentWidth
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-                                if ((hourlyData.mapNotNull { it.precipitationData.rain }.maxOrNull()
-                                        ?: 0.0) != 0.0
-                                ) {
-                                    Text(stringResource(R.string.rain), modifier = titleModifier)
-                                    GenericGraph(
-                                        viewModel,
-                                        GraphType.RAIN,
-                                        Color(0xFF64B5F6),
-                                        scrollState = scrollState,
-                                        valueRange = 0f..3f,
-                                        contentWidth = contentWidth
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-                                if ((hourlyData.mapNotNull { it.precipitationData.snowfall }
-                                        .maxOrNull() ?: 0.0) != 0.0)
-                                {
-                                    Text(stringResource(R.string.snowfall_cm_h), modifier = titleModifier)
-                                    GenericGraph(
-                                        viewModel,
-                                        GraphType.SNOWFALL,
-                                        Color(0xFFFFFFFF),
-                                        scrollState = scrollState,
-                                        contentWidth = contentWidth
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-                            }
-                        }
 
-                        // --- SNOW DEPTH ---
-                        if (hourlyData.first().precipitationData.snowDepth != null) {
-                            if ((hourlyData.mapNotNull { it.precipitationData.snowDepth }.maxOrNull() ?: 0) != 0) {
-                                Text(stringResource(R.string.snow_depth_cm), modifier = titleModifier)
-                                GenericGraph(
-                                    viewModel,
-                                    GraphType.SNOW_DEPTH,
-                                    Color(0xFFFFFFFF),
-                                    scrollState = scrollState,
-                                    contentWidth = contentWidth
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                            }
-                        }
-
-                        // --- WIND ---
-                        Text(stringResource(R.string.wind_speed) + " (${if(userSettings.windUnit == WindUnit.KPH) "km/h" else "mph"})", modifier = titleModifier)
+                        // 5. Wind Speed
+                        Text(
+                            stringResource(R.string.wind_speed) + " (${if (userSettings.windUnit == WindUnit.KPH) "km/h" else "mph"})",
+                            modifier = titleModifier
+                        )
                         GenericGraph(
                             viewModel,
                             GraphType.WIND_SPEED,
@@ -466,20 +380,35 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                         )
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // --- VISIBILITY ---
-                        if (hourlyData.first().skyInfo.visibility != null) {
-                            Text(stringResource(R.string.visibility), modifier = titleModifier)
+                        // 6. UV Index
+                        if (hourlyData.first().skyInfo.uvIndex != null) {
+                            Text(stringResource(R.string.uv_index), modifier = titleModifier)
                             GenericGraph(
                                 viewModel,
-                                GraphType.VISIBILITY,
-                                Color(0xFF98FFEB),
+                                GraphType.UV_INDEX,
+                                Color(0xFFFFEAB5),
                                 scrollState = scrollState,
+                                valueRange = 0f..11f,
                                 contentWidth = contentWidth
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                         }
 
-                        // --- CLOUD COVER ---
+                        // 7. Humidity
+                        if (hourlyData.first().humidity != null) {
+                            Text(stringResource(R.string.humidity), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.HUMIDITY,
+                                Color(0xFF4DD0E1),
+                                scrollState = scrollState,
+                                valueRange = 0f..100f,
+                                contentWidth = contentWidth
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        // 8. Cloud Cover
                         if (hourlyData.first().skyInfo.cloudcoverTotal != null) {
                             Text(stringResource(R.string.cloud_cover), modifier = titleModifier)
                             GenericGraph(
@@ -493,56 +422,85 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                             Spacer(modifier = Modifier.height(16.dp))
                         }
 
-                        // --- UV INDEX GROUP ---
-                        if (hourlyData.first().skyInfo.uvIndex != null) {
-                            Row (
-                                modifier = Modifier
-                                    .clickable {
-                                        showUvDetailsGraphs.value = !showUvDetailsGraphs.value
-                                    }
-                                    .padding(vertical = 4.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(stringResource(R.string.uv_index), style = MaterialTheme.typography.titleMedium)
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    modifier = Modifier.rotate(if (showUvDetailsGraphs.value) 180f else 0f)
-                                )
-                            }
+                        // 9. Visibility
+                        if (hourlyData.first().skyInfo.visibility != null) {
+                            Text(stringResource(R.string.visibility), modifier = titleModifier)
                             GenericGraph(
                                 viewModel,
-                                GraphType.UV_INDEX,
-                                Color(0xFFFFEAB5),
+                                GraphType.VISIBILITY,
+                                Color(0xFF98FFEB),
                                 scrollState = scrollState,
-                                valueRange = 0f..11f,
                                 contentWidth = contentWidth
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-
-                            if (showUvDetailsGraphs.value && hourlyData.first().skyInfo.opacity != null) {
-                                Column(modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f))) {
-                                    Text(stringResource(R.string.opacity_graph), modifier = titleModifier)
-                                    GenericGraph(
-                                        viewModel,
-                                        GraphType.OPACITY,
-                                        Color(0xFF9D9D9D),
-                                        scrollState = scrollState,
-                                        valueRange = 0f..100f,
-                                        contentWidth = contentWidth
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-                            }
                         }
 
-                        // --- PRESSURE ---
+                        // 10. Pressure
                         if (hourlyData.first().pressure != null) {
                             Text(stringResource(R.string.pressure), modifier = titleModifier)
                             GenericGraph(
                                 viewModel,
                                 GraphType.PRESSURE,
                                 Color(0xFF9575CD),
+                                scrollState = scrollState,
+                                contentWidth = contentWidth
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        // 11. Dew Point
+                        if (hourlyData.first().dewpoint != null) {
+                            Text(
+                                stringResource(R.string.dew_point) + " (${
+                                    UnitConverter.getSymbolWithDegree(
+                                        viewModel.userSettings.collectAsState().value.temperatureUnit
+                                    )
+                                })", modifier = titleModifier
+                            )
+                            GenericGraph(
+                                viewModel,
+                                GraphType.DEW_POINT,
+                                Color(0xFFFF8A65),
+                                scrollState = scrollState,
+                                contentWidth = contentWidth
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        // 12. Rain
+                        if ((hourlyData.mapNotNull { it.precipitationData.rain }.maxOrNull() ?: 0.0) != 0.0) {
+                            Text(stringResource(R.string.rain), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.RAIN,
+                                Color(0xFF64B5F6),
+                                scrollState = scrollState,
+                                valueRange = 0f..3f,
+                                contentWidth = contentWidth
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        // 13. Snowfall
+                        if ((hourlyData.mapNotNull { it.precipitationData.snowfall }.maxOrNull() ?: 0.0) != 0.0) {
+                            Text(stringResource(R.string.snowfall_cm_h), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.SNOWFALL,
+                                Color(0xFFFFFFFF),
+                                scrollState = scrollState,
+                                contentWidth = contentWidth
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        // 14. Snow Depth
+                        if (hourlyData.first().precipitationData.snowDepth != null && (hourlyData.mapNotNull { it.precipitationData.snowDepth }.maxOrNull() ?: 0) != 0) {
+                            Text(stringResource(R.string.snow_depth_cm), modifier = titleModifier)
+                            GenericGraph(
+                                viewModel,
+                                GraphType.SNOW_DEPTH,
+                                Color(0xFFFFFFFF),
                                 scrollState = scrollState,
                                 contentWidth = contentWidth
                             )
@@ -564,7 +522,7 @@ enum class GraphType {
     DEW_POINT, HUMIDITY,
     PRECIPITATION, PRECIPITATION_PROB, RAIN, SNOWFALL, SNOW_DEPTH,
     WIND_SPEED, PRESSURE,
-    CLOUD_COVER, OPACITY,
+    CLOUD_COVER,
     UV_INDEX, VISIBILITY,
 }
 
@@ -818,11 +776,6 @@ fun GenericGraphGlobal(
             GraphType.CLOUD_COVER -> {
                 forecast = hourlyData
                     .map { f -> f.skyInfo.cloudcoverTotal ?: throw IllegalStateException("Graph data cannot be null")}
-            }
-
-            GraphType.OPACITY -> {
-                forecast = hourlyData
-                    .map { f -> f.skyInfo.opacity ?: throw IllegalStateException("Graph data cannot be null") }
             }
 
             GraphType.UV_INDEX -> {
@@ -1138,10 +1091,11 @@ fun WeatherIconGraphGlobal(
     val hourlyData = if (showPairsOnly && rawHourlyData != null) aggregateHourlyData(rawHourlyData) else rawHourlyData
 
     val density = LocalDensity.current
-    // contentWidth = size(24 : 00h->23h) * 53.dp = 24 * 53.dp = 1272.dp
+    // contentWidth (when showPairsOnly = false) = size(24 : 00h->23h) * 53.dp = 24 * 53.dp = 1272.dp
     // iconSize (when showPairsOnly = false) = 1272 / 20 = 63.6
-    // iconSize (when showPairsOnly = true) = 1272 / 11 = 115.63
-    val iconsSize: Dp = if (!showPairsOnly) 63.6.dp else 115.63.dp
+    // contentWidth (when showPairsOnly = true) = size(12 : 00h->22h) * 53.dp = 12 * 53.dp = 636.dp
+    // iconSize (when showPairsOnly = true) = 636 / 11 = 57.82
+    val iconsSize: Dp = if (!showPairsOnly) 63.6.dp else 57.82.dp
     val xPaddingPx = with(density) { 20.dp.toPx() }
     val daySeparatorColor = Color.Gray.copy(alpha = 0.7f)
     
@@ -1254,7 +1208,6 @@ private fun aggregateHourlyData(data: List<AllHourlyVarsReading>): List<AllHourl
             ),
             skyInfo = h1.skyInfo.copy(
                 cloudcoverTotal = maxOfNullable(h1.skyInfo.cloudcoverTotal, h2.skyInfo.cloudcoverTotal),
-                opacity = maxOfNullable(h1.skyInfo.opacity, h2.skyInfo.opacity),
                 uvIndex = maxOfNullable(h1.skyInfo.uvIndex, h2.skyInfo.uvIndex),
                 visibility = maxOfNullable(h1.skyInfo.visibility, h2.skyInfo.visibility),
                 shortwaveRadiation = maxOfNullable(h1.skyInfo.shortwaveRadiation, h2.skyInfo.shortwaveRadiation)

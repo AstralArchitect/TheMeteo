@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
@@ -50,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -86,6 +88,9 @@ import fr.matthstudio.themeteo.utilClasses.MapUtils
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
 import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.time.LocalDateTime
 
 data class NextSunEvent(
@@ -227,6 +232,19 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     // Demander les permissions
     LocationPermissionHandler(viewModel)
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshLocation()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val weatherState = when (val state = hourlyForecast) {
         is WeatherDataState.SuccessHourly -> getSimpleWeather(state.data.first())
         is WeatherDataState.Error -> {
@@ -237,7 +255,33 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         else -> SimpleWeather("Error", SimpleWeatherWord.SUNNY)
     }
 
-    val description = when(weatherState.word) {
+    val rainWithinHour by viewModel.rainWithinHour.collectAsState()
+
+    val finalWeatherState = remember(weatherState, rainWithinHour) {
+        if (rainWithinHour is WeatherDataState.SuccessRainWithinHour) {
+            val forecast = (rainWithinHour as WeatherDataState.SuccessRainWithinHour).data.properties.forecast
+            if (forecast.isNotEmpty()) {
+                // Si aucune pluie n'est prévue du tout dans l'heure (max == 1), on ne touche à rien
+                if ((forecast.maxOfOrNull { it.rainIntensity } ?: 1) <= 1) return@remember weatherState
+
+                val currentIntensity = forecast[0].rainIntensity
+                val mfWord = when (currentIntensity) {
+                    1 -> if (weatherState.word?.isPrecipitation() == true) SimpleWeatherWord.CLOUDY else null
+                    2, 3 -> SimpleWeatherWord.RAINY1
+                    4 -> SimpleWeatherWord.RAINY2
+                    else -> null
+                }
+
+                when {
+                    weatherState.word?.isStorm() == true -> weatherState
+                    mfWord != null -> weatherState.copy(word = mfWord)
+                    else -> weatherState
+                }
+            } else weatherState
+        } else weatherState
+    }
+
+    val description = when(finalWeatherState.word) {
         SimpleWeatherWord.STORMY -> stringResource(R.string.stormy)
         SimpleWeatherWord.STORMY_HAIL -> "Orage avec Grêle"
         SimpleWeatherWord.EXTREME_STORMY -> "Orage Fort"
@@ -260,9 +304,10 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
     // --- GESTION DE L'ÉTAT DE L'UI ---
     val selectedLocation by viewModel.selectedLocation.collectAsState()
+    val currentCityName by viewModel.currentCityName.collectAsState()
     val bentoCardsOrder by viewModel.bentoCardsOrder.collectAsState()
     var showLocationSheet by remember { mutableStateOf(false) }
-    var showAddLocationDialog by remember { mutableStateOf(false) }
+    var showMapPicker by remember { mutableStateOf(false) }
     var showAirQualityDialog by remember { mutableStateOf(false) }
     var showVigilanceDialog by remember { mutableStateOf(false) }
     var showSunMoonDialog by remember { mutableStateOf(false) }
@@ -280,6 +325,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         val currentWeathers by viewModel.currentWeather.collectAsState()
         val userSettings by viewModel.userSettings.collectAsState()
         val isPermissionGranted by viewModel.isLocationPermissionGranted.collectAsState()
+        val currentCityName by viewModel.currentCityName.collectAsState()
+        val searchState by viewModel.searchState.collectAsState()
 
         LocationManagementSheet(
             savedLocations = savedLocations,
@@ -287,37 +334,39 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             currentWeathers = currentWeathers,
             userSettings = userSettings,
             isPermissionGranted = isPermissionGranted,
+            searchState = searchState,
+            currentCityName = currentCityName,
+            onSearch = { viewModel.searchCity(it) },
             onSelectLocation = { viewModel.selectLocation(it) },
             onRemoveLocation = { viewModel.removeLocation(it) },
             onRenameLocation = { location, newName -> viewModel.renameLocation(location, newName) },
             onReorderLocations = { viewModel.reorderLocations(it) },
             onSetDefaultLocation = { viewModel.setDefaultLocation(it) },
-            onDismiss = { showLocationSheet = false },
-            onAddLocationClick = {
-                showLocationSheet = false // Ferme le premier panneau
-                showAddLocationDialog = true // Ouvre le second
+            onAddLocation = { viewModel.addLocation(it) },
+            onMapClick = {
+                showLocationSheet = false
+                showMapPicker = true
             },
+            onDismiss = { showLocationSheet = false },
             sheetState = sheetState
         )
     }
 
-    if (showAddLocationDialog) {
-        val searchState by viewModel.searchState.collectAsState()
+    if (showMapPicker) {
         val userLocation by viewModel.userLocation.collectAsState()
-
-        AddLocationDialog(
-            searchState = searchState,
-            userLocation = userLocation,
-            weatherService = viewModel.weatherService,
-            onSearch = { viewModel.searchCity(it) },
-            onLocationSelected = { viewModel.selectLocation(it) },
-            onAddLocation = { viewModel.addLocation(it) },
-            onMapLocationAdded = { gpsCoordinates, name ->
-                viewModel.addLocationFromMap(gpsCoordinates, name)
-            },
-            onDismiss = { showAddLocationDialog = false },
-        )
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showMapPicker = false }) {
+            MapPickerScreen(
+                initialLocation = userLocation,
+                weatherService = viewModel.weatherService,
+                onLocationSelected = { coords, name ->
+                    viewModel.addLocationFromMap(coords, name)
+                    showMapPicker = false
+                },
+                onDismiss = { showMapPicker = false }
+            )
+        }
     }
+
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenHeightPx = constraints.maxHeight.toFloat()
@@ -347,7 +396,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
             }
         }
 
-        BlurredBackground(weatherState.word, isNight)
+        BlurredBackground(finalWeatherState.word, isNight)
 
         Box(
             modifier = Modifier
@@ -399,7 +448,9 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                                 val targetItem = visibleItems.find { item ->
                                     val targetIndex = currentOrder.indexOfFirst { it.name == item.key }
-                                    val isTargetDraggable = item.key != BentoCardType.VIGILANCE.name && item.key != BentoCardType.ADDITIONAL_INFOS.name
+                                    val isTargetDraggable = item.key != BentoCardType.VIGILANCE.name &&
+                                            item.key != BentoCardType.RAIN_WITHIN_HOUR.name &&
+                                            item.key != BentoCardType.ADDITIONAL_INFOS.name
                                     item.key != key && targetIndex != -1 && isTargetDraggable &&
                                             if (targetIndex > currentIndex) draggedItemCenter > item.offset + item.size / 2
                                             else draggedItemCenter < item.offset + item.size / 2
@@ -468,12 +519,12 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         end = 16.dp,
                         bottom = 16.dp
                     ),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.Top // Replaced Arrangement.spacedBy(16.dp)
                 ) {
                     if (isLauncherActivity) {
                         item {
                             Box(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                                 contentAlignment = Alignment.TopEnd
                             ) {
                                 FilledIconButton(
@@ -497,7 +548,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                     item {
                         Column(
                             modifier = Modifier
-                                .fillMaxWidth(),
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             if (isLauncherActivity) {
@@ -513,7 +565,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = when (val loc = selectedLocation) {
-                                            is LocationIdentifier.CurrentUserLocation -> stringResource(
+                                            is LocationIdentifier.CurrentUserLocation -> currentCityName ?: stringResource(
                                                 R.string.current_location
                                             )
 
@@ -521,6 +573,21 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                         },
                                         style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
                                     )
+                                    if (selectedLocation is LocationIdentifier.CurrentUserLocation) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Surface(
+                                            modifier = Modifier.align(Alignment.CenterVertically),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "GPS",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
                                     Icon(
                                         Icons.Default.ArrowDropDown,
                                         contentDescription = null,
@@ -540,7 +607,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                                 LottieWeatherIcon(
                                     iconPath = getLottieIconPath(
-                                        weatherState.word ?: SimpleWeatherWord.SUNNY, isNight
+                                        finalWeatherState.word ?: SimpleWeatherWord.SUNNY, isNight
                                     ),
                                     animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
                                     modifier = Modifier.size(120.dp)
@@ -602,7 +669,9 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                         val scale by animateFloatAsState(if (isDragged) 1.03f else 1f, label = "scale")
                         val elevation by animateDpAsState(if (isDragged) 12.dp else 0.dp, label = "elevation")
 
-                        val isDraggable = cardType != BentoCardType.VIGILANCE && cardType != BentoCardType.ADDITIONAL_INFOS
+                        val isDraggable = cardType != BentoCardType.VIGILANCE &&
+                                cardType != BentoCardType.RAIN_WITHIN_HOUR &&
+                                cardType != BentoCardType.ADDITIONAL_INFOS
 
                         Box(
                             modifier = Modifier
@@ -726,6 +795,7 @@ fun RainMapPreviewCard(
     BentoCard(
         modifier = modifier
             .fillMaxWidth()
+            .padding(bottom = 16.dp)
             .height(160.dp)
             .clickable { onClick() }
     ) {

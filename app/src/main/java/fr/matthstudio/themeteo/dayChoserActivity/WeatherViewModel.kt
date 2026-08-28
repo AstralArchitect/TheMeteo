@@ -118,6 +118,11 @@ class WeatherViewModel(
     val userLocation: StateFlow<GpsCoordinates?> = weatherCache.currentGpsPosition
 
     /**
+     * Expose le nom de la ville actuelle récupéré via géocodage inverse.
+     */
+    val currentCityName: StateFlow<String?> = weatherCache.currentCityName
+
+    /**
      * Expose si la permission de localisation est accordée.
      */
     val isLocationPermissionGranted: StateFlow<Boolean> = weatherCache.isLocationPermissionGranted
@@ -146,13 +151,14 @@ class WeatherViewModel(
     val forecast: StateFlow<WeatherDataState> = combine(
         userSettings,
         selectedLocation
-    ) { _, _ ->
-        // On combine les deux. Peu importe la valeur reçue,
-        // flatMapLatest relancera le flux ci-dessous.
-    }.flatMapLatest {
-        weatherCache.get(LocalDate.now(),
-            WeatherModelRegistry.getModel(userSettings.value.model, userSettings.value.forecastType == ForecastType.ENSEMBLE).predictionDays.toLong()
-        )
+    ) { settings, _ ->
+        WeatherModelRegistry.getMaxPredictionDays(
+            settings.model,
+            settings.forecastType == ForecastType.ENSEMBLE,
+            settings.enableDurationExtension
+        ).toLong()
+    }.flatMapLatest { duration ->
+        weatherCache.get(LocalDate.now(), duration)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

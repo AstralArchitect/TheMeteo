@@ -12,6 +12,7 @@ import fr.matthstudio.themeteo.PolicyUpdateInfo
 import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherCache
+import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.BentoCardType
@@ -104,6 +105,11 @@ class WeatherViewModel(
     val userLocation: StateFlow<GpsCoordinates?> = weatherCache.currentGpsPosition
 
     /**
+     * Expose le nom de la ville actuelle récupéré via géocodage inverse.
+     */
+    val currentCityName: StateFlow<String?> = weatherCache.currentCityName
+
+    /**
      * Expose si la permission de localisation est accordée.
      */
     val isLocationPermissionGranted: StateFlow<Boolean> = weatherCache.isLocationPermissionGranted
@@ -111,36 +117,51 @@ class WeatherViewModel(
     /**
      * Expose l'ordre des cartes Bento.
      */
-    val bentoCardsOrder: StateFlow<List<BentoCardType>> = weatherCache.userSettingsRepository.bentoCardsOrder.map { savedOrder ->
-        // S'assurer que tous les nouveaux types de cartes sont présents (pour les anciens utilisateurs)
+    val bentoCardsOrder: StateFlow<List<BentoCardType>> = weatherCache.userSettingsRepository.bentoCardsOrder.map { savedOrder: List<BentoCardType> ->
         val currentEntries = BentoCardType.entries
-        if (savedOrder.size < currentEntries.size) {
-            val missing = currentEntries.filter { it !in savedOrder }
-            val mutableOrder = savedOrder.toMutableList()
-            
-            missing.forEach { missingCard ->
-                if (missingCard == BentoCardType.RAIN_RADAR) {
-                    val sunIndex = mutableOrder.indexOf(BentoCardType.SUN_DETAILS)
-                    if (sunIndex != -1) {
-                        mutableOrder.add(sunIndex, missingCard)
-                    } else {
-                        mutableOrder.add(missingCard)
-                    }
-                } else if (missingCard == BentoCardType.RAIN_WITHIN_HOUR) {
-                    val vigilanceIndex = mutableOrder.indexOf(BentoCardType.VIGILANCE)
-                    if (vigilanceIndex != -1) {
-                        mutableOrder.add(vigilanceIndex + 1, missingCard)
-                    } else {
-                        mutableOrder.add(missingCard)
-                    }
-                } else {
-                    mutableOrder.add(missingCard)
-                }
+        val result = savedOrder.toMutableList()
+        
+        // Ajouter les cartes manquantes
+        val missing = currentEntries.filter { it !in result }
+        missing.forEach { missingCard ->
+            if (missingCard == BentoCardType.RAIN_RADAR) {
+                val sunIndex = result.indexOf(BentoCardType.SUN_DETAILS)
+                if (sunIndex != -1) result.add(sunIndex, missingCard) else result.add(missingCard)
+            } else if (missingCard == BentoCardType.RAIN_WITHIN_HOUR) {
+                val vigilanceIndex = result.indexOf(BentoCardType.VIGILANCE)
+                if (vigilanceIndex != -1) result.add(vigilanceIndex + 1, missingCard) else result.add(missingCard)
+            } else {
+                result.add(missingCard)
             }
-            mutableOrder
-        } else {
-            savedOrder
         }
+
+        // Supprimer le radar en mode FOSS
+        if (BuildConfig.BUILD_TYPE == "foss") {
+            result.remove(BentoCardType.RAIN_RADAR)
+        }
+
+        // Forcer VIGILANCE à 0
+        val vIdx = result.indexOf(BentoCardType.VIGILANCE)
+        if (vIdx != 0 && vIdx != -1) {
+            result.removeAt(vIdx)
+            result.add(0, BentoCardType.VIGILANCE)
+        }
+
+        // Forcer RAIN_WITHIN_HOUR à 1 (juste après VIGILANCE)
+        val rIdx = result.indexOf(BentoCardType.RAIN_WITHIN_HOUR)
+        if (rIdx != 1 && rIdx != -1) {
+            result.removeAt(rIdx)
+            result.add(1, BentoCardType.RAIN_WITHIN_HOUR)
+        }
+
+        // Forcer ADDITIONAL_INFOS à la fin
+        val aIdx = result.indexOf(BentoCardType.ADDITIONAL_INFOS)
+        if (aIdx != -1 && aIdx != result.size - 1) {
+            result.removeAt(aIdx)
+            result.add(BentoCardType.ADDITIONAL_INFOS)
+        }
+
+        result.toList()
     }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
@@ -207,12 +228,11 @@ class WeatherViewModel(
         userSettings,
         refreshCounter
     ) { _, settings, _ ->
-        // On récupère les settings ici pour calculer la durée
-        if (settings.enableDurationExtension && settings.forecastType != ForecastType.ENSEMBLE) {
-            14L // On demande 14 jours (ECMWF IFS) si l'extension est activée
-        } else {
-            WeatherModelRegistry.getModel(settings.model, userSettings.value.forecastType == ForecastType.ENSEMBLE).predictionDays.toLong()
-        }
+        WeatherModelRegistry.getMaxPredictionDays(
+            settings.model,
+            settings.forecastType == ForecastType.ENSEMBLE,
+            settings.enableDurationExtension
+        ).toLong()
     }.flatMapLatest { duration ->
         weatherCache.get(LocalDate.now(), duration)
     }.stateIn(

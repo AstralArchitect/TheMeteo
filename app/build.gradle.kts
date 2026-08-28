@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0" // Utilisez la même version que votre Kotlin
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
     id("kotlin-parcelize")
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     alias(libs.plugins.google.services)
@@ -28,8 +28,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 762
-        versionName = "2.6.0"
+        versionCode = 773
+        versionName = "2.6.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -59,7 +59,16 @@ android {
         // configuration pour le build de production sans Firebase
         create("releaseNoFirebase") {
             initWith(getByName("release"))
+            applicationIdSuffix = ".nofirebase"
             buildConfigField("Boolean", "FIREBASE_ENABLED", "false")
+        }
+
+        // Configuration pour le build FOSS (sans clefs privées)
+        create("foss") {
+            initWith(getByName("releaseNoFirebase"))
+            applicationIdSuffix = ".foss"
+            // Ce mode utilise les valeurs par défaut de secrets.defaults.properties
+            // si aucune clef n'est présente dans local.properties.
         }
     }
 
@@ -89,10 +98,21 @@ android {
             // excludes.add("META-INF/*.kotlin_module") // If using libraries not yet fully compatible with AGP
         }
     }
+
+    sourceSets {
+        getByName("foss") {
+            java.srcDirs("src/releaseNoFirebase/java")
+        }
+    }
 }
 
 kotlin {
     jvmToolchain(17)
+}
+
+secrets {
+    // Fichier contenant les valeurs par défaut si local.properties est absent
+    defaultPropertiesFileName = "secrets.defaults.properties"
 }
 
 dependencies {
@@ -172,12 +192,12 @@ dependencies {
 }
 
 // Disable Google Services and Crashlytics tasks for debug builds
-// and releaseNoFirebase builds
+// and releaseNoFirebase / foss builds
 afterEvaluate {
     tasks.matching {
         val taskName = it.name.lowercase()
         (taskName.contains("googleservices") || taskName.contains("crashlytics")) && 
-        (taskName.contains("debug") || taskName.contains("releasenofirebase"))
+        (taskName.contains("debug") || taskName.contains("releasenofirebase") || taskName.contains("foss"))
     }.configureEach {
         enabled = false
     }
