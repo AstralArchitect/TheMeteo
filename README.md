@@ -1,6 +1,6 @@
 # TheMeteo
 
-TheMeteo est une application météo complète pour Android offrant des prévisions d'une précision chirurgicale, un large choix de modèles météorologiques, des radars de pluie interactifs et une multitude de données environnementales (Pollen, Qualité de l'Air, Vigilance). Le tout dans une interface moderne et personnalisable.
+TheMeteo est une application météo complète pour Android offrant des prévisions, un large choix de modèles météorologiques, des radars de pluie et une multitude de données environnementales (Pollen, Qualité de l'Air, Vigilance). Le tout dans une interface moderne et personnalisable.
 
 <a href="https://play.google.com/store/apps/details?id=fr.matthstudio.themeteo">
   <img alt="Get it on Google Play" src="https://play.google.com/intl/en_us/badges/static/images/badges/fr_badge_web_generic.png" width="200"/>
@@ -48,7 +48,7 @@ Accessible en cliquant sur le nom de la ville actuelle en haut de l'écran princ
 
 ### Fonctionnalités :
 - **Gestion des Favoris :** Liste déroulante des villes sauvegardées affichant directement leur température et météo actuelles.
-- **Lieu par défaut :** Au premier lancement, l'application initialise Paris par défaut. Vous pouvez marquer une autre ville avec une étoile (⭐) pour un chargement automatique.
+- **Lieu par défaut :** Au premier lancement, l'application initialise Paris par défaut. Vous pouvez marquer une autre ville avec une Maison pour un chargement automatique.
 - **Adaptation Automatique du Modèle :** Si vous sélectionnez une ville hors de la zone de couverture de votre modèle actuel, TheMeteo bascule automatiquement sur le modèle "IFS" mondial.
 - **Recherche & Carte :** Recherche mondiale par autocomplétion ou sélection manuelle précise sur Google Maps.
 
@@ -180,6 +180,14 @@ TheMeteo propose une sélection exhaustive de modèles issus des plus grands ins
 - **ICON Ensemble** : Version probabiliste du modèle allemand.
 - **GEM Ensemble** : Système d'ensemble canadien.
 - **UKMO Ensemble** : Version probabiliste britannique.
+
+## Compilation
+
+Le projet possède 3 variantes de build :
+
+- Release : Variante de production principale, publiée sur le Play Store
+- ReleaseNoFirebase : Variante de production, mais sans les Google Firebase Crashlytics et donc n'étant pas dépendante des Google Play Services
+- FOSS (Free and Open Source Software) : Variante retirant toute dépendance aux APIs nécéssitant une clef. Cette variante peut donc être buildé sans en renseigner dans local.properties
 
 ## ⚖️ Licences
 
