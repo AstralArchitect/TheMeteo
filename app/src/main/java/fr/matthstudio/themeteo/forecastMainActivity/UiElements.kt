@@ -202,6 +202,25 @@ data class SimpleWeather (
     var image: ImageBitmap? = null
 )
 
+fun SimpleWeatherWord.isStorm(): Boolean {
+    return this == SimpleWeatherWord.STORMY ||
+            this == SimpleWeatherWord.STORMY_HAIL ||
+            this == SimpleWeatherWord.EXTREME_STORMY ||
+            this == SimpleWeatherWord.EXTREME_STORMY_HAIL
+}
+
+fun SimpleWeatherWord.isPrecipitation(): Boolean {
+    return this == SimpleWeatherWord.RAINY1 ||
+            this == SimpleWeatherWord.RAINY2 ||
+            this == SimpleWeatherWord.DRIZZLY ||
+            this == SimpleWeatherWord.SNOWY1 ||
+            this == SimpleWeatherWord.SNOWY2 ||
+            this == SimpleWeatherWord.SNOWY3 ||
+            this == SimpleWeatherWord.SNOWY_MIX ||
+            this == SimpleWeatherWord.HAIL ||
+            this.isStorm()
+}
+
 fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
     if (code == null) return null
     return when (code) {

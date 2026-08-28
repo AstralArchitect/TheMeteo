@@ -73,7 +73,6 @@
     <string name="uv_extreme">Extreme</string>
     <string name="uv_index">UV Index</string>
     <string name="visibility">Visibility (km)</string>
-    <string name="opacity_graph">Opacity (%)</string>
     <string name="details">Details</string>
     <string name="show_more">Show more</string>
     <string name="current_location">Current Location</string>

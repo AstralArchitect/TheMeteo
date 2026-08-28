@@ -50,6 +50,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.TheMeteo
+import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -281,7 +282,8 @@ fun RainMapContent(
                         override fun getTileURLString(pMapTileIndex: Long): String {
                             return baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" +
                                     MapTileIndex.getX(pMapTileIndex) + "/" +
-                                    MapTileIndex.getY(pMapTileIndex) + ".png"
+                                    MapTileIndex.getY(pMapTileIndex) + ".png" +
+                                    "?key=${BuildConfig.CARTODB_API_KEY}"
                         }
                     }
                     setTileSource(baseSource)

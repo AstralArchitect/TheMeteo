@@ -28,8 +28,8 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 767
-        versionName = "2.6.0"
+        versionCode = 773
+        versionName = "2.6.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -62,6 +62,14 @@ android {
             applicationIdSuffix = ".nofirebase"
             buildConfigField("Boolean", "FIREBASE_ENABLED", "false")
         }
+
+        // Configuration pour le build FOSS (sans clefs privées)
+        create("foss") {
+            initWith(getByName("releaseNoFirebase"))
+            applicationIdSuffix = ".foss"
+            // Ce mode utilise les valeurs par défaut de secrets.defaults.properties
+            // si aucune clef n'est présente dans local.properties.
+        }
     }
 
     compileOptions {
@@ -90,10 +98,21 @@ android {
             // excludes.add("META-INF/*.kotlin_module") // If using libraries not yet fully compatible with AGP
         }
     }
+
+    sourceSets {
+        getByName("foss") {
+            java.srcDirs("src/releaseNoFirebase/java")
+        }
+    }
 }
 
 kotlin {
     jvmToolchain(17)
+}
+
+secrets {
+    // Fichier contenant les valeurs par défaut si local.properties est absent
+    defaultPropertiesFileName = "secrets.defaults.properties"
 }
 
 dependencies {
@@ -173,12 +192,12 @@ dependencies {
 }
 
 // Disable Google Services and Crashlytics tasks for debug builds
-// and releaseNoFirebase builds
+// and releaseNoFirebase / foss builds
 afterEvaluate {
     tasks.matching {
         val taskName = it.name.lowercase()
         (taskName.contains("googleservices") || taskName.contains("crashlytics")) && 
-        (taskName.contains("debug") || taskName.contains("releasenofirebase"))
+        (taskName.contains("debug") || taskName.contains("releasenofirebase") || taskName.contains("foss"))
     }.configureEach {
         enabled = false
     }
