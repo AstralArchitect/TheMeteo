@@ -10,3 +10,9 @@
 local.properties
 /.gemini/settings.json
 /app/google-services.json
+.artifacts/
+.kotlin/
+*.aab
+*.apk
+app/foss
+gradle/wrapper/*

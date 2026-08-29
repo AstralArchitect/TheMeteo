@@ -236,7 +236,7 @@ val tertiarySunnyLight = Color(0xFF416651)
 val onTertiarySunnyLight = Color(0xFFFFFFFF)
 val tertiaryContainerSunnyLight = Color(0xFFC3ECCB)
 val onTertiaryContainerSunnyLight = Color(0xFF002112)
-val backgroundSunnyLight = Color(0xFFFDF9F0)
+val backgroundSunnyLight = Color(0xFFFFF9E5) // Slightly warmer/richer beige for sunny contrast
 
 val primarySunnyDark = Color(0xFFD6C68E)
 val onPrimarySunnyDark = Color(0xFF393005)
@@ -264,7 +264,7 @@ val onSecondaryContainerCloudyLight = Color(0xFF1A1C1E)
 val tertiaryCloudyLight = Color(0xFF605E63)
 val onTertiaryCloudyLight = Color(0xFFFFFFFF)
 val tertiaryContainerCloudyLight = Color(0xFFE6E1E9)
-val backgroundCloudyLight = Color(0xFFF1F1F1)
+val backgroundCloudyLight = Color(0xFFDFE2E5) // Darkened from #F1F1F1 to contrast with #D4D4D4 clouds
 
 val primaryCloudyDark = Color(0xFFC6C6C9)
 val onPrimaryCloudyDark = Color(0xFF2E3133)
@@ -292,7 +292,7 @@ val tertiaryRainyLight = Color(0xFF6B5778)
 val onTertiaryRainyLight = Color(0xFFFFFFFF)
 val tertiaryContainerRainyLight = Color(0xFFF2DAFF)
 val onTertiaryContainerRainyLight = Color(0xFF251431)
-val backgroundRainyLight = Color(0xFFF8F9FF)
+val backgroundRainyLight = Color(0xFFEBF1FF) // Slightly more blue and darker for contrast with rain icons
 
 val primaryRainyDark = Color(0xFFADC6FF)
 val onPrimaryRainyDark = Color(0xFF002E69)
@@ -317,7 +317,7 @@ val tertiarySnowyLight = Color(0xFF525E7D)
 val onTertiarySnowyLight = Color(0xFFFFFFFF)
 val tertiaryContainerSnowyLight = Color(0xFFD9E2FF)
 val onTertiaryContainerSnowyLight = Color(0xFF0F1B32)
-val backgroundSnowyLight = Color(0xFFF0FBFC)
+val backgroundSnowyLight = Color(0xFFE5F7F9) // Slightly darker cyan for contrast with white/light snow
 
 val primarySnowyDark = Color(0xFF4FD8EB)
 val onPrimarySnowyDark = Color(0xFF00363D)
@@ -328,6 +328,7 @@ val onSecondarySnowyDark = Color(0xFF1C3437)
 val secondaryContainerSnowyDark = Color(0xFF324B4E)
 val tertiarySnowyDark = Color(0xFFBAC6E9)
 val backgroundSnowyDark = Color(0xFF0B1416)
+
 
 // --- Stormy (Violet Électrique / Prune) ---
 val primaryStormyLight = Color(0xFF9100AC)
