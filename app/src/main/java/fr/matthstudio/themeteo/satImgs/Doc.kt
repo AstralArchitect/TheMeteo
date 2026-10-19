@@ -11,39 +11,29 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 
 class DocActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val weatherCache = (application as TheMeteo).weatherCache
         
         enableEdgeToEdge()
         setContent {
-            val userSettings by weatherCache.userSettings.collectAsState()
-            val currentWmo = remember { mutableStateOf<Int?>(null) }
-
-            LaunchedEffect(weatherCache.selectedLocation) {
-                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
-                    currentWmo.value = when (state) {
-                        is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-                        is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                        else -> null
-                    }
-                }
-            }
+            val userSettings by AppStateManager.userSettings.collectAsState()
+            val currentWmo by AppStateManager.currentWmoCode.collectAsState()
 
             TheMeteoTheme(
-                themeMode = userSettings.themeMode,
-                currentWmoCode = currentWmo.value,
+                themeMode = userSettings?.themeMode ?: ThemeMode.FIXED,
+                currentWmoCode = currentWmo,
                 isNight = false
             ) {
                 Scaffold(
@@ -52,7 +42,7 @@ class DocActivity : ComponentActivity() {
                             title = { Text("Aide à l'interprétation") },
                             navigationIcon = {
                                 IconButton(onClick = { finish() }) {
-                                    Icon(Icons.Default.ArrowBack, contentDescription = "Retour")
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
                                 }
                             }
                         )

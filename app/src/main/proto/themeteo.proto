@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package themeteo;
+
+option java_package = "fr.matthstudio.themeteo.proto";
+option java_multiple_files = true;
+option java_outer_classname = "TheMeteoProto";
+option swift_prefix = "TM";
+
+// =============================================================================
+// 1. COURT TERME (AROME / IFS SHORT — -12H À +60H)
+// Téléchargé depuis 'arome_short_term.bin' (France) ou 'ifs_short_term.bin' (Monde)
+// =============================================================================
+
+message ShortTermStep {
+    sint32 hour_offset_from_00z = 1;        // Décalage en heures par rapport à 00:00 UTC du jour J0 (ex: -12..+59)
+
+    // Tampon de 5 variables Float16 (10 octets, IEEE 754 half-precision little-endian) :
+    //  0: wind_speed (m/s)
+    //  1: wind_direction (0-360°)
+    //  2: wind_gust_speed (m/s)
+    //  3: total_precipitation (mm/h)
+    //  4: snow_precipitation (mm/h)
+    bytes packed_floats_f16 = 2;
+
+    // Tampon de 11 variables entières (11 octets) :
+    //  0: wmo_code (uint8 : 0 à 99, 255 si indisponible)
+    //  1: temperature (int8 signé : AROME = pas de 0.5°C [-64..+63.5°C] ; IFS/autres = pas de 1°C [-128..+127°C])
+    //  2: apparent_temperature (int8 signé : AROME = pas de 0.5°C ; IFS/autres = pas de 1°C)
+    //  3: pressure (uint8 non signé : P = 850 + val hPa [850..1105 hPa])
+    //  4: probability_of_precip (0-100%, ou -1 si NaN/non disponible)
+    //  5: probability_of_thunderstorm (0-100%, ou -1 si NaN/non disponible)
+    //  6: relative_humidity (0-100%)
+    //  7: low_cloud_cover (0-100% ou -1)
+    //  8: medium_cloud_cover (0-100% ou -1)
+    //  9: high_cloud_cover (0-100% ou -1)
+    // 10: total_cloud_cover (0-100%)
+    bytes packed_bytes_i8 = 3;
+}
+
+message ShortTermPointPayload {
+    float latitude = 1;                     // Latitude GPS (°N)
+    float longitude = 2;                    // Longitude GPS (°E)
+    string model_name = 3;                  // "AROME" ou "IFS"
+    int64 reference_00z_timestamp_utc = 4;  // Timestamp Unix UTC de 00:00:00 UTC du jour J0
+    repeated ShortTermStep steps = 5;       // Série temporelle de 72 pas (-12h à +59h)
+}
+
+
+// =============================================================================
+// 2. MOYEN TERME (IFS ENSEMBLE — CENTILES P10/P50/P90 — J+2 À J+8)
+// =============================================================================
+
+message MediumTermStep {
+    sint32 hour_offset_from_00z = 1;        // Décalage en heures par rapport à 00:00 UTC du jour J0 (ex: +36..+204)
+
+    // Tampon de 9 variables Float16 (18 octets, IEEE 754 half-precision little-endian) :
+    //  0: wind_speed_p10 (m/s)
+    //  1: wind_speed (m/s Médiane P50)
+    //  2: wind_speed_p90 (m/s)
+    //  3: wind_direction (0-360°)
+    //  4: wind_gust_speed_p10 (m/s)
+    //  5: wind_gust_speed (m/s Médiane P50)
+    //  6: wind_gust_speed_p90 (m/s)
+    //  7: total_precipitation (mm)
+    //  8: snow_precipitation (mm)
+    bytes packed_floats_f16 = 2;
+
+    // Tampon de 18 variables entières (18 octets) :
+    //  0: wmo_code (uint8 : 0 à 99, 255 si indisponible)
+    //  1: temperature_p10 (int8 signé : pas de 1°C [-128..+127°C])
+    //  2: temperature (int8 signé : pas de 1°C Médiane P50)
+    //  3: temperature_p90 (int8 signé : pas de 1°C)
+    //  4: apparent_temperature_p10 (int8 signé : pas de 1°C)
+    //  5: apparent_temperature (int8 signé : pas de 1°C Médiane P50)
+    //  6: apparent_temperature_p90 (int8 signé : pas de 1°C)
+    //  7: pressure_p10 (uint8 non signé : P = 850 + val hPa [850..1105 hPa])
+    //  8: pressure (uint8 non signé : P = 850 + val hPa Médiane P50)
+    //  9: pressure_p90 (uint8 non signé : P = 850 + val hPa)
+    // 10: probability_of_precip (0-100%, ou -1 si NaN/non disponible)
+    // 11: probability_of_instability / orage (0-100%, ou -1 si NaN/non disponible)
+    // 12: relative_humidity_p10 (0-100%)
+    // 13: relative_humidity (0-100% Médiane P50)
+    // 14: relative_humidity_p90 (0-100%)
+    // 15: total_cloud_cover (0-100% Médiane P50)
+    // 16: total_cloud_cover_p10 (0-100%)
+    // 17: total_cloud_cover_p90 (0-100%)
+    bytes packed_bytes_i8 = 3;
+}
+
+
+// =============================================================================
+// 3. LONG TERME (AIFS-ENS — SCÉNARIOS CLUSTÉRISÉS — J+8 À J+14)
+// =============================================================================
+
+message LongTermScenario {
+    float probability = 1;                  // Probabilité du scénario (0 à 100%)
+    bool is_valid = 2;                      // Scénario actif et peuplé
+
+    // Tampon de 9 variables x 4 pas temporels Float16 (36 floats = 72 octets) :
+    //  0: wind_speed_p10 (4 floats)
+    //  1: wind_speed (4 floats Médiane P50)
+    //  2: wind_speed_p90 (4 floats)
+    //  3: wind_direction (4 floats)
+    //  4: wind_gust_speed_p10 (4 floats)
+    //  5: wind_gust_speed (4 floats Médiane P50)
+    //  6: wind_gust_speed_p90 (4 floats)
+    //  7: precipitation (4 floats)
+    //  8: visibility (4 floats)
+    bytes packed_floats_f16 = 3;
+
+    // Tampon de 15 variables x 4 pas temporels (60 octets) :
+    //  0: wmo_code (4 octets uint8 : 0 à 99, 255 si indisponible)
+    //  1: temperature_p10 (4 octets int8 signé : pas de 1°C [-128..+127°C])
+    //  2: temperature (4 octets int8 signé : pas de 1°C Médiane P50)
+    //  3: temperature_p90 (4 octets int8 signé : pas de 1°C)
+    //  4: apparent_temperature_p10 (4 octets int8 signé : pas de 1°C)
+    //  5: apparent_temperature (4 octets int8 signé : pas de 1°C Médiane P50)
+    //  6: apparent_temperature_p90 (4 octets int8 signé : pas de 1°C)
+    //  7: pressure_p10 (4 octets uint8 non signé : P = 850 + val hPa [850..1105 hPa])
+    //  8: pressure (4 octets uint8 non signé : P = 850 + val hPa Médiane P50)
+    //  9: pressure_p90 (4 octets uint8 non signé : P = 850 + val hPa)
+    // 10: relative_humidity_p10 (4 octets int8 : 0-100%)
+    // 11: relative_humidity (4 octets int8 : 0-100% Médiane P50)
+    // 12: relative_humidity_p90 (4 octets int8 : 0-100%)
+    // 13: precipitation_probability (4 octets int8 : 0-100%)
+    // 14: total_cloud_cover (4 octets int8 : 0-100% Médiane P50)
+    bytes packed_bytes_i8 = 4;
+}
+
+message LongTermForecast {
+    int32 day_number = 1;                   // Numéro du jour calendaire (J+8 à J+14)
+    int64 date_timestamp_utc = 2;           // Timestamp Unix UTC de minuit (00:00 UTC) du jour
+    bool is_entire_day = 3;                 // Indique si la fenêtre 36h est 100% couverte ou tronquée en fin de run
+    repeated LongTermScenario scenarios = 4; // Exactement 3 scénarios classés (MAX_SCENARIOS = 3)
+}
+
+
+// =============================================================================
+// 4. PAYLOAD ÉTENDU GLOBAL (MOYEN + LONG TERME : J+2 À J+14)
+// Téléchargé depuis 'global_extended_forecast.bin' (Mondial 25 km)
+// =============================================================================
+
+message ExtendedForecastPointPayload {
+    float latitude = 1;                             // Latitude GPS (°N)
+    float longitude = 2;                            // Longitude GPS (°E)
+    int64 reference_00z_timestamp_utc = 3;          // Timestamp Unix UTC de 00:00:00 UTC du jour J0
+    repeated MediumTermStep medium_term_steps = 4;  // J+2 à J+8 (Centiles P10/P50/P90, H+36 à H+204)
+    repeated LongTermForecast long_term_days = 5;      // J+8 à J+14 (3 Scénarios par jour)
+}

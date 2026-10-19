@@ -13,6 +13,8 @@ import android.os.Parcelable
 import android.util.Log
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
+import fr.matthstudio.themeteo.forecastMainActivity.toEventLocalDateTime
+import fr.matthstudio.themeteo.proto.ExtendedForecastPointPayload
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import fr.matthstudio.themeteo.utilClasses.AirQualityForecastResponse
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
@@ -26,6 +28,8 @@ import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.VigilanceMapResponse
+import fr.matthstudio.themeteo.proto.ShortTermPointPayload
+import fr.matthstudio.themeteo.proto.ShortTermPointPayloadKt
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -40,15 +44,35 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readBytes
+import io.ktor.client.statement.readRawBytes
+import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.CancellationException
 import kotlinx.parcelize.Parcelize
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import java.lang.Math.clamp
 import java.security.MessageDigest
 import java.time.LocalDate
@@ -56,12 +80,14 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Collections.emptyList
+import java.util.concurrent.CancellationException
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 import java.util.Locale as JavaLocale
 
-// --- DATA CLASSES (inchangées) ---
+// --- DATA CLASSES ---
 @Serializable
 data class PrecipitationData(
     val precipitation: Double?, // en mm
@@ -145,12 +171,13 @@ data class GeocodingResponse(val results: List<GeocodingResult>? = null)
 
 @Serializable
 data class GeocodingResult(
-    val id: Int,
-    val name: String,
-    val latitude: Double,
-    val longitude: Double,
-    @SerialName("country_code") val countryCode: String,
-    @SerialName("admin1") val region: String
+    val id: Int = 0,
+    val name: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    @SerialName("country_code") val countryCode: String? = null,
+    val country: String? = null,
+    @SerialName("admin1") val region: String? = null
 )
 
 sealed class SearchState {
@@ -166,9 +193,222 @@ fun Double?.nanToNull(): Double? {
 }
 
 @Serializable
+data class VersionPolicyInfo(
+    @SerialName("min_build") val minBuild: Int? = null,
+    @SerialName("max_build") val maxBuild: Int? = null,
+    @SerialName("min_version_code") val minVersionCode: Int? = null,
+    @SerialName("blocked_version_codes") val blockedVersionCodes: List<Int> = emptyList(),
+    @SerialName("gcu_url") val gcuUrl: String? = null,
+    @SerialName("terms_url") val termsUrl: String? = null,
+    @SerialName("privacy_policy_url") val privacyPolicyUrl: String? = null,
+    @SerialName("last_gcu_update") val lastGcuUpdate: String? = null,
+    @SerialName("last_privacy_policy_update") val lastPrivacyPolicyUpdate: String? = null
+)
+
+data class ResolvedPolicyInfo(
+    val gcuUrl: String,
+    val privacyPolicyUrl: String,
+    val lastGcuUpdate: String,
+    val lastPrivacyPolicyUpdate: String
+)
+
+@Serializable(with = PolicyUpdateInfoSerializer::class)
 data class PolicyUpdateInfo(
-    @SerialName("last_gcu_update") val lastGcuUpdate: String,
-    @SerialName("last_privacy_policy_update") val lastPrivacyPolicyUpdate: String
+    val minVersionCode: Int? = null,
+    val blockedVersionCodes: List<Int> = emptyList(),
+    val lastGcuUpdate: String? = null,
+    val lastPrivacyPolicyUpdate: String? = null,
+    val gcuUrl: String? = null,
+    val privacyPolicyUrl: String? = null,
+    val versionList: List<VersionPolicyInfo> = emptyList(),
+    val versionMap: Map<String, VersionPolicyInfo> = emptyMap()
+) {
+    fun isUpdateRequired(versionCode: Int): Boolean {
+        // 1. Check top level requirements
+        if (minVersionCode != null && versionCode < minVersionCode) return true
+        if (versionCode in blockedVersionCodes) return true
+
+        // 2. Check version map rules if key matches
+        for ((key, info) in versionMap) {
+            if (matchesKey(key, versionCode)) {
+                if (info.minVersionCode != null && versionCode < info.minVersionCode) return true
+                if (versionCode in info.blockedVersionCodes) return true
+            }
+        }
+
+        // 3. Check version list rules if bounds match
+        for (info in versionList) {
+            val minOk = info.minBuild == null || versionCode >= info.minBuild
+            val maxOk = info.maxBuild == null || versionCode <= info.maxBuild
+            if (minOk && maxOk) {
+                if (info.minVersionCode != null && versionCode < info.minVersionCode) return true
+                if (versionCode in info.blockedVersionCodes) return true
+            }
+        }
+
+        return false
+    }
+
+    fun getPolicyForVersion(versionCode: Int): ResolvedPolicyInfo? {
+        // 1. Check version map if present (e.g. ">780", "<=780")
+        for ((key, info) in versionMap) {
+            if (matchesKey(key, versionCode)) {
+                val gUrl = info.gcuUrl ?: info.termsUrl ?: gcuUrl ?: return null
+                val pUrl = info.privacyPolicyUrl ?: privacyPolicyUrl ?: gUrl
+                val lastGcu = info.lastGcuUpdate ?: lastGcuUpdate ?: return null
+                val lastPriv = info.lastPrivacyPolicyUpdate ?: lastPrivacyPolicyUpdate ?: return null
+                return ResolvedPolicyInfo(
+                    gcuUrl = gUrl,
+                    privacyPolicyUrl = pUrl,
+                    lastGcuUpdate = lastGcu,
+                    lastPrivacyPolicyUpdate = lastPriv
+                )
+            }
+        }
+
+        // 2. Check version list if present
+        for (info in versionList) {
+            val minOk = info.minBuild == null || versionCode >= info.minBuild
+            val maxOk = info.maxBuild == null || versionCode <= info.maxBuild
+            if (minOk && maxOk) {
+                val gUrl = info.gcuUrl ?: info.termsUrl ?: gcuUrl ?: return null
+                val pUrl = info.privacyPolicyUrl ?: privacyPolicyUrl ?: gUrl
+                val lastGcu = info.lastGcuUpdate ?: lastGcuUpdate ?: return null
+                val lastPriv = info.lastPrivacyPolicyUpdate ?: lastPrivacyPolicyUpdate ?: return null
+                return ResolvedPolicyInfo(
+                    gcuUrl = gUrl,
+                    privacyPolicyUrl = pUrl,
+                    lastGcuUpdate = lastGcu,
+                    lastPrivacyPolicyUpdate = lastPriv
+                )
+            }
+        }
+
+        // 3. Check top level if present
+        if (lastGcuUpdate != null && lastPrivacyPolicyUpdate != null) {
+            val gUrl = gcuUrl ?: return null
+            val pUrl = privacyPolicyUrl ?: gUrl
+            return ResolvedPolicyInfo(
+                gcuUrl = gUrl,
+                privacyPolicyUrl = pUrl,
+                lastGcuUpdate = lastGcuUpdate,
+                lastPrivacyPolicyUpdate = lastPrivacyPolicyUpdate
+            )
+        }
+
+        return null
+    }
+
+    private fun matchesKey(key: String, versionCode: Int): Boolean {
+        return when {
+            key.startsWith(">=") -> versionCode >= (key.substring(2).trim().toIntOrNull() ?: Int.MIN_VALUE)
+            key.startsWith(">") -> versionCode > (key.substring(1).trim().toIntOrNull() ?: Int.MIN_VALUE)
+            key.startsWith("<=") -> versionCode <= (key.substring(2).trim().toIntOrNull() ?: Int.MAX_VALUE)
+            key.startsWith("<") -> versionCode < (key.substring(1).trim().toIntOrNull() ?: Int.MAX_VALUE)
+            key.toIntOrNull() != null -> versionCode == key.toInt()
+            else -> false
+        }
+    }
+}
+
+object PolicyUpdateInfoSerializer : KSerializer<PolicyUpdateInfo> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("fr.matthstudio.themeteo.PolicyUpdateInfo")
+
+    override fun serialize(encoder: Encoder, value: PolicyUpdateInfo) {
+        val jsonEncoder = encoder as? JsonEncoder ?: throw SerializationException("Expected JsonEncoder")
+        val map = mutableMapOf<String, JsonElement>()
+        value.minVersionCode?.let { map["min_version_code"] = JsonPrimitive(it) }
+        if (value.blockedVersionCodes.isNotEmpty()) {
+            map["blocked_version_codes"] = JsonArray(value.blockedVersionCodes.map { JsonPrimitive(it) })
+        }
+        value.lastGcuUpdate?.let { map["last_gcu_update"] = JsonPrimitive(it) }
+        value.lastPrivacyPolicyUpdate?.let { map["last_privacy_policy_update"] = JsonPrimitive(it) }
+        value.gcuUrl?.let { map["gcu_url"] = JsonPrimitive(it) }
+        value.privacyPolicyUrl?.let { map["privacy_policy_url"] = JsonPrimitive(it) }
+        jsonEncoder.encodeJsonElement(JsonObject(map))
+    }
+
+    override fun deserialize(decoder: Decoder): PolicyUpdateInfo {
+        val jsonDecoder = decoder as? JsonDecoder ?: throw SerializationException("Expected JsonDecoder")
+        val element = jsonDecoder.decodeJsonElement()
+        if (element !is JsonObject) return PolicyUpdateInfo()
+
+        val json = jsonDecoder.json
+
+        val minVersionCode = element["min_version_code"]?.jsonPrimitive?.intOrNull
+            ?: element["min_version"]?.jsonPrimitive?.intOrNull
+        val blockedVersionCodes = (element["blocked_version_codes"] as? JsonArray)
+            ?.mapNotNull { it.jsonPrimitive.intOrNull } ?: emptyList()
+
+        val lastGcu = element["last_gcu_update"]?.jsonPrimitive?.contentOrNull
+        val lastPrivacy = element["last_privacy_policy_update"]?.jsonPrimitive?.contentOrNull
+        val gcuUrl = element["gcu_url"]?.jsonPrimitive?.contentOrNull ?: element["terms_url"]?.jsonPrimitive?.contentOrNull
+        val privacyUrl = element["privacy_policy_url"]?.jsonPrimitive?.contentOrNull
+
+        var versionList = emptyList<VersionPolicyInfo>()
+        var versionMap = emptyMap<String, VersionPolicyInfo>()
+
+        element["versions"]?.let { vElement ->
+            when (vElement) {
+                is JsonArray -> {
+                    versionList = json.decodeFromJsonElement(ListSerializer(VersionPolicyInfo.serializer()), vElement)
+                }
+                is JsonObject -> {
+                    versionMap = json.decodeFromJsonElement(MapSerializer(String.serializer(), VersionPolicyInfo.serializer()), vElement)
+                }
+                else -> {}
+            }
+        }
+
+        return PolicyUpdateInfo(
+            minVersionCode = minVersionCode,
+            blockedVersionCodes = blockedVersionCodes,
+            lastGcuUpdate = lastGcu,
+            lastPrivacyPolicyUpdate = lastPrivacy,
+            gcuUrl = gcuUrl,
+            privacyPolicyUrl = privacyUrl,
+            versionList = versionList,
+            versionMap = versionMap
+        )
+    }
+}
+
+@Serializable
+data class CDNMeteoMetadata(
+    val format: String,
+    val model: String,
+    val domain: String,
+    @SerialName("window_hours") val windowHours: Int? = null,
+    @SerialName("window_offset_utc") val windowOffsetUtc: Int? = null,
+    @SerialName("point_byte_size") val pointByteSize: Int,
+    @SerialName("total_file_size_bytes") val totalFileSizeBytes: Long,
+    @SerialName("spatial_shape") val spatialShape: List<Int>,
+    val bounds: CDNMetadataBounds,
+    @SerialName("n_steps") val nSteps: Int? = null,
+    @SerialName("base_timestamp_utc") val baseTimestampUtc: Long? = null,
+    @SerialName("base_datetime_utc") val baseDatetimeUtc: String? = null,
+    @SerialName("reference_00z_timestamp_utc") val reference00zTimestampUtc: Long? = null,
+    @SerialName("reference_00z_datetime_utc") val reference00zDatetimeUtc: String? = null,
+    @SerialName("latest_run_datetime_utc") val latestRunDatetimeUtc: String,
+    @SerialName("n_medium_steps") val nMediumSteps: Int? = null,
+    @SerialName("min_hour_offset_from_00z") val minHourOffsetFrom00z: Int? = null,
+    @SerialName("max_hour_offset_from_00z") val maxHourOffsetFrom00z: Int? = null,
+    @SerialName("hour_offsets_from_00z") val hourOffsetsFrom00z: List<Int>? = null,
+    @SerialName("has_aifs_long_term") val hasAifsLongTerm: Boolean? = null,
+    @SerialName("aifs_days") val aifsDays: List<Int>? = null,
+    @SerialName("version") val version: Int = 1,
+    @SerialName("format_version") val formatVersion: Int? = null,
+    @SerialName("aifs_steps_per_day") val aifsStepsPerDay: Int? = null
+)
+
+@Serializable
+data class CDNMetadataBounds(
+    @SerialName("lat_max") val latMax: Double,
+    @SerialName("lat_min") val latMin: Double,
+    @SerialName("lon_min") val lonMin: Double,
+    @SerialName("lon_max") val lonMax: Double,
+    val resolution: Double
 )
 
 class WeatherService(private val telemetryManager: TelemetryManager? = null) {
@@ -204,12 +444,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     suspend fun searchCity(query: String): List<GeocodingResult>? {
         if (query.isBlank()) return emptyList()
         return try {
-            client.get("https://geocoding-api.open-meteo.com/v1/search") {
+            val response = client.get("https://geocoding-api.open-meteo.com/v1/search") {
                 parameter("name", query)
                 parameter("count", 10)
                 parameter("language", "fr")
                 parameter("format", "json")
-            }.body<GeocodingResponse>().results
+            }.body<GeocodingResponse>()
+            response.results ?: emptyList()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("Geocoder", "Erreur de géocodage : ${e.message}")
@@ -344,7 +585,15 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
+    private val cityNameCache = java.util.concurrent.ConcurrentHashMap<Pair<Double, Double>, String>()
+
     suspend fun getCityNameFromCoords(latitude: Double, longitude: Double, context: Context): String? {
+        val roundedLat = (latitude * 100.0).let { kotlin.math.round(it) / 100.0 }
+        val roundedLon = (longitude * 100.0).let { kotlin.math.round(it) / 100.0 }
+        val key = Pair(roundedLat, roundedLon)
+
+        cityNameCache[key]?.let { return it }
+
         val url = "https://maps.googleapis.com/maps/api/geocode/json"
         val sha1 = getSigningSha1(context) ?: return null
         return try {
@@ -360,10 +609,14 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                 val geocodingResponse = response.body<GoogleGeocodingResponse>()
                 if (geocodingResponse.status == "OK" && geocodingResponse.results.isNotEmpty()) {
                     val components = geocodingResponse.results.first().addressComponents
-                    components.find { "locality" in it.types }?.longName
+                    val name = components.find { "locality" in it.types }?.longName
                         ?: components.find { "sublocality" in it.types }?.longName
                         ?: components.find { "administrative_area_level_2" in it.types }?.longName
                         ?: components.find { "administrative_area_level_1" in it.types }?.longName
+                    if (name != null) {
+                        cityNameCache[key] = name
+                    }
+                    name
                 } else null
             } else null
         } catch (e: Exception) {
@@ -463,7 +716,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                             try {
                                 OffsetDateTime.parse(it.endTime).isAfter(now)
                             } catch (e: Exception) {
-                            if (e is CancellationException) throw e
+                                if (e is CancellationException) throw e
                                 true
                             }
                         }.sortedBy { it.beginTime }
@@ -622,210 +875,174 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
-    /**
-     * Récupère l'intégralité des prévisions pour une période étendue.
-     * C'est la fonction que le WeatherCache utilisera.
-     */
-    suspend fun getForecast(
-        latitude: Double,
-        longitude: Double,
-        models: List<String>,
-        startDate: LocalDate,
-        endDate: LocalDate
-    ): Map<String, Pair<List<AllHourlyVarsReading>, List<DailyReading>>>? {
-        val apiUrl = "https://api.open-meteo.com/v1/forecast"
-        val localZoneId = ZoneId.systemDefault()
+    fun getPointIndex(lon: Double, lat: Double, forceGlobal: Boolean = false): Long {
+        val AROME = !forceGlobal && shouldUseAROME(lon, lat)
+        return if (AROME) {
+            // Grille France 0.025° (717 x 1121)
+            val rowY = ((55.4 - lat) / 0.025).roundToInt()
+            val colX = ((lon + 12.0) / 0.025).roundToInt()
+            rowY.toLong() * 1121L + colX.toLong()
+        } else {
+            // Grille Mondiale 0.25° (721 x 1440)
+            val rowY = ((90.0 - lat) / 0.25).roundToInt()
+            val colX = ((lon + 180.0) / 0.25).roundToInt() % 1440
+            rowY.toLong() * 1440L + colX.toLong()
+        }
+    }
 
+    fun getRangeForLocation(lon: Double, lat: Double, pointByteSize: Int, forceGlobal: Boolean = false): Pair<Long, Long> {
+        val pointIndex = getPointIndex(lon, lat, forceGlobal)
+        val byteStart = pointIndex * pointByteSize.toLong()
+        val byteEnd = byteStart + pointByteSize.toLong() - 1
+        return Pair(byteStart, byteEnd)
+    }
+
+    fun shouldUseAROME(lon: Double, lat: Double): Boolean {
+        // 1. Boîte englobante
+        if (lat !in 37.5..55.375) {
+            return false
+        }
+
+        // 2. Demi-largeur conique Lambert (symétrique autour du méridien 2.0°E)
+        var halfWidth = 10.175 + (13.875 - 10.175) * ((lat - 37.5) / (54.15 - 37.5))
+
+        // 3. Correction de l'arc conique supérieur (Nord de la France)
+        if (lat > 54.15) {
+            val maxConic = sqrt((55.375 - lat) / 0.006363)
+            halfWidth = halfWidth.coerceAtMost(maxConic)
+        }
+
+        return abs(lon - 2.0) <= halfWidth
+    }
+
+    suspend fun getAromeMetadata(): CDNMeteoMetadata? {
+        val url = "https://weatherdata.19374629.xyz/arome_short_term_metadata.json"
         return try {
-            val response = client.get(apiUrl) {
-                parameter("latitude", latitude)
-                parameter("longitude", longitude)
-                parameter("models", models.joinToString(","))
-                parameter("hourly", getHourlyVariables().joinToString(","))
-                parameter("daily", getDailyVariables().joinToString(","))
-                parameter("timezone", localZoneId.id)
-                parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-                parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-            }
-
-            Log.d("WeatherService", "Status: ${response.status}")
-
-            if (response.status.value == 200) {
-                val responseBody = response.body<WeatherApiResponse>()
-                return models.associateWith { model ->
-                    Pair(
-                        parseHourlyData(responseBody, model, models.size > 1) as List<AllHourlyVarsReading>,
-                        parseDailyData(responseBody, model, models.size > 1) as List<DailyReading>
-                    )
-                }
+            val response = client.get(url)
+            if (response.status.value / 100 == 2) {
+                response.body<CDNMeteoMetadata>()
             } else {
-                val errorText = response.body<String>()
-                Log.e("WeatherService", "Erreur API : $errorText")
-                telemetryManager?.logEvent("api_error", mapOf("api" to "open-meteo", "status" to response.status.value, "error" to errorText))
-                return null
+                Log.e("WeatherService", "Error fetching AROME metadata: ${response.status}")
+                throw Exception("Error fetching AROME metadata: ${response.status}")
             }
-
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("getForecast", "Erreur lors de la récupération des prévisions complètes: ${e.message}")
+            Log.e("WeatherService", "Exception fetching AROME metadata: ${e.message}")
             telemetryManager?.logException(e)
             null
         }
     }
 
-    suspend fun getEnsembleForecast(
-        latitude: Double,
-        longitude: Double,
-        model: String,
-        startDate: LocalDate,
-        endDate: LocalDate
-    ): Pair<List<AllHourlyVarsReading>, List<DailyReading>>? {
-        val ensembleApiUrl = "https://ensemble-api.open-meteo.com/v1/ensemble"
-        val localZoneId = ZoneId.systemDefault()
-
-        val ensembleVariables = mutableListOf(
-            "temperature_2m", "relative_humidity_2m", "dewpoint_2m", "apparent_temperature",
-            "precipitation", "rain", "snowfall", "windspeed_10m", "wind_direction_10m", "cloudcover",
-            "pressure_msl", "weather_code", "shortwave_radiation_instant", "direct_radiation_instant",
-            "diffuse_radiation_instant", "wind_gusts_10m"
-        )
-
-        // Visibility is only supported by GFS and UKMO ensembles
-        if (model.contains("gfs") || model.contains("ukmo")) {
-            ensembleVariables.add("visibility")
-        }
-
-        // Snow Depth is only supported by GFS, IFS and GEM
-        if (model.contains("gfs") || model.contains("ifs") || model.contains("gem")) {
-            ensembleVariables.add("snow_depth")
-        }
-
+    suspend fun getIfsMetadata(): CDNMeteoMetadata? {
+        val url = "https://weatherdata.19374629.xyz/ifs_short_term_metadata.json"
         return try {
-            // 1. Fetch ensemble members
-            val response = client.get(ensembleApiUrl) {
-                parameter("latitude", latitude)
-                parameter("longitude", longitude)
-                parameter("models", model)
-                parameter("hourly", ensembleVariables.joinToString(","))
-                parameter("timezone", localZoneId.id)
-                parameter("start_date", startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-                parameter("end_date", endDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+            val response = client.get(url)
+            if (response.status.value / 100 == 2) {
+                response.body<CDNMeteoMetadata>()
+            } else {
+                Log.e("WeatherService", "Error fetching IFS metadata: ${response.status}")
+                throw Exception("Error fetching IFS metadata: ${response.status}")
             }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Exception fetching IFS metadata: ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
+    }
 
-            if (response.status.value != 200) return null
-            val ensembleResponseBody = response.body<WeatherApiResponse>()
-            val times = ensembleResponseBody.getDeterministicHourlyData("time") ?: return null
-            
-            // 2. Calculate stats for each variable
-            val statsMap = ensembleVariables.filter { it != "weather_code" }.associateWith { variable ->
-                val matrix = ensembleResponseBody.getEnsembleData(variable)
-                if (matrix != null) calculateEnsembleStats(matrix) else null
+    suspend fun getExtendedMetadata(): CDNMeteoMetadata? {
+        val url = "https://weatherdata.19374629.xyz/global_extended_forecast_metadata.json"
+        return try {
+            val response = client.get(url)
+            if (response.status.value / 100 == 2) {
+                response.body<CDNMeteoMetadata>()
+            } else {
+                Log.e("WeatherService", "Error fetching Extended metadata: ${response.status}")
+                throw Exception("Error fetching Extended metadata: ${response.status}")
             }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Exception fetching Extended metadata: ${e.message}")
+            telemetryManager?.logException(e)
+            null
+        }
+    }
 
-            val wmoMatrix = ensembleResponseBody.getEnsembleData("weather_code")
-            val wmoStats = if (wmoMatrix != null) calculateWmoEnsembleStats(wmoMatrix) else null
+    suspend fun downloadShortTermMeta(lon: Double, lat: Double): CDNMeteoMetadata? {
+        val useAROME = shouldUseAROME(lon, lat)
+        val meta = if (useAROME) getAromeMetadata() else getIfsMetadata()
+        return meta
+    }
 
-            // 3. Build AllHourlyVarsReading from stats
-            val mergedHourly = times.indices.map { index ->
-                val hourStats = mutableMapOf<String, EnsembleStat>()
-                statsMap.keys.forEach { v ->
-                    statsMap[v]?.getOrNull(index)?.let { hourStats[v] = it }
+    suspend fun downloadExtendedMeta(): CDNMeteoMetadata? {
+        return getExtendedMetadata()
+    }
+
+    suspend fun getShortTermForecast(lon: Double, lat: Double, context: Context, metadata: CDNMeteoMetadata? = null): Pair<ShortTermPointPayload, LocalDateTime>? {
+        try {
+            val useAROME = shouldUseAROME(lon, lat)
+            if (useAROME) {
+                val meta = metadata ?: getAromeMetadata() ?: throw Exception("Failed to get metadata from AROME")
+                val range = getRangeForLocation(lon, lat, meta.pointByteSize)
+
+                val responseBuf = client.get("https://weatherdata.19374629.xyz/arome_short_term.bin") {
+                    header("Range", "bytes=${range.first}-${range.second}")
                 }
 
-                val temp = hourStats["temperature_2m"]?.avg
-                val windSpeed = hourStats["windspeed_10m"]?.avg
-                val windGusts = hourStats["wind_gusts_10m"]?.avg
-                val windDir = hourStats["wind_direction_10m"]?.avg
-                val shortwaveRadiation = hourStats["shortwave_radiation_instant"]?.avg
-                val directRadiation = hourStats["direct_radiation_instant"]?.avg
-                val diffuseRadiation = hourStats["diffuse_radiation_instant"]?.avg
+                if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
 
-                AllHourlyVarsReading(
-                    time = LocalDateTime.parse(times[index] as String),
-                    temperature = temp,
-                    apparentTemperature = hourStats["apparent_temperature"]?.avg,
-                    precipitationData = PrecipitationData(
-                        precipitation = hourStats["precipitation"]?.avg,
-                        rain = hourStats["rain"]?.avg,
-                        snowfall = hourStats["snowfall"]?.avg,
-                        precipitationProbability = null, 
-                        snowDepth = (hourStats["snow_depth"]?.avg?.times(100.0))?.toInt()
-                    ),
-                    wind = WindData(
-                        windspeed = windSpeed,
-                        windGusts = windGusts,
-                        windDirection = windDir
-                    ),
-                    skyInfo = SkyInfoData(
-                        cloudcoverTotal = hourStats["cloudcover"]?.avg?.toInt(),
-                        cloudcoverLow = null,
-                        cloudcoverMid = null,
-                        cloudcoverHigh = null,
-                        shortwaveRadiation = shortwaveRadiation,
-                        directRadiation = directRadiation,
-                        diffuseRadiation = diffuseRadiation,
-                        opacity = null,
-                        uvIndex = null,
-                        visibility = hourStats["visibility"]?.avg?.toInt()
-                    ),
-                    pressure = hourStats["pressure_msl"]?.avg?.toInt(),
-                    humidity = hourStats["relative_humidity_2m"]?.avg?.toInt(),
-                    dewpoint = hourStats["dewpoint_2m"]?.avg,
-                    wmo = wmoStats?.getOrNull(index)?.worst,
-                    ensembleStats = hourStats,
-                    wmoEnsemble = wmoStats?.getOrNull(index)
-                )
+                val response = ShortTermPointPayload.parseFrom(responseBuf.readRawBytes())
+
+                val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context) ?: throw Exception("Unable to get LocalDateTime from the metadata")
+
+                return Pair(response, runUTC)
+            } else {
+                val meta = metadata ?: getIfsMetadata() ?: throw Exception("Failed to get metadata from IFS")
+                val range = getRangeForLocation(lon, lat, meta.pointByteSize)
+
+                val responseBuf = client.get("https://weatherdata.19374629.xyz/ifs_short_term.bin") {
+                    header("Range", "bytes=${range.first}-${range.second}")
+                }
+
+                if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
+
+                val response = ShortTermPointPayload.parseFrom(responseBuf.readRawBytes())
+
+                val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context)
+                    ?: throw Exception("Unable to get LocalDateTime from the metadata")
+
+                return Pair(response, runUTC)
             }
-
-            // 4. Derive DailyReading from hourly averages
-            val dailyReadings = mergedHourly.groupBy { it.time.toLocalDate() }.map { (date, hourlyList) ->
-                val dailyWmoEnsemble = if (hourlyList.any { it.wmoEnsemble != null }) {
-                    WmoEnsembleStat(
-                        best = hourlyList.mapNotNull { it.wmoEnsemble?.best }.minOrNull() ?: 0,
-                        worst = hourlyList.mapNotNull { it.wmoEnsemble?.worst }.maxOrNull() ?: 0
-                    )
-                } else null
-
-                val dailyPrecip = if (hourlyList.any { it.precipitationData.precipitation != null }) {
-                    hourlyList.mapNotNull { it.precipitationData.precipitation }.sum()
-                } else null
-
-                DailyReading(
-                    date = date,
-                    maxTemperature = hourlyList.mapNotNull { it.temperature }.maxOrNull(),
-                    minTemperature = hourlyList.mapNotNull { it.temperature }.minOrNull(),
-                    precipitation = dailyPrecip,
-                    maxWind = WindData(
-                        windspeed = hourlyList.mapNotNull { it.wind.windspeed }.maxOrNull(),
-                        windGusts = null,
-                        windDirection = hourlyList.firstOrNull { it.wind.windspeed == hourlyList.mapNotNull { h -> h.wind.windspeed }.maxOrNull() }?.wind?.windDirection
-                    ),
-                    maxUvIndex = null,
-                    wmo = dailyWmoEnsemble?.worst,
-                    sunset = "",
-                    sunrise = "",
-                    wmoEnsemble = dailyWmoEnsemble
-                )
-            }
-
-            Pair(mergedHourly, dailyReadings)
-
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("getEnsembleForecast", "Error fetching ensemble forecast: ${e.message}")
-            telemetryManager?.logException(e)
-            null
+            Log.e("WeatherService", "Error during dummy call to abc.xyz: ${e.message}")
+            return null
         }
     }
 
-    private fun getHourlyVariables(): List<String> {
-        return listOf(
-            "temperature_2m", "apparent_temperature", "precipitation", "rain", "showers", "snowfall",
-            "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high", "weather_code",
-            "windspeed_10m", "wind_direction_10m", "pressure_msl", "relative_humidity_2m", "dewpoint_2m",
-            "precipitation_probability", "snow_depth", "shortwave_radiation_instant", "direct_radiation_instant",
-            "diffuse_radiation_instant", "uv_index", "visibility", "wind_gusts_10m"
-        )
+    suspend fun getExtendedForecast(lon: Double, lat: Double, context: Context, metadata: CDNMeteoMetadata? = null): Pair<ExtendedForecastPointPayload, LocalDateTime>? {
+        return try {
+            val meta = metadata ?: getExtendedMetadata() ?: throw Exception("Failed to get metadata from extended forecast")
+            val range = getRangeForLocation(lon, lat, meta.pointByteSize, true)
+
+            val responseBuf = client.get("https://weatherdata.19374629.xyz/global_extended_forecast.bin") {
+                header("Range", "bytes=${range.first}-${range.second}")
+            }
+
+            if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
+
+            val response = ExtendedForecastPointPayload.parseFrom(responseBuf.readRawBytes())
+
+            val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context)
+                ?: throw Exception("Unable to get LocalDateTime from the metadata")
+
+            Pair(response, runUTC)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Error in getExtendedForecast: ${e.message}")
+            null
+        }
     }
 
     private fun getModelPrefixedName(variableName: String, model: String, isMultiModel: Boolean): String {
@@ -834,142 +1051,6 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     private fun Double?.safeToInt(): Int? {
         return if (this == null || this.isNaN()) null else this.toInt()
-    }
-
-    private fun parseHourlyData(response: WeatherApiResponse, model: String, isMultiModel: Boolean): List<AllHourlyVarsReading>? {
-        try {
-            val times = response.getDeterministicHourlyData("time") ?: return null
-
-            val temp = response.getDeterministicHourlyData(getModelPrefixedName("temperature_2m", model, isMultiModel))
-            val appTemp = response.getDeterministicHourlyData(getModelPrefixedName("apparent_temperature", model, isMultiModel))
-            val precip = response.getDeterministicHourlyData(getModelPrefixedName("precipitation", model, isMultiModel))
-            val precipProb = response.getDeterministicHourlyData(getModelPrefixedName("precipitation_probability", model, isMultiModel))
-            val rain = response.getDeterministicHourlyData(getModelPrefixedName("rain", model, isMultiModel))
-            val showers = response.getDeterministicHourlyData(getModelPrefixedName("showers", model, isMultiModel))
-            val snowfall = response.getDeterministicHourlyData(getModelPrefixedName("snowfall", model, isMultiModel))
-            val snowDepth = response.getDeterministicHourlyData(getModelPrefixedName("snow_depth", model, isMultiModel))
-            val cloud = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover", model, isMultiModel))
-            val cloudLow = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover_low", model, isMultiModel))
-            val cloudMid = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover_mid", model, isMultiModel))
-            val cloudHigh = response.getDeterministicHourlyData(getModelPrefixedName("cloudcover_high", model, isMultiModel))
-            val ghi = response.getDeterministicHourlyData(getModelPrefixedName("shortwave_radiation_instant", model, isMultiModel))
-            val dhi = response.getDeterministicHourlyData(getModelPrefixedName("diffuse_radiation_instant", model, isMultiModel))
-            val dsi = response.getDeterministicHourlyData(getModelPrefixedName("direct_radiation_instant", model, isMultiModel))
-            val wui = response.getDeterministicHourlyData(getModelPrefixedName("uv_index", model, isMultiModel))
-            val visibility = response.getDeterministicHourlyData(getModelPrefixedName("visibility", model, isMultiModel))
-            val windspeed = response.getDeterministicHourlyData(getModelPrefixedName("windspeed_10m", model, isMultiModel))
-            val windDir = response.getDeterministicHourlyData(getModelPrefixedName("wind_direction_10m", model, isMultiModel))
-            val wgust = response.getDeterministicHourlyData(getModelPrefixedName("wind_gusts_10m", model, isMultiModel))
-            val pressure = response.getDeterministicHourlyData(getModelPrefixedName("pressure_msl", model, isMultiModel))
-            val humidity = response.getDeterministicHourlyData(getModelPrefixedName("relative_humidity_2m", model, isMultiModel))
-            val dewpoint = response.getDeterministicHourlyData(getModelPrefixedName("dewpoint_2m", model, isMultiModel))
-            val wmo = response.getDeterministicHourlyData(getModelPrefixedName("weather_code", model, isMultiModel))
-
-            return times.indices.mapNotNull { i ->
-                try {
-                    val ghiVal = (ghi?.getOrNull(i) as? Double).nanToNull()
-                    val dhiVal = (dhi?.getOrNull(i) as? Double).nanToNull()
-                    val o = if (ghiVal != null && dhiVal != null)
-                        (clamp(dhiVal / max(ghiVal, 1.0), 0.0, 1.0) * 100.0).roundToInt()
-                    else null
-
-                    AllHourlyVarsReading(
-                        time = LocalDateTime.parse(times[i] as String),
-                        temperature = (temp?.getOrNull(i) as? Double).nanToNull(),
-                        apparentTemperature = (appTemp?.getOrNull(i) as? Double).nanToNull(),
-                        precipitationData = PrecipitationData(
-                            precipitation = (precip?.getOrNull(i) as? Double).nanToNull(),
-                            precipitationProbability = (precipProb?.getOrNull(i) as? Double).safeToInt(),
-                            rain = if (rain?.getOrNull(i) == null && showers?.getOrNull(i) == null) null else ((rain?.getOrNull(i) as? Double ?: 0.0) + (showers?.getOrNull(i) as? Double ?: 0.0)).nanToNull(),
-                            snowfall = (snowfall?.getOrNull(i) as? Double).nanToNull(),
-                            snowDepth = ((snowDepth?.getOrNull(i) as? Double)?.times(100)).safeToInt()
-                        ),
-                        skyInfo = SkyInfoData(
-                            cloudcoverTotal = (cloud?.getOrNull(i) as? Double).safeToInt(),
-                            cloudcoverLow = (cloudLow?.getOrNull(i) as? Double).safeToInt(),
-                            cloudcoverMid = (cloudMid?.getOrNull(i) as? Double).safeToInt(),
-                            cloudcoverHigh = (cloudHigh?.getOrNull(i) as? Double).safeToInt(),
-                            shortwaveRadiation = (ghi?.getOrNull(i) as? Double).nanToNull(),
-                            directRadiation = (dsi?.getOrNull(i) as? Double).nanToNull(),
-                            diffuseRadiation = (dhi?.getOrNull(i) as? Double).nanToNull(),
-                            opacity = o,
-                            uvIndex = (wui?.getOrNull(i) as? Double).safeToInt(),
-                            visibility = (visibility?.getOrNull(i) as? Double).safeToInt()
-                        ),
-                        wind = WindData(
-                            windspeed = (windspeed?.getOrNull(i) as? Double).nanToNull(),
-                            windGusts = (wgust?.getOrNull(i) as? Double).nanToNull(),
-                            windDirection = (windDir?.getOrNull(i) as? Double).nanToNull()
-                        ),
-                        pressure = (pressure?.getOrNull(i) as? Double).safeToInt(),
-                        humidity = (humidity?.getOrNull(i) as? Double).safeToInt(),
-                        dewpoint = (dewpoint?.getOrNull(i) as? Double).nanToNull(),
-                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt()
-                    )
-                } catch (e: Exception) {
-            if (e is CancellationException) throw e
-                    telemetryManager?.logException(e)
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            telemetryManager?.logException(e)
-            return null
-        }
-    }
-
-    private fun getDailyVariables(): List<String> {
-        return listOf(
-            "temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max", "wind_direction_10m_dominant",
-            "wind_gusts_10m_max", "uv_index_max", "weather_code", "sunset", "sunrise"
-        )
-    }
-
-    private fun parseDailyData(response: WeatherApiResponse, model: String, isMultiModel: Boolean): List<DailyReading>? {
-        try {
-            val times = response.getDeterministicDailyData("time") ?: return null
-
-            val tempMax = response.getDeterministicDailyData(getModelPrefixedName("temperature_2m_max", model, isMultiModel))
-            val tempMin = response.getDeterministicDailyData(getModelPrefixedName("temperature_2m_min", model, isMultiModel))
-            val precip = response.getDeterministicDailyData(getModelPrefixedName("precipitation_sum", model, isMultiModel))
-            val windSpeed = response.getDeterministicDailyData(getModelPrefixedName("wind_speed_10m_max", model, isMultiModel))
-            val windDirection = response.getDeterministicDailyData(getModelPrefixedName("wind_direction_10m_dominant", model, isMultiModel))
-            val windGusts = response.getDeterministicDailyData(getModelPrefixedName("wind_gusts_10m_max", model, isMultiModel))
-            val uvIndex = response.getDeterministicDailyData(getModelPrefixedName("uv_index_max", model, isMultiModel))
-            val sunset = response.getDeterministicDailyData(getModelPrefixedName("sunset", model, isMultiModel))
-            val sunrise = response.getDeterministicDailyData(getModelPrefixedName("sunrise", model, isMultiModel))
-            val wmo = response.getDeterministicDailyData(getModelPrefixedName("weather_code", model, isMultiModel))
-
-            return times.indices.mapNotNull { i ->
-                try {
-                    DailyReading(
-                        date = LocalDate.parse(times[i] as String),
-                        maxTemperature = (tempMax?.getOrNull(i) as? Double).nanToNull(),
-                        minTemperature = (tempMin?.getOrNull(i) as? Double).nanToNull(),
-                        precipitation = (precip?.getOrNull(i) as? Double).nanToNull(),
-                        maxWind = WindData(
-                            windspeed = (windSpeed?.getOrNull(i) as? Double).nanToNull(),
-                            windGusts = (windGusts?.getOrNull(i) as? Double).nanToNull(),
-                            windDirection = (windDirection?.getOrNull(i) as? Double).nanToNull()
-                        ),
-                        maxUvIndex = (uvIndex?.getOrNull(i) as? Double).safeToInt(),
-                        wmo = (wmo?.getOrNull(i) as? Double).safeToInt(),
-                        sunset = sunset?.getOrNull(i) as? String ?: "",
-                        sunrise = sunrise?.getOrNull(i) as? String ?: ""
-                    )
-                } catch (e: Exception) {
-            if (e is CancellationException) throw e
-                    telemetryManager?.logException(e)
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e("WeatherServiceParser", "Erreur majeure lors du parsing des données journalières", e)
-            telemetryManager?.logException(e)
-            return null
-        }
     }
 
     fun parseCurrentWeatherData(response: List<WeatherApiResponse>): List<CurrentWeatherReading>? {
@@ -998,7 +1079,11 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     suspend fun getPolicyUpdateInfo(): PolicyUpdateInfo? {
         return try {
-            val responseText = client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").bodyAsText()
+            val responseText = try {
+                client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").bodyAsText()
+            } catch (e: Exception) {
+                throw e
+            }
             jsonParser.decodeFromString<PolicyUpdateInfo>(responseText)
         } catch (e: Exception) {
             if (e is CancellationException) throw e

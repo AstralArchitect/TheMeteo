@@ -18,6 +18,7 @@ class AlertStateRepository(private val dataStore: DataStore<Preferences>) {
     private object PreferencesKeys {
         val LAST_VIGILANCE_LEVELS = stringPreferencesKey("last_vigilance_levels")
         val LAST_RAIN_NOTIFICATIONS = stringPreferencesKey("last_rain_notifications")
+        val LAST_RAIN_DISMISSALS = stringPreferencesKey("last_rain_dismissals")
     }
 
     /**
@@ -44,6 +45,18 @@ class AlertStateRepository(private val dataStore: DataStore<Preferences>) {
         }
     }
 
+    /**
+     * Map of LocationIdentifier (as string) to last rain notification dismissal timestamp (Long)
+     */
+    val lastRainDismissals: Flow<Map<String, Long>> = dataStore.data.map { preferences ->
+        val data = preferences[PreferencesKeys.LAST_RAIN_DISMISSALS] ?: return@map emptyMap()
+        try {
+            Json.decodeFromString<Map<String, Long>>(data)
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
     suspend fun updateVigilanceLevel(locationKey: String, level: Int) {
         dataStore.edit { preferences ->
             val current = preferences[PreferencesKeys.LAST_VIGILANCE_LEVELS]?.let {
@@ -61,6 +74,16 @@ class AlertStateRepository(private val dataStore: DataStore<Preferences>) {
             } ?: emptyMap()
             val next = current + (locationKey to timestamp)
             preferences[PreferencesKeys.LAST_RAIN_NOTIFICATIONS] = Json.encodeToString(next)
+        }
+    }
+
+    suspend fun updateRainDismissalTime(locationKey: String, timestamp: Long) {
+        dataStore.edit { preferences ->
+            val current = preferences[PreferencesKeys.LAST_RAIN_DISMISSALS]?.let {
+                try { Json.decodeFromString<Map<String, Long>>(it) } catch (e: Exception) { emptyMap() }
+            } ?: emptyMap()
+            val next = current + (locationKey to timestamp)
+            preferences[PreferencesKeys.LAST_RAIN_DISMISSALS] = Json.encodeToString(next)
         }
     }
 }

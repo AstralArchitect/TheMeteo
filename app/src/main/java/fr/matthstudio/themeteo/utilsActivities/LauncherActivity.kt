@@ -5,7 +5,10 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.utilsActivities
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -26,6 +29,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -38,16 +43,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
+import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.BuildConfig
+import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.ResolvedPolicyInfo
 import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.SavedLocation
+import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import fr.matthstudio.themeteo.widget.WidgetUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -57,12 +67,40 @@ class LauncherActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val locationExtra = intent?.getStringExtra("LOCATION")
+        if (locationExtra != null) {
+            val location = WidgetUtils.deserializeLocation(locationExtra)
+            if (location != null) {
+                AppStateManager.updateSelectedLocation(location)
+            }
+        }
+
         val app = (application as TheMeteo)
         val container = app.container
         val userSettingsRepo = container.userSettingsRepository
-        val weatherCache = app.weatherCache
 
         lifecycleScope.launch {
+            val weatherService = WeatherService()
+            val remotePolicy = weatherService.getPolicyUpdateInfo()
+            if (remotePolicy != null) {
+                if (remotePolicy.isUpdateRequired(BuildConfig.VERSION_CODE)) {
+                    val isAvailable = fr.matthstudio.themeteo.utilClasses.AppUpdateHelper.isPlayStoreUpdateAvailable(this@LauncherActivity)
+                    if (isAvailable) {
+                        AppStateManager.updateIsForcedUpdateRequired(true)
+                        showForcedUpdateScreen()
+                        return@launch
+                    } else {
+                        AppStateManager.updateIsForcedUpdateRequired(false)
+                    }
+                } else {
+                    AppStateManager.updateIsForcedUpdateRequired(false)
+                }
+                val resolved = remotePolicy.getPolicyForVersion(BuildConfig.VERSION_CODE)
+                if (resolved != null) {
+                    AppStateManager.updateResolvedPolicyInfo(resolved)
+                }
+            }
+
             val isGcuAccepted = userSettingsRepo.gcuAccepted.first()
             if (!isGcuAccepted) {
                 // Si c'est la première fois que l'utilisateur ouvre l'application, alors on met la position à Paris et on met Paris par défaut temporairement
@@ -74,33 +112,72 @@ class LauncherActivity : ComponentActivity() {
                         "France"
                     )
                 )
-                weatherCache.addLocation(location.location)
-                weatherCache.setCurrentLocation(location)
+                container.userLocationsRepository.addLocation(location.location)
+                AppStateManager.updateSelectedLocation(location)
                 userSettingsRepo.updateDefaultLocation(location)
                 
-                setContent {
-                    val settings by weatherCache.userSettings.collectAsState()
-                    val currentWmo = remember { mutableStateOf<Int?>(null) }
+                showOnboardingFlow(userSettingsRepo)
+            } else {
+                checkFirebaseConsent(userSettingsRepo)
+            }
+        }
+    }
 
-                    LaunchedEffect(weatherCache.selectedLocation) {
-                        weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
-                            currentWmo.value = when (state) {
-                                is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-                                is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                                else -> null
+    private fun showForcedUpdateScreen() {
+        setContent {
+            val isForcedUpdateRequired by AppStateManager.isForcedUpdateRequired.collectAsState()
+            val scope = rememberCoroutineScope()
+            TheMeteoTheme(themeMode = ThemeMode.FIXED) {
+                if (isForcedUpdateRequired) {
+                    fr.matthstudio.themeteo.forecastMainActivity.ForcedUpdateDialog(
+                        onUpdateClick = {
+                            scope.launch {
+                                fr.matthstudio.themeteo.utilClasses.AppUpdateHelper.promptUpdateIfAvailable(this@LauncherActivity)
                             }
                         }
-                    }
+                    )
+                }
+            }
+        }
+    }
 
-                    TheMeteoTheme(
-                        themeMode = settings.themeMode,
-                        currentWmoCode = currentWmo.value,
-                        isNight = false
-                    ) {
+    private fun showOnboardingFlow(userSettingsRepo: UserSettingsRepository) {
+        setContent {
+            val settings by AppStateManager.userSettings.collectAsState()
+            val currentWmo by AppStateManager.currentWmoCode.collectAsState()
+            var step by remember { mutableStateOf(OnboardingStep.GCU) }
+
+            TheMeteoTheme(
+                themeMode = settings?.themeMode ?: ThemeMode.FIXED,
+                currentWmoCode = currentWmo,
+                isNight = false
+            ) {
+                when (step) {
+                    OnboardingStep.GCU -> {
                         GcuDialog(
                             onAccept = {
                                 lifecycleScope.launch {
                                     userSettingsRepo.updateGcuAccepted(true)
+                                    val resolved = AppStateManager.resolvedPolicyInfo.value
+                                    if (resolved != null) {
+                                        userSettingsRepo.updateLastGcuUpdate(resolved.lastGcuUpdate)
+                                    }
+                                    step = OnboardingStep.PRIVACY_POLICY
+                                }
+                            },
+                            onDecline = {
+                                finish()
+                            }
+                        )
+                    }
+                    OnboardingStep.PRIVACY_POLICY -> {
+                        GcuDialog(
+                            onAccept = {
+                                lifecycleScope.launch {
+                                    val resolved = AppStateManager.resolvedPolicyInfo.value
+                                    if (resolved != null) {
+                                        userSettingsRepo.updateLastPrivacyPolicyUpdate(resolved.lastPrivacyPolicyUpdate)
+                                    }
                                     checkFirebaseConsent(userSettingsRepo)
                                 }
                             },
@@ -110,34 +187,26 @@ class LauncherActivity : ComponentActivity() {
                         )
                     }
                 }
-            } else {
-                checkFirebaseConsent(userSettingsRepo)
             }
         }
     }
 
+    private enum class OnboardingStep {
+        GCU,
+        PRIVACY_POLICY
+    }
+
     private suspend fun checkFirebaseConsent(userSettingsRepo: UserSettingsRepository) {
-        val weatherCache = (application as TheMeteo).weatherCache
         if (BuildConfig.FIREBASE_ENABLED) {
             val consent = userSettingsRepo.firebaseConsent.first()
             if (consent == "PENDING") {
                 setContent {
-                    val settings by weatherCache.userSettings.collectAsState()
-                    val currentWmo = remember { mutableStateOf<Int?>(null) }
-
-                    LaunchedEffect(weatherCache.selectedLocation) {
-                        weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
-                            currentWmo.value = when (state) {
-                                is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-                                is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                                else -> null
-                            }
-                        }
-                    }
+                    val settings by AppStateManager.userSettings.collectAsState()
+                    val currentWmo by AppStateManager.currentWmoCode.collectAsState()
 
                     TheMeteoTheme(
-                        themeMode = settings.themeMode,
-                        currentWmoCode = currentWmo.value,
+                        themeMode = settings?.themeMode ?: ThemeMode.FIXED,
+                        currentWmoCode = currentWmo,
                         isNight = false
                     ) {
                         ConsentDialog(
@@ -166,17 +235,21 @@ class LauncherActivity : ComponentActivity() {
         val userSettingsRepo = (this.application as TheMeteo).container.userSettingsRepository
         val currentScreen = runBlocking { userSettingsRepo.defaultScreen.first() }
             ?: fr.matthstudio.themeteo.DefaultScreen.FORECAST_MAIN
-            
-        val intent = if (currentScreen == fr.matthstudio.themeteo.DefaultScreen.DAY_CHOSER) {
+
+        val locationExtra = intent?.getStringExtra("LOCATION")
+
+        val nextIntent = if (currentScreen == DefaultScreen.DAY_CHOSER) {
             Intent(this, DayChooserActivity::class.java).apply {
                 putExtra("LAUNCHER", true)
+                if (locationExtra != null) putExtra("LOCATION", locationExtra)
             }
         } else {
             Intent(this, ForecastMainActivity::class.java).apply {
                 putExtra("LAUNCHER", true)
+                if (locationExtra != null) putExtra("LOCATION", locationExtra)
             }
         }
-        startActivity(intent)
+        startActivity(nextIntent)
         finish()
     }
 }
@@ -273,7 +346,21 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
     var hasError by remember { mutableStateOf(false) }
     var hasScrolledToBottom by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
-    val gcuUrl = "https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html"
+
+    val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
+    val weatherService = remember { WeatherService() }
+
+    LaunchedEffect(Unit) {
+        if (resolvedPolicy == null) {
+            val remote = weatherService.getPolicyUpdateInfo()
+            val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
+            if (resolved != null) {
+                AppStateManager.updateResolvedPolicyInfo(resolved)
+            }
+        }
+    }
+
+    val policyInfo = resolvedPolicy ?: return
 
     AlertDialog(
         onDismissRequest = { },
@@ -283,7 +370,7 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(400.dp)
+                        .height(360.dp)
                 ) {
                     AndroidView(
                         factory = { context ->
@@ -320,13 +407,11 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
                                         hasScrolledToBottom = true
                                     }
                                 }
-                                loadUrl(gcuUrl)
+                                loadUrl(policyInfo.gcuUrl)
                             }
                         },
                         update = { webView ->
-                            if (refreshTrigger > 0) {
-                                webView.loadUrl(gcuUrl)
-                            }
+                            webView.loadUrl(policyInfo.gcuUrl)
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -375,6 +460,108 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
         dismissButton = {
             TextButton(onClick = onDecline) {
                 Text(stringResource(R.string.decline))
+            }
+        }
+    )
+}
+
+@Composable
+fun PrivacyPolicyDialog(onContinue: () -> Unit) {
+    var isLoading by remember { mutableStateOf(true) }
+    var hasError by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+
+    val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
+    val weatherService = remember { WeatherService() }
+
+    LaunchedEffect(Unit) {
+        if (resolvedPolicy == null) {
+            val remote = weatherService.getPolicyUpdateInfo()
+            val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
+            if (resolved != null) {
+                AppStateManager.updateResolvedPolicyInfo(resolved)
+            }
+        }
+    }
+
+    val policyInfo = resolvedPolicy ?: return
+
+    AlertDialog(
+        onDismissRequest = { },
+        title = { Text(stringResource(R.string.privacy_policy_title)) },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp)
+            ) {
+                AndroidView(
+                    factory = { context ->
+                        WebView(context).apply {
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageStarted(
+                                    view: WebView?,
+                                    url: String?,
+                                    favicon: Bitmap?
+                                ) {
+                                    super.onPageStarted(view, url, favicon)
+                                    isLoading = true
+                                    hasError = false
+                                }
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    isLoading = false
+                                }
+
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    error: WebResourceError?
+                                ) {
+                                    super.onReceivedError(view, request, error)
+                                    isLoading = false
+                                    hasError = true
+                                }
+                            }
+                            loadUrl(policyInfo.privacyPolicyUrl)
+                        }
+                    },
+                    update = { webView ->
+                        webView.loadUrl(policyInfo.privacyPolicyUrl)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+
+                if (hasError) {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            stringResource(R.string.gcu_content_error),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Button(onClick = { refreshTrigger++ }) {
+                            Text(stringResource(R.string.retry))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onContinue,
+                enabled = !isLoading && !hasError
+            ) {
+                Text(stringResource(R.string.continue_button))
             }
         }
     )

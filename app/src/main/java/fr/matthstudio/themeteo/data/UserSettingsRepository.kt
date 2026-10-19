@@ -65,6 +65,7 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
         val ENABLE_RAIN_NOTIFICATIONS = booleanPreferencesKey("enable_rain_notifications")
         val ENABLE_VIGILANCE_NOTIFICATIONS = booleanPreferencesKey("enable_vigilance_notifications")
         val ENABLE_DURATION_EXTENSION = booleanPreferencesKey("enable_duration_extension")
+        val EXPERT_MODE = booleanPreferencesKey("expert_mode")
     }
 
     // 2. Exposer les paramètres sous forme de Flow pour une observation en temps réel
@@ -192,6 +193,13 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /**
+     * Flow pour l'activation du mode expert.
+     */
+    val expertMode: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.EXPERT_MODE] ?: false
+    }
+
+    /**
      * Flow pour l'activation de l'extension de durée de prévision.
      */
     val enableDurationExtension: Flow<Boolean> = dataStore.data.map { preferences ->
@@ -294,6 +302,15 @@ class UserSettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun updateEnableAnimatedIcons(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.ENABLE_ANIMATED_ICONS] = enabled
+        }
+    }
+
+    /**
+     * Met à jour le paramètre d'activation du mode expert.
+     */
+    suspend fun updateExpertMode(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.EXPERT_MODE] = enabled
         }
     }
 

@@ -7,6 +7,7 @@ package fr.matthstudio.themeteo.utilsActivities
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
@@ -20,7 +21,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,9 +39,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
-import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.ResolvedPolicyInfo
+import fr.matthstudio.themeteo.WeatherService
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.ui.PolicyViewerDialog
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -47,25 +54,14 @@ import java.net.URL
 class CreditActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val weatherCache = (application as TheMeteo).weatherCache
         
         setContent {
-            val userSettings by weatherCache.userSettings.collectAsState()
-            val currentWmo = remember { mutableStateOf<Int?>(null) }
-
-            LaunchedEffect(weatherCache.selectedLocation) {
-                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
-                    currentWmo.value = when (state) {
-                        is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-                        is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                        else -> null
-                    }
-                }
-            }
+            val userSettings by AppStateManager.userSettings.collectAsState()
+            val currentWmo by AppStateManager.currentWmoCode.collectAsState()
 
             TheMeteoTheme(
-                themeMode = userSettings.themeMode,
-                currentWmoCode = currentWmo.value,
+                themeMode = userSettings?.themeMode ?: ThemeMode.FIXED,
+                currentWmoCode = currentWmo,
                 isNight = false
             ) {
                 Surface(
@@ -83,6 +79,41 @@ class CreditActivity : ComponentActivity() {
 @Composable
 fun CreditScreen(onBack: () -> Unit) {
     val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
+    val weatherService = remember { WeatherService() }
+    var showTermsDialog by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+
+    fun openTerms() {
+        if (resolvedPolicy != null) {
+            showTermsDialog = true
+        } else {
+            scope.launch {
+                val remote = weatherService.getPolicyUpdateInfo()
+                val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
+                if (resolved != null) {
+                    AppStateManager.updateResolvedPolicyInfo(resolved)
+                    showTermsDialog = true
+                }
+            }
+        }
+    }
+
+    fun openPrivacy() {
+        if (resolvedPolicy != null) {
+            showPrivacyDialog = true
+        } else {
+            scope.launch {
+                val remote = weatherService.getPolicyUpdateInfo()
+                val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
+                if (resolved != null) {
+                    AppStateManager.updateResolvedPolicyInfo(resolved)
+                    showPrivacyDialog = true
+                }
+            }
+        }
+    }
 
     // État pour stocker le texte de la licence récupéré
     var licenseText by remember { mutableStateOf("Chargement de la licence...") }
@@ -172,15 +203,44 @@ fun CreditScreen(onBack: () -> Unit) {
                 modifier = Modifier.padding(top = 4.dp)
             )
 
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { openTerms() },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.gcu_title),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { openPrivacy() },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.privacy_policy_title),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
             // --- SECTION DONNÉES ---
             SectionHeader("Données Météo & Environnement")
 
-            ClickableLink(
-                prefix = "• Prévisions : Weather data by ",
-                linkText = "Open-Meteo.com",
-                url = "https://open-meteo.com/"
+            Text(
+                style = TextStyle(
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                ),
+                text = "• Prévisions : Weather data by Météo-France & ECMWF"
             )
 
             // Attributions obligatoires pour Google Maps Platform (Pollen & Air Quality)
@@ -297,6 +357,24 @@ fun CreditScreen(onBack: () -> Unit) {
                 )
             }
             Spacer(modifier = Modifier.height(24.dp))
+
+            resolvedPolicy?.let { policy ->
+                if (showTermsDialog) {
+                    PolicyViewerDialog(
+                        title = stringResource(R.string.gcu_title),
+                        url = policy.gcuUrl,
+                        onDismiss = { showTermsDialog = false }
+                    )
+                }
+
+                if (showPrivacyDialog) {
+                    PolicyViewerDialog(
+                        title = stringResource(R.string.privacy_policy_title),
+                        url = policy.privacyPolicyUrl,
+                        onDismiss = { showPrivacyDialog = false }
+                    )
+                }
+            }
         }
     }
 }
@@ -317,7 +395,6 @@ fun ClickableLink(prefix: String, linkText: String, url: String) {
     val uriHandler = LocalUriHandler.current
     val annotatedString = buildAnnotatedString {
         append(prefix)
-        pushStringAnnotation(tag = "URL", annotation = url)
         withStyle(
             style = SpanStyle(
                 color = MaterialTheme.colorScheme.primary,
@@ -327,21 +404,18 @@ fun ClickableLink(prefix: String, linkText: String, url: String) {
         ) {
             append(linkText)
         }
-        pop()
     }
 
-    ClickableText(
+    Text(
         text = annotatedString,
         style = TextStyle(
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onBackground
         ),
-        modifier = Modifier.padding(vertical = 4.dp),
-        onClick = { offset ->
-            annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                .firstOrNull()?.let { annotation ->
-                    uriHandler.openUri(annotation.item)
-                }
-        }
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .clickable {
+                uriHandler.openUri(url)
+            }
     )
 }

@@ -88,7 +88,7 @@ class LocationProvider(private val context: Context) {
      * Vérifie si les paramètres de localisation du système sont activés.
      */
     fun checkLocationSettings(onResult: (Boolean, Exception?) -> Unit) {
-        val locationRequest = LocationRequest.Builder(getPriority(), 10000L).build()
+        val locationRequest = LocationRequest.Builder(getPriority(), 120_000L).build()
         val builder = LocationSettingsRequest.Builder()
             .addLocationRequest(locationRequest)
             .setAlwaysShow(true)
@@ -114,10 +114,11 @@ class LocationProvider(private val context: Context) {
             return@callbackFlow
         }
 
-        val locationRequest = LocationRequest.Builder(getPriority(), 10000L)
+        val locationRequest = LocationRequest.Builder(getPriority(), 120_000L)
             .setWaitForAccurateLocation(false)
-            .setMinUpdateIntervalMillis(5000L)
-            .setMaxUpdateDelayMillis(15000L)
+            .setMinUpdateIntervalMillis(60_000L)
+            .setMinUpdateDistanceMeters(100f)
+            .setMaxUpdateDelayMillis(180_000L)
             .build()
 
         val locationCallback = object : LocationCallback() {

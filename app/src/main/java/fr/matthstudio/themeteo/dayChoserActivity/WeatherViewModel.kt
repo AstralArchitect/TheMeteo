@@ -7,25 +7,28 @@ package fr.matthstudio.themeteo.dayChoserActivity
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import fr.matthstudio.themeteo.GeocodingResult
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.UserSettings
-import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.WeatherParser
 import fr.matthstudio.themeteo.WeatherService
-import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
-import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.data.WindUnit
+import fr.matthstudio.themeteo.data.UserLocationsRepository
+import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
@@ -33,6 +36,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Ce ViewModel sert d'intermédiaire entre l'UI (WeatherScreen) et la logique de données (WeatherCache).
@@ -41,24 +45,29 @@ import java.time.LocalDate
  */
 @OptIn(FlowPreview::class) // Nécessaire pour l'opérateur debounce
 class WeatherViewModel(
-    private val weatherCache: WeatherCache,
+    private val weatherParser: WeatherParser,
+    private val userLocationsRepository: UserLocationsRepository,
+    private val userSettingsRepository: UserSettingsRepository,
     private val telemetryManager: TelemetryManager
 ) : ViewModel() {
 
     val weatherService = WeatherService(telemetryManager)
 
-    // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
+    // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI VIA APPSTATEMANAGER ---
+
+    private val defaultUserSettings = UserSettings(true, LocationIdentifier.CurrentUserLocation, DefaultScreen.FORECAST_MAIN, true, TemperatureUnit.CELSIUS, WindUnit.KPH, "PENDING", false, null, null, false, true, false, ThemeMode.FIXED, true, true, false)
 
     /**
-     * Expose les paramètres utilisateur (modèle, arrondi, etc.) directement depuis le WeatherCache.
-     * L'UI se mettra à jour automatiquement si les paramètres changent dans le DataStore.
+     * Expose les paramètres utilisateur depuis AppStateManager.
      */
-    val userSettings: StateFlow<UserSettings> = weatherCache.userSettings
+    val userSettings: StateFlow<UserSettings> = AppStateManager.userSettings.map {
+        it ?: defaultUserSettings
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, defaultUserSettings)
 
     /**
-     * Expose la localisation actuellement sélectionnée depuis le WeatherCache.
+     * Expose la localisation actuellement sélectionnée depuis AppStateManager.
      */
-    val selectedLocation: StateFlow<LocationIdentifier> = weatherCache.selectedLocation
+    val selectedLocation: StateFlow<LocationIdentifier> = AppStateManager.selectedLocation
 
     /**
      * Un flux qui émet toutes les secondes pour les mises à jour en temps réel.
@@ -66,83 +75,42 @@ class WeatherViewModel(
     private val ticker = kotlinx.coroutines.flow.flow {
         while (true) {
             emit(Unit)
-            kotlinx.coroutines.delay(1000)
+            kotlinx.coroutines.delay(1000.milliseconds)
         }
     }
 
     /**
-     * État "Nuit" centralisé, dérivé des données de prévisions horaires.
+     * État "Nuit" centralisé depuis AppStateManager.
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val isNight: StateFlow<Boolean> = combine(
-        selectedLocation,
-        userSettings
-    ) { _, _ ->
-    }.flatMapLatest {
-        weatherCache.get(java.time.LocalDateTime.now().withMinute(0).withSecond(0).withNano(0), 1)
-    }.combine(ticker) { state, _ ->
-        val reading = state.getHourlyData()?.firstOrNull()
-        val radiation = reading?.skyInfo?.shortwaveRadiation
-        (radiation ?: 1.0) < 1.0
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val isNight: StateFlow<Boolean> = AppStateManager.isNight
 
     /**
      * Code WMO actuel pour le thème.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val currentWmo: StateFlow<Int?> = combine(
-        weatherCache.selectedLocation,
-        weatherCache.userSettings
-    ) { _, _ ->
-    }.flatMapLatest {
-        weatherCache.get(java.time.LocalDateTime.now(), 1)
-    }.map { state ->
-        when (state) {
-            is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-            is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-            else -> null
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val currentWmo: StateFlow<Int?> = AppStateManager.currentWmoCode
 
     /**
      * Expose les positions enregistrées par l'utilisateur depuis le WeatherCache.
      */
-    val savedLocations: StateFlow<List<SavedLocation>> = weatherCache.savedLocations
+    val savedLocations: StateFlow<List<SavedLocation>> = AppStateManager.savedLocations
 
-    val defaultLocation: LocationIdentifier = weatherCache.userSettings.value.defaultLocation
-
-    /**
-     * Expose la position GPS actuelle directement depuis le WeatherCache.
-     * La valeur sera `null` si la localisation n'est pas activée ou pas encore disponible.
-     */
-    val userLocation: StateFlow<GpsCoordinates?> = weatherCache.currentGpsPosition
+    val defaultLocation: LocationIdentifier = AppStateManager.userSettings.value?.defaultLocation ?: LocationIdentifier.CurrentUserLocation
 
     /**
-     * Expose le nom de la ville actuelle récupéré via géocodage inverse.
+     * Expose la position GPS actuelle depuis AppStateManager.
      */
-    val currentCityName: StateFlow<String?> = weatherCache.currentCityName
+    val userLocation: StateFlow<GpsCoordinates?> = AppStateManager.currentGpsPosition
 
     /**
-     * Expose si la permission de localisation est accordée.
+     * Expose le nom de la ville actuelle depuis AppStateManager.
      */
-    val isLocationPermissionGranted: StateFlow<Boolean> = weatherCache.isLocationPermissionGranted
+    val currentCityName: StateFlow<String?> = AppStateManager.currentCityName
 
     /**
-     * Flow de WeatherDataState pour les donnnées actuelles à toutes les villes enregistrées.
+     * Expose si la permission de localisation est accordée depuis AppStateManager.
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val currentWeather: StateFlow<WeatherDataState> = combine(
-        savedLocations
-    ) { _ ->
-        // On combine les deux. Peu importe la valeur reçue,
-        // flatMapLatest relancera le flux ci-dessous.
-    }.flatMapLatest {
-        weatherCache.getCurrentWeatherForSavedLocations()
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        WeatherDataState.Loading
-    )
+    val isLocationPermissionGranted: StateFlow<Boolean> = AppStateManager.isLocationPermissionGranted
 
     /**
      * Forecast pour les prochains jours
@@ -150,15 +118,11 @@ class WeatherViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     val forecast: StateFlow<WeatherDataState> = combine(
         userSettings,
-        selectedLocation
-    ) { settings, _ ->
-        WeatherModelRegistry.getMaxPredictionDays(
-            settings.model,
-            settings.forecastType == ForecastType.ENSEMBLE,
-            settings.enableDurationExtension
-        ).toLong()
-    }.flatMapLatest { duration ->
-        weatherCache.get(LocalDate.now(), duration)
+        selectedLocation,
+        AppStateManager.currentGpsPosition
+    ) { _, _, _ ->
+    }.flatMapLatest {
+        weatherParser.getDaily(LocalDate.now(), 14)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -225,37 +189,43 @@ class WeatherViewModel(
      * Le ViewModel transmet cette demande au WeatherCache, qui est la source de vérité.
      */
     fun selectLocation(location: LocationIdentifier) {
-        weatherCache.setCurrentLocation(location)
+        AppStateManager.updateSelectedLocation(location)
     }
 
     /**
      * Méthode appelée par l'UI pour supprimer une localisation.
-     * Le ViewModel transmet cette demande au WeatherCache, qui est la source de vérité.
      */
     fun removeLocation(location: SavedLocation) {
-        weatherCache.removeLocation(location)
+        viewModelScope.launch {
+            userLocationsRepository.removeLocation(location)
+        }
     }
 
     /**
      * Méthode appelée par l'UI pour ajouter une nouvelle localisation.
-     * Le ViewModel transmet cette demande au WeatherCache, qui est la source de vérité.
      */
     fun addLocation(location: SavedLocation) {
-        weatherCache.addLocation(location)
+        viewModelScope.launch {
+            userLocationsRepository.addLocation(location)
+        }
     }
     
     /**
      * Méthode appelée par l'UI pour réorganiser les lieux.
      */
     fun reorderLocations(newList: List<SavedLocation>) {
-        weatherCache.reorderLocations(newList)
+        viewModelScope.launch {
+            userLocationsRepository.reorderLocations(newList)
+        }
     }
 
     /**
      * Méthode appelée par l'UI pour renommer un lieu.
      */
     fun renameLocation(location: SavedLocation, newName: String) {
-        weatherCache.renameLocation(location, newName)
+        viewModelScope.launch {
+            userLocationsRepository.renameLocation(location, newName)
+        }
     }
     
     fun addLocationFromMap(coords: GpsCoordinates, name: String) {
@@ -267,7 +237,6 @@ class WeatherViewModel(
         )
 
         addLocation(newLocation)
-        // Optionnel : Sélectionner immédiatement cette nouvelle position
         selectLocation(LocationIdentifier.Saved(newLocation))
     }
 
@@ -275,7 +244,9 @@ class WeatherViewModel(
      * Méthode pour définir la position par défaut
      */
     fun setDefaultLocation(location: LocationIdentifier) {
-        weatherCache.setDefaultLocation(location)
+        viewModelScope.launch {
+            userSettingsRepository.updateDefaultLocation(location)
+        }
     }
 
     // --- 4. NETTOYAGE ---

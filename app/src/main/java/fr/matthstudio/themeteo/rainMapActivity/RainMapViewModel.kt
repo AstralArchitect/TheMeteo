@@ -5,21 +5,25 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.rainMapActivity
 
 import android.app.Application
-import android.content.Context
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.DefaultScreen
+import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.UserSettings
+import fr.matthstudio.themeteo.data.ForecastType
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.data.WindUnit
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import java.nio.ByteBuffer
@@ -34,34 +38,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 
 class RainMapViewModel(private val applicationContext: Application) : ViewModel() {
 
-    private val weatherCache = (applicationContext as TheMeteo).weatherCache
-    val userSettings = weatherCache.userSettings
+    val userSettings: StateFlow<UserSettings?> = AppStateManager.userSettings
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val currentWmo: StateFlow<Int?> = combine(
-        weatherCache.selectedLocation,
-        weatherCache.userSettings
-    ) { _, _ ->
-    }.flatMapLatest {
-        weatherCache.get(LocalDateTime.now(), 1)
-    }.map { state ->
-        when (state) {
-            is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-            is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-            else -> null
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val currentWmo: StateFlow<Int?> = AppStateManager.currentWmoCode
 
     private val _uiState = MutableStateFlow<RainMapUiState>(RainMapUiState.Loading)
     val uiState: StateFlow<RainMapUiState> = _uiState.asStateFlow()
@@ -76,6 +62,11 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         fetchAvailableTimestamps()
     }
 
+    companion object {
+        private const val TARGET_IMAGE_COUNT = 8
+        private const val CANDIDATE_IMAGE_COUNT = 14
+    }
+
     private fun fetchAvailableTimestamps() {
         viewModelScope.launch {
             try {
@@ -83,15 +74,19 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
 
                 val boundsDeferred = async { fetchMetadataBounds() }
 
-                val files = getRadarFiles(count = 10)
+                // Génère les candidats récents pour garantir le téléchargement d'exactement 8 images valides
+                val files = getRadarFiles(count = CANDIDATE_IMAGE_COUNT)
                 val imageDeferreds = files.map { file ->
                     async { fetchRadar(file.url, file.timestamp) }
                 }
 
                 val bounds = boundsDeferred.await()
-                val fetchedFrames = imageDeferreds.awaitAll().filterNotNull()
+                val fetchedFrames = imageDeferreds.awaitAll()
+                    .filterNotNull()
+                    .takeLast(TARGET_IMAGE_COUNT) // Conserve exactement 8 images radar
 
                 if (fetchedFrames.isNotEmpty()) {
+                    recycleBitmaps()
                     _uiState.value = RainMapUiState.Success(
                         frames = fetchedFrames,
                         bounds = bounds
@@ -129,6 +124,16 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
 
     override fun onCleared() {
         client.close()
+        recycleBitmaps()
+    }
+
+    private fun recycleBitmaps() {
+        val currentState = _uiState.value
+        if (currentState is RainMapUiState.Success) {
+            currentState.frames.forEach { frame ->
+                frame.bitmap?.takeIf { !it.isRecycled }?.recycle()
+            }
+        }
     }
 
     private suspend fun fetchRadar(url: String, timestamp: Long): TimeFrame? {
@@ -160,7 +165,7 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
      * Le dernier fichier est calculé selon la formule : roundToMod5(T - 6mn).
      *
      * @param currentTime L'heure de référence (par défaut l'heure actuelle).
-     * @param count Le nombre de fichiers à générer (par défaut 12 pour 1 heure).
+     * @param count Le nombre de fichiers à générer (par défaut 8 images).
      * @return Une liste d'objets RadarFile.
      */
     fun getRadarFiles(

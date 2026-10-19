@@ -167,16 +167,19 @@ fun mapToEnvironmentalUI(aqi: AirQualityInfo?, aqiForecast: AirQualityForecastRe
             hr.athletes?.let { healthAdvice.add(HealthAdviceUI("Sportifs", it)) }
         }
 
+        val rawValue = mainIndex?.aqi ?: 0
+        val displayValue = if (avg > 0) avg else rawValue
+
         return AirQualityUI(
-            value = mainIndex?.aqi ?: 0,
+            value = displayValue,
             label = mainIndex?.category ?: "N/A",
             color = mainIndex?.color?.let { Color(it.red ?: 0.5f, it.green ?: 0.5f, it.blue ?: 0.5f) } ?: Color.Gray,
             recommendation = info.healthRecommendations?.generalPopulation,
             pollutants = pollutants,
             healthAdvice = healthAdvice,
-            minAqi = if (useEurAqi) 0 else min,
-            maxAqi = if (useEurAqi) 0 else max,
-            avgAqi = if (useEurAqi) 0 else avg
+            minAqi = min,
+            maxAqi = max,
+            avgAqi = avg
         )
     }
 

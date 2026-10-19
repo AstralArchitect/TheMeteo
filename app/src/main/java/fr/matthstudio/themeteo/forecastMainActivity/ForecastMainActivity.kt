@@ -38,9 +38,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Umbrella
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.data.TemperatureUnit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -80,7 +83,6 @@ import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
-import fr.matthstudio.themeteo.getHourlyData
 import fr.matthstudio.themeteo.rainMapActivity.RainMapActivity
 import fr.matthstudio.themeteo.data.BentoCardType
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
@@ -91,7 +93,13 @@ import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.utilClasses.AppUpdateHelper
+import fr.matthstudio.themeteo.widget.WidgetUtils
 import java.time.LocalDateTime
+import kotlin.math.floor
+import java.time.Duration
+import kotlin.math.abs
 
 data class NextSunEvent(
     val type: String,
@@ -110,18 +118,31 @@ class ForecastMainActivity : ComponentActivity() {
 
         // Instancier le viewModel
         val app = (this.application as TheMeteo)
-        weatherViewModel = WeatherViewModel(app.weatherCache, app.container.telemetryManager)
+        weatherViewModel = WeatherViewModel(
+            weatherParser = app.container.weatherParser,
+            userLocationsRepository = app.container.userLocationsRepository,
+            userSettingsRepository = app.container.userSettingsRepository,
+            appContext = app,
+            telemetryManager = app.container.telemetryManager
+        )
 
-        weatherViewModel.selectLocation(weatherViewModel.userSettings.value.defaultLocation)
+        val locationExtra = intent.getStringExtra("LOCATION")
+        val locationToSelect = if (locationExtra != null) {
+            WidgetUtils.deserializeLocation(locationExtra)
+                ?: weatherViewModel.userSettings.value?.defaultLocation
+        } else {
+            weatherViewModel.userSettings.value?.defaultLocation
+        }
+        if (locationToSelect != null) {
+            weatherViewModel.selectLocation(locationToSelect)
+        }
 
         enableEdgeToEdge()
         setContent {
             val userSettings by weatherViewModel.userSettings.collectAsState()
-            val hourlyForecast by weatherViewModel.hourlyForecast.collectAsState()
             val isNight by weatherViewModel.isNight.collectAsState()
 
-            val currentWmo = (hourlyForecast as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                ?: (hourlyForecast as? WeatherDataState.Error)?.getHourlyData()?.firstOrNull()?.wmo
+            val currentWmo = AppStateManager.currentWmoCode.collectAsState().value
 
             TheMeteoTheme(
                 themeMode = userSettings.themeMode,
@@ -136,11 +157,6 @@ class ForecastMainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        (this.application as TheMeteo).saveCache()
     }
 }
 
@@ -162,8 +178,18 @@ fun BentoCardContent(
         BentoCardType.DAILY_FORECAST -> if (isLauncherActivity) DailyForecastCard(viewModel, context)
         BentoCardType.AIR_QUALITY -> {
             val environmentalData by viewModel.environmentalData.collectAsState()
-            environmentalData?.days?.firstOrNull()?.airQuality?.let { data ->
-                AirQualityCard(data = data, onClick = onShowAirQuality)
+            environmentalData?.let { env ->
+                val firstDay = env.days.firstOrNull()?.airQuality
+                if (firstDay != null) {
+                    val allAvgAqi = env.days.mapNotNull {
+                        if (it.airQuality.avgAqi > 0) it.airQuality.avgAqi
+                        else if (it.airQuality.value > 0) it.airQuality.value
+                        else null
+                    }
+                    val overallAvg = if (allAvgAqi.isNotEmpty()) allAvgAqi.average().roundToInt() else firstDay.value
+                    val displayData = if (overallAvg > 0) firstDay.copy(value = overallAvg) else firstDay
+                    AirQualityCard(data = displayData, onClick = onShowAirQuality)
+                }
             }
         }
         BentoCardType.POLLEN -> {
@@ -201,10 +227,15 @@ fun BentoCardContent(
 fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: Boolean) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val hourlyForecast by viewModel.hourlyForecast.collectAsState()
-    val dailyForecast by viewModel.dailyForecast.collectAsState()
+    val hourlyForecast by viewModel.next24hForecast.collectAsState()
     val isNight by viewModel.isNight.collectAsState()
-    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
+
+    LaunchedEffect(Unit) {
+        AppStateManager.inAppUpdateEvent.collect {
+            AppUpdateHelper.promptUpdateIfAvailable(context)
+        }
+    }
 
     // --- LOGIQUE DE RÉSOLUTION DU GPS ---
     val locationSettingsException by viewModel.locationSettingsException.collectAsState()
@@ -246,10 +277,12 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     }
 
     val weatherState = when (val state = hourlyForecast) {
-        is WeatherDataState.SuccessHourly -> getSimpleWeather(state.data.first())
-        is WeatherDataState.Error -> {
-            state.getHourlyData()?.firstOrNull()?.let { getSimpleWeather(it) }
-                ?: SimpleWeather("Error", SimpleWeatherWord.SUNNY)
+        is WeatherDataState.SuccessShortTermHourly -> {
+            val now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0)
+            val currentStep = state.data.find { it.time.withMinute(0).withSecond(0).withNano(0) == now }
+                ?: state.data.minByOrNull { abs(Duration.between(it.time, now).toMinutes()) }
+                ?: state.data.firstOrNull()
+            currentStep?.let { getSimpleWeather(it) } ?: SimpleWeather("Error", SimpleWeatherWord.SUNNY)
         }
         WeatherDataState.Loading -> SimpleWeather("Loading", SimpleWeatherWord.SUNNY)
         else -> SimpleWeather("Error", SimpleWeatherWord.SUNNY)
@@ -290,12 +323,13 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         SimpleWeatherWord.SNOWY1, SimpleWeatherWord.SNOWY2 -> stringResource(R.string.light_snow)
         SimpleWeatherWord.SNOWY3 -> stringResource(R.string.heavy_snow)
         SimpleWeatherWord.SNOWY_MIX -> stringResource(R.string.mixed_rain_snow)
-        SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2 -> stringResource(R.string.rainy)
+        SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2, SimpleWeatherWord.RAIN_SHOWER, SimpleWeatherWord.RAIN_SHOWER1, SimpleWeatherWord.RAIN_SHOWER2 -> stringResource(R.string.rainy)
         SimpleWeatherWord.DRIZZLY -> stringResource(R.string.drizzle)
         SimpleWeatherWord.DUST -> stringResource(R.string.dust_storm)
         SimpleWeatherWord.HAZE -> stringResource(R.string.haze)
         SimpleWeatherWord.FOGGY -> stringResource(R.string.foggy)
         SimpleWeatherWord.CLOUDY -> stringResource(R.string.cloudy)
+        SimpleWeatherWord.VEILED -> stringResource(R.string.sky_veiled)
         SimpleWeatherWord.PARTLY_CLOUDY -> stringResource(R.string.sunny_cloudy)
         SimpleWeatherWord.MOSTLY_CLEAR -> stringResource(R.string.mostly_cloudy)
         SimpleWeatherWord.SUNNY -> stringResource(R.string.clear)
@@ -322,17 +356,16 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     if (showLocationSheet) {
         val savedLocations by viewModel.savedLocations.collectAsState()
         val selectedLocation by viewModel.selectedLocation.collectAsState()
-        val currentWeathers by viewModel.currentWeather.collectAsState()
         val userSettings by viewModel.userSettings.collectAsState()
         val isPermissionGranted by viewModel.isLocationPermissionGranted.collectAsState()
         val currentCityName by viewModel.currentCityName.collectAsState()
         val searchState by viewModel.searchState.collectAsState()
 
+        val settings = userSettings ?: return
         LocationManagementSheet(
             savedLocations = savedLocations,
             selectedLocation = selectedLocation,
-            currentWeathers = currentWeathers,
-            userSettings = userSettings,
+            userSettings = settings,
             isPermissionGranted = isPermissionGranted,
             searchState = searchState,
             currentCityName = currentCityName,
@@ -599,36 +632,57 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                if (hourlyForecast !is WeatherDataState.SuccessHourly)
+                                if (hourlyForecast !is WeatherDataState.SuccessShortTermHourly)
                                     return@Row
 
                                 val userSettings by viewModel.userSettings.collectAsState()
-                                val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+                                val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
 
                                 LottieWeatherIcon(
                                     iconPath = getLottieIconPath(
                                         finalWeatherState.word ?: SimpleWeatherWord.SUNNY, isNight
                                     ),
-                                    animate = userSettings.enableAnimatedIcons && !isBatterySaverActive,
+                                    animate = (userSettings?.enableAnimatedIcons == true) && !isBatterySaverActive,
                                     modifier = Modifier.size(120.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                val temperature =
-                                    (hourlyForecast as WeatherDataState.SuccessHourly).data.first().temperature
-                                Text(
-                                    text = UnitConverter.formatTemperature(
-                                        celsius = temperature,
-                                        unit = userSettings.temperatureUnit,
-                                        roundToInt = true,
-                                        showUnitSymbol = false,
-                                        showDegreeSymbol = true
-                                    ),
-                                    style = MaterialTheme.typography.displayLarge.copy(
-                                        fontSize = 104.sp,
-                                        fontWeight = FontWeight.Medium
-                                    ),
-                                    color = Color.White
-                                )
+                                val steps = (hourlyForecast as WeatherDataState.SuccessShortTermHourly).data
+                                val now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0)
+                                val currentStep = steps.find { it.time.withMinute(0).withSecond(0).withNano(0) == now }
+                                    ?: steps.minByOrNull {
+                                        abs(
+                                            Duration.between(it.time, now).toMinutes()
+                                        )
+                                    }
+                                    ?: steps.firstOrNull() ?: return@Row
+
+                                val temperature = currentStep.temperature
+                                val tempConverted = UnitConverter.convertTemperature(temperature, userSettings?.temperatureUnit ?: TemperatureUnit.CELSIUS)
+                                val isInteger = Math.abs(tempConverted - tempConverted.roundToInt()) < 0.1f
+                                val intPart = if (isInteger) tempConverted.roundToInt().toString() else floor(tempConverted).toInt().toString()
+                                val decPart = if (!isInteger) ",5" else ""
+
+                                Row(
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        text = intPart,
+                                        style = MaterialTheme.typography.displayLarge.copy(
+                                            fontSize = 104.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = if (!isInteger) "${decPart}°" else "°",
+                                        style = MaterialTheme.typography.displayLarge.copy(
+                                            fontSize = if (!isInteger) 48.sp else 64.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = Color.White,
+                                        modifier = Modifier.padding(top = 12.dp)
+                                    )
+                                }
                             }
                             Text(
                                 text = description,
@@ -636,21 +690,23 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 color = Color.White.copy(alpha = 0.9f)
                             )
                             val userSettings by viewModel.userSettings.collectAsState()
-                            val max = (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.maxTemperature
-                            val min = (dailyForecast as? WeatherDataState.SuccessDaily)?.data?.firstOrNull()?.minTemperature
+                            val max = (viewModel.next24hForecast.collectAsState().value as? WeatherDataState.SuccessShortTermHourly)?.data?.maxOfOrNull { it.temperature }
+                            val min = (viewModel.next24hForecast.collectAsState().value as? WeatherDataState.SuccessShortTermHourly)?.data?.minOfOrNull { it.temperature }
                             max?.let { max ->
+                                val tempUnit = userSettings?.temperatureUnit ?: TemperatureUnit.CELSIUS
+                                val roundToInt = userSettings?.roundToInt ?: true
                                 Text (
                                     text = "Max : ${
                                         UnitConverter.formatTemperature(
                                             max,
-                                            userSettings.temperatureUnit,
-                                            userSettings.roundToInt
+                                            tempUnit,
+                                            roundToInt
                                         )
                                     } - Min : ${
                                         UnitConverter.formatTemperature(
                                             min,
-                                            userSettings.temperatureUnit,
-                                            userSettings.roundToInt
+                                            tempUnit,
+                                            roundToInt
                                         )
                                     }",
                                     style = MaterialTheme.typography.titleMedium,
@@ -778,6 +834,19 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                 if (shouldShowPolicyUpdateDialog) {
                     PolicyUpdateDialog(
                         onAccept = { viewModel.acceptPolicyUpdates() }
+                    )
+                }
+
+                val isForcedUpdateRequired by AppStateManager.isForcedUpdateRequired.collectAsState()
+                if (isForcedUpdateRequired) {
+                    val context = LocalContext.current
+                    val scope = rememberCoroutineScope()
+                    ForcedUpdateDialog(
+                        onUpdateClick = {
+                            scope.launch {
+                                AppUpdateHelper.promptUpdateIfAvailable(context)
+                            }
+                        }
                     )
                 }
             }

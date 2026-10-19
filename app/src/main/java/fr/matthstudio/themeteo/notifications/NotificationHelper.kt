@@ -14,9 +14,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
+import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
 import fr.matthstudio.themeteo.utilsActivities.LauncherActivity
+import fr.matthstudio.themeteo.widget.WidgetUtils
 
 class NotificationHelper(private val context: Context) {
 
@@ -63,16 +65,20 @@ class NotificationHelper(private val context: Context) {
         notificationManager.createNotificationChannel(rainChannel)
     }
 
-    fun showVigilanceNotification(title: String, message: String, level: Int) {
+    fun showVigilanceNotification(title: String, message: String, level: Int, location: LocationIdentifier? = null) {
         val isHigh = level > 2
         val channelId = if (isHigh) CHANNEL_VIGILANCE_HIGH else CHANNEL_VIGILANCE_YELLOW
         val priority = if (isHigh) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT
 
         val intent = Intent(context, LauncherActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            if (location != null) {
+                putExtra("LOCATION", WidgetUtils.serializeLocation(location))
+            }
         }
+        val requestCode = location?.hashCode() ?: 0
         val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
+            context, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -101,12 +107,34 @@ class NotificationHelper(private val context: Context) {
         }
     }
 
-    fun showRainNotification(title: String, message: String) {
+    fun showRainNotification(title: String, message: String, locationKey: String? = null, location: LocationIdentifier? = null) {
         val intent = Intent(context, LauncherActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            val locExtra = when {
+                location != null -> WidgetUtils.serializeLocation(location)
+                locationKey != null -> locationKey
+                else -> null
+            }
+            if (locExtra != null) {
+                putExtra("LOCATION", locExtra)
+            }
         }
+        val requestCode = locationKey?.hashCode() ?: location?.hashCode() ?: 0
         val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
+            context, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val deleteIntent = Intent(context, NotificationDismissReceiver::class.java).apply {
+            action = NotificationDismissReceiver.ACTION_RAIN_NOTIFICATION_DISMISSED
+            if (locationKey != null) {
+                putExtra(NotificationDismissReceiver.EXTRA_LOCATION_KEY, locationKey)
+            }
+        }
+        val deletePendingIntent = PendingIntent.getBroadcast(
+            context,
+            RAIN_NOTIFICATION_ID,
+            deleteIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -115,8 +143,10 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+            .setDeleteIntent(deletePendingIntent)
 
         with(NotificationManagerCompat.from(context)) {
             try {
@@ -124,6 +154,12 @@ class NotificationHelper(private val context: Context) {
             } catch (e: SecurityException) {
                 // Permission not granted
             }
+        }
+    }
+
+    fun cancelRainNotification() {
+        with(NotificationManagerCompat.from(context)) {
+            cancel(RAIN_NOTIFICATION_ID)
         }
     }
 }

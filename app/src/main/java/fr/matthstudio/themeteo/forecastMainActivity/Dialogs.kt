@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.LocalFlorist
 import androidx.compose.material.icons.rounded.Nature
 import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.SevereCold
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material.icons.rounded.Visibility
@@ -68,16 +69,21 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -97,7 +103,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.core.net.toUri
 import androidx.fragment.app.strictmode.FragmentStrictMode
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.ResolvedPolicyInfo
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
@@ -121,10 +130,10 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
 
     // État du jour sélectionné
     var selectedDayIndex by remember { mutableIntStateOf(0) }
-    val currentDay = data.days.getOrNull(selectedDayIndex) ?: data.days.first()
+    val currentDay = data.days.getOrNull(selectedDayIndex) ?: data.days.firstOrNull() ?: return
 
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -208,7 +217,7 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
                             EnvironmentalSectionHeader(
                                 title = stringResource(R.string.air_quality),
                                 icon = Icons.Rounded.Air,
-                                color = currentDay.airQuality.color ?: MaterialTheme.colorScheme.outline
+                                color = currentDay.airQuality.color
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
@@ -480,9 +489,17 @@ fun AirQualityDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun SunMoonDetailsDialog(viewModel: WeatherViewModel, onDismiss: () -> Unit) {
+    // Ticker temps réel (1 seconde) lorsque le dialogue Soleil & Lune est ouvert
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            viewModel.recalculateSunMoonNow()
+            delay(1000L)
+        }
+    }
+
     // Animation state
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
-    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
 
     fun animateAndDismiss() {
         visibleState.targetState = false
@@ -566,8 +583,13 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
     var isLoading by remember { mutableStateOf(true) }
     var hasError by remember { mutableStateOf(false) }
     var hasScrolledToBottom by remember { mutableStateOf(false) }
-    var refreshTrigger by remember { mutableStateOf(0) }
-    val gcuUrl = "https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html"
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+
+    val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
+    val policyInfo = resolvedPolicy ?: return
+
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val currentUrl = if (selectedTab == 0) policyInfo.gcuUrl else policyInfo.privacyPolicyUrl
 
     AlertDialog(
         onDismissRequest = { },
@@ -575,11 +597,36 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
         text = {
             Column {
                 Text(stringResource(R.string.policy_update_message), style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = {
+                            if (selectedTab != 0) {
+                                selectedTab = 0
+                                refreshTrigger++
+                            }
+                        },
+                        text = { Text(stringResource(R.string.gcu_title), style = MaterialTheme.typography.labelMedium) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = {
+                            if (selectedTab != 1) {
+                                selectedTab = 1
+                                refreshTrigger++
+                            }
+                        },
+                        text = { Text(stringResource(R.string.privacy_policy_title), style = MaterialTheme.typography.labelMedium) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(400.dp)
+                        .height(360.dp)
                 ) {
                     AndroidView(
                         factory = { context ->
@@ -595,10 +642,6 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
                                     override fun onPageFinished(view: WebView?, url: String?) {
                                         super.onPageFinished(view, url)
                                         isLoading = false
-                                        // If content is small and doesn't scroll, it might already be at bottom
-                                        /*if (!canScrollVertically(1)) {
-                                            hasScrolledToBottom = true
-                                        }*/
                                     }
 
                                     override fun onReceivedError(
@@ -616,13 +659,11 @@ fun PolicyUpdateDialog(onAccept: () -> Unit) {
                                         hasScrolledToBottom = true
                                     }
                                 }
-                                loadUrl(gcuUrl)
+                                loadUrl(currentUrl)
                             }
                         },
                         update = { webView ->
-                            if (refreshTrigger > 0) {
-                                webView.loadUrl(gcuUrl)
-                            }
+                            webView.loadUrl(currentUrl)
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -682,7 +723,7 @@ fun VigilanceDetailsDialog(vigilanceData: VigilanceInfos, onDismiss: () -> Unit)
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
     val dayFormatter = DateTimeFormatter.ofPattern("dd/MM")
-    val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
 
     Box(
         modifier = Modifier
@@ -880,6 +921,46 @@ fun RainForecastExplanationDialog(onDismiss: () -> Unit) {
         },
         confirmButton = {
 
+        }
+    )
+}
+
+@Composable
+fun ForcedUpdateDialog(
+    onUpdateClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { /* Non-dismissible modal */ },
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.SystemUpdate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(36.dp)
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.force_update_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.force_update_message_default),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onUpdateClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.update_button))
+            }
         }
     )
 }

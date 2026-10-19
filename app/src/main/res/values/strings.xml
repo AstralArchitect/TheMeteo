@@ -130,7 +130,7 @@
     <string name="weed">Weeds</string>
     <string name="pollen_components">Plants in season (components)</string>
     <string name="rain_expected">Rain Expected</string>
-    <string name="rain_at_format">Expected at %s</string>
+    <string name="rain_at_in_format">Expected at %s in %s</string>
 
     <!-- Formatted Strings -->
     <string name="location_coords_format" translatable="false">Position: %1$.4f, %2$.4f</string>
@@ -234,8 +234,8 @@
     <string name="ensemble_warning_confirm">I understand</string>
     <string name="ensemble_warning_cancel">Cancel</string>
     <string name="no_precipitations">No precipitations expected</string>
-    <string name="remerciement_1">A big thank you to Google Maps, Open-Meteo, RainViewer, EUMETSAT and Basmilius for their exceptional work and the provision of these valuable resources, without which this application would not have been possible.</string>
-    <string name="remerciement_2">And a huge thank you to the exceptional work of the Open Source community. A massive thank you to Open-Meteo and Basmilius, for sharing their resources and expertise.</string>
+    <string name="remerciement_1">A big thank you to Google Maps and Basmilius for their exceptional work and the provision of these valuable resources, without which this application would not have been possible.</string>
+    <string name="remerciement_2">And a huge thank you to the exceptional work of the Open Source community. A massive thank you to Basmilius, for sharing his resources and expertise.</string>
     <string name="credits_sources_legal_mentions">Credits, Sources &amp; Legal Mentions</string>
     <string name="app_focus_desc">Choose which page will be opened at the app start.</string>
     <string name="weather_alert">WEATHER ALERT</string>
@@ -253,14 +253,21 @@
     <string name="firebase_crashlytics_dialog_title">Enable Crashlytics?</string>
     <string name="firebase_crashlytics_dialog_message">By enabling Firebase Crashlytics, you agree to send anonymous technical data (device model, stack trace) to Google when the application crashes. This helps us identify and fix problems more quickly. No personal data is collected.</string>
     <string name="gcu_title">Terms of Use</string>
+    <string name="privacy_policy_title">Privacy Policy</string>
+    <string name="terms_and_privacy">Terms &amp; Privacy Policy</string>
+    <string name="open_in_browser">Open in browser</string>
     <string name="gcu_content_loading">Loading Terms of Use…</string>
     <string name="gcu_content_error">Error loading Terms of Use. Please check your internet connection and try again.</string>
     <string name="accept">Accept</string>
     <string name="decline">Decline</string>
     <string name="retry">Retry</string>
+    <string name="continue_button">Continue</string>
     <string name="gcu_scroll_to_bottom">Please scroll to the bottom to accept</string>
     <string name="policy_update_title">Policy Update</string>
     <string name="policy_update_message">Our Terms of Use and/or Privacy Policy have been updated. Please review them.</string>
+    <string name="force_update_title">Update Required</string>
+    <string name="force_update_message_default">A new version of TheMeteo is required to continue. Please update the application from the Google Play Store.</string>
+    <string name="update_button">Update</string>
     <string name="air_quality">Air Quality</string>
     <string name="grasses">Grasses</string>
     <string name="pollen_risks">Pollen Risks</string>
@@ -318,4 +325,46 @@
     <string name="rain_radar">Rain Radar</string>
     <string name="click_to_view_full_screen">Click to view full screen</string>
     <string name="sun_details">Sun Details</string>
+    <string name="permission_required">Permission required</string>
+    <string name="no_rain_expected">No rain expected</string>
+
+    <string name="technical_info_title">Technical Information</string>
+    <string name="models_used">Models Used</string>
+    <string name="model_short_term">Short term</string>
+    <string name="model_extended">Medium / Long term</string>
+    <string name="run_dates">Run Dates</string>
+    <string name="run_short_term">Short term run</string>
+    <string name="run_extended">Extended run</string>
+    <string name="coordinates_and_distance">Coordinates &amp; Distance</string>
+    <string name="requested_pos">Requested</string>
+    <string name="grid_pos">Grid point</string>
+    <string name="distance_km">Distance</string>
+
+    <!-- AIFS / Period Strings -->
+    <string name="period_morning">Morning</string>
+    <string name="period_noon">Noon</string>
+    <string name="period_evening">Evening</string>
+    <string name="period_night">Night</string>
+    <string name="forecast_by_period">Forecast by Period</string>
+    <string name="period_comparison">Metrics Comparison by Period</string>
+    <string name="uncertainty_range">Uncertainty range (P10–P90)</string>
+    <string name="apparent_temp_short">Apparent</string>
+
+    <!-- Expert Mode -->
+    <string name="expert_mode_title">Expert Mode</string>
+    <string name="expert_mode_desc">Show advanced forecast data such as uncertainty percentiles and cloud layers.</string>
+    <string name="rain_at_format">Rain at %s</string>
+    <string name="scenarios">Scenarios :</string>
+    <string name="neige">Snow</string>
+    <string name="brouillard">Fog</string>
+    <string name="pluie">Rainy</string>
+    <string name="nuageux">Cloudy</string>
+    <string name="voil">Veiled Sky</string>
+
+
+    <string name="heavy_thunder">Heavy thunderstorm</string>
+
+    <string name="thunder_with_hail">Thunderstorm with Hail</string>
+    <string name="heavy_thunder_with_hail">Heavy Thunderstorm with Hail</string>
+    <string name="sunny_spells">Sunny Spells</string>
 </resources>

@@ -48,6 +48,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
+import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.BuildConfig
@@ -70,6 +71,7 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withSave
+import fr.matthstudio.themeteo.data.ThemeMode
 
 class RainMapActivity : ComponentActivity() {
     private lateinit var viewModel: RainMapViewModel
@@ -88,7 +90,7 @@ class RainMapActivity : ComponentActivity() {
             val currentWmo by viewModel.currentWmo.collectAsState()
 
             TheMeteoTheme(
-                themeMode = userSettings.themeMode,
+                themeMode = userSettings?.themeMode ?: ThemeMode.FIXED,
                 currentWmoCode = currentWmo,
                 isNight = false
             ) {
@@ -319,16 +321,14 @@ fun RainMapContent(
         )
 
         // Observe Global Location
-        val activity = LocalActivity.current as RainMapActivity
-        val weatherCache = (activity.application as TheMeteo).weatherCache
         val lifecycleOwner = LocalLifecycleOwner.current
         
         LaunchedEffect(mapView) {
             val map = mapView ?: return@LaunchedEffect
             lifecycleOwner.lifecycleScope.launch {
                 combine(
-                    weatherCache.selectedLocation,
-                    weatherCache.currentGpsPosition
+                    AppStateManager.selectedLocation,
+                    AppStateManager.currentGpsPosition
                 ) { selected, gps ->
                     when (selected) {
                         is LocationIdentifier.Saved -> GeoPoint(selected.location.latitude, selected.location.longitude)

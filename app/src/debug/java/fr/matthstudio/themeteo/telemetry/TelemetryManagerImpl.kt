@@ -6,6 +6,7 @@ package fr.matthstudio.themeteo.telemetry
 
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import android.content.Context
+import android.util.Log
 
 import fr.matthstudio.themeteo.BuildConfig
 
@@ -18,7 +19,7 @@ class TelemetryManagerImpl(context: Context) : TelemetryManager {
     }
 
     override fun setConsentGranted(granted: Boolean) {
-        // Analytics/Crashlytics disabled on debug
+        Log.d("Telemetry", "Crashlytics consent updated to $granted (disabled on debug builds)")
     }
 
     override fun logException(throwable: Throwable) {

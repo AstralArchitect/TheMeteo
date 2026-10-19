@@ -1,6 +1,6 @@
 [versions]
 accompanistPermissions = "0.37.3"
-agp = "9.3.1"
+agp = "9.4.1"
 coilCompose = "2.7.0"
 coilSvg = "2.7.0"
 datastoreCore = "1.2.1"
@@ -17,10 +17,12 @@ mapsCompose = "8.4.0"
 material = "1.14.0"
 osmdroidAndroid = "6.1.20"
 photoview = "2.3.0"
+playAppUpdate = "2.1.0"
 playServicesLocation = "21.4.0"
 playServicesMaps = "20.0.0"
+protobuf = "0.9.4"
 protobufKotlinLite = "4.35.1"
-workRuntimeKtx = "2.11.2"
+workRuntimeKtx = "2.10.0"
 uiTextGoogleFonts = "1.11.4"
 lifecycleProcess = "2.11.0"
 composeMaterialCore = "1.6.2"
@@ -67,6 +69,8 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "mapsCompose" }
 osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroidAndroid" }
 photoview = { module = "com.github.chrisbanes:PhotoView", version.ref = "photoview" }
+playAppUpdate = { module = "com.google.android.play:app-update", version.ref = "playAppUpdate" }
+playAppUpdateKtx = { module = "com.google.android.play:app-update-ktx", version.ref = "playAppUpdate" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
 play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "playServicesMaps" }
 protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobufKotlinLite" }
@@ -84,5 +88,6 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlyticsPlugin" }
 

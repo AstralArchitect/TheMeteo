@@ -16,8 +16,13 @@ import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
 import fr.matthstudio.themeteo.data.AppContainer
 import fr.matthstudio.themeteo.data.AppDataContainer
+import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.LocationProvider
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.notifications.WeatherNotificationWorker
+import androidx.work.Configuration
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -26,95 +31,133 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class TheMeteo : Application(), ImageLoaderFactory {
+class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
     lateinit var container: AppContainer
-    // Le cache est maintenant initialisé avec les dépendances du container.
-    lateinit var weatherCache: WeatherCache
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
 
     override fun onCreate() {
         super.onCreate()
         container = AppDataContainer(this)
-        // Read from cache the data
-        // ------------------------
-        // check if the file exists
-        val cacheFile = File(cacheDir, "weather_cache_data.json")
-        if (!cacheFile.exists()) {
-            weatherCache = WeatherCache(
-                userLocationsRepository = container.userLocationsRepository,
-                userSettingsRepository = container.userSettingsRepository,
-                applicationScope = CoroutineScope(Dispatchers.Default),
-                locationProvider = LocationProvider(this),
-                applicationContext = this
-            )
-            setupWorkManager()
-            return
-        }
-        // read the file's content
-        try {
-            val json = Json {
-                allowStructuredMapKeys = true
-            }
-            val fileContent = cacheFile.readText()
-            val value = json.decodeFromString<MutableMap<LocationIdentifier, MutableMap<String, ModelDataCache>>>(fileContent)
-            weatherCache = WeatherCache(
-                userLocationsRepository = container.userLocationsRepository,
-                userSettingsRepository = container.userSettingsRepository,
-                applicationScope = CoroutineScope(Dispatchers.Default),
-                locationProvider = LocationProvider(this),
-                cache = value,
-                applicationContext = this
-            )
-        } catch (e: Exception) {
-            Log.e("TheMeteo", "Error loading cache", e)
-            weatherCache = WeatherCache(
-                userLocationsRepository = container.userLocationsRepository,
-                userSettingsRepository = container.userSettingsRepository,
-                applicationScope = CoroutineScope(Dispatchers.Default),
-                locationProvider = LocationProvider(this),
-                applicationContext = this
-            )
-        }
+
+        setupAppStateManager()
         setupWorkManager()
-        val testWork = OneTimeWorkRequestBuilder<WeatherNotificationWorker>().build()
-        WorkManager.getInstance(this).enqueue(testWork)
+
+        try {
+            val testWork = OneTimeWorkRequestBuilder<WeatherNotificationWorker>().build()
+            WorkManager.getInstance(this).enqueue(testWork)
+        } catch (e: Throwable) {
+            Log.e("TheMeteo", "Error enqueuing testWork: ${e.message}", e)
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun setupAppStateManager() {
+        val initialLocationPermission = container.locationProvider.checkLocationPermission()
+        AppStateManager.updateLocationPermission(initialLocationPermission)
+
+        applicationScope.launch {
+            combine(
+                container.userSettingsRepository.model,
+                container.userSettingsRepository.roundToInt,
+                container.userSettingsRepository.defaultLocation,
+                container.userSettingsRepository.defaultScreen,
+                container.userSettingsRepository.enableModelFallback,
+                container.userSettingsRepository.enableAnimatedIcons,
+                container.userSettingsRepository.forecastType,
+                container.userSettingsRepository.temperatureUnit,
+                container.userSettingsRepository.windUnit,
+                container.userSettingsRepository.firebaseConsent,
+                container.userSettingsRepository.gcuAccepted,
+                container.userSettingsRepository.lastGcuUpdate,
+                container.userSettingsRepository.lastPrivacyPolicyUpdate,
+                container.userSettingsRepository.hasOpenedAppOnce,
+                container.userSettingsRepository.useEurAqi,
+                container.userSettingsRepository.backgroundLocationAsked,
+                container.userSettingsRepository.themeMode,
+                container.userSettingsRepository.enableRainNotifications,
+                container.userSettingsRepository.enableVigilanceNotifications,
+                container.userSettingsRepository.enableDurationExtension,
+                container.userSettingsRepository.expertMode
+            ) { values ->
+                UserSettings(
+                    roundToInt = values[1] as Boolean,
+                    defaultLocation = values[2] as LocationIdentifier? ?: LocationIdentifier.CurrentUserLocation,
+                    defaultScreen = values[3] as DefaultScreen? ?: DefaultScreen.FORECAST_MAIN,
+                    enableAnimatedIcons = values[5] as Boolean,
+                    temperatureUnit = values[7] as TemperatureUnit? ?: TemperatureUnit.CELSIUS,
+                    windUnit = values[8] as WindUnit? ?: WindUnit.KPH,
+                    firebaseConsent = values[9] as String,
+                    gcuAccepted = values[10] as Boolean,
+                    lastGcuUpdate = values[11] as String?,
+                    lastPrivacyPolicyUpdate = values[12] as String?,
+                    hasOpenedAppOnce = values[13] as Boolean,
+                    useEurAqi = values[14] as Boolean,
+                    backgroundLocationAsked = values[15] as Boolean,
+                    themeMode = values[16] as ThemeMode,
+                    enableRainNotifications = values[17] as Boolean,
+                    enableVigilanceNotifications = values[18] as Boolean,
+                    enableDurationExtension = values[19] as Boolean,
+                    expertMode = values[20] as Boolean
+                )
+            }.collect { settings ->
+                AppStateManager.updateUserSettings(settings)
+                AppStateManager.updateThemeMode(settings.themeMode)
+                container.telemetryManager.setConsentGranted(settings.firebaseConsent == "GRANTED")
+                if (AppStateManager.selectedLocation.value == LocationIdentifier.CurrentUserLocation) {
+                    AppStateManager.updateSelectedLocation(settings.defaultLocation)
+                }
+            }
+        }
+
+        applicationScope.launch {
+            AppStateManager.isLocationPermissionGranted
+                .flatMapLatest { granted ->
+                    if (granted) {
+                        launch {
+                            val coords = container.locationProvider.getCurrentLocation()
+                            if (coords != null) {
+                                AppStateManager.updateGpsPosition(coords)
+                            }
+                        }
+                        container.locationProvider.locationFlow
+                    } else {
+                        flowOf(null)
+                    }
+                }
+                .collect { coords ->
+                    AppStateManager.updateGpsPosition(coords)
+                }
+        }
+
+        applicationScope.launch {
+            container.userLocationsRepository.savedLocations.collect { locations ->
+                AppStateManager.updateSavedLocations(locations)
+            }
+        }
     }
 
     private fun setupWorkManager() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val weatherWorkRequest = PeriodicWorkRequestBuilder<WeatherNotificationWorker>(
-            1, TimeUnit.HOURS // Exécution toutes les heures
-        )
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "WeatherAlertWork",
-            ExistingPeriodicWorkPolicy.KEEP, // Garder le travail existant pour ne pas réinitialiser le délai
-            weatherWorkRequest
-        )
-    }
-
-    fun saveCache() {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                Log.d("saveCache", "Saving cache to disk...")
-                val json = Json {
-                    allowStructuredMapKeys = true
-                }
-                val serializedValue = json.encodeToString(weatherCache.getRawCache())
-                File(cacheDir, "weather_cache_data.json").writeText(serializedValue)
-            } catch (e: Exception) {
-                Log.e("TheMeteo", "Error saving cache", e)
+        try {
+            if (!WorkManager.isInitialized()) {
+                WorkManager.initialize(this, workManagerConfiguration)
             }
+            WeatherNotificationWorker.updateWorkInterval(this, 60)
+        } catch (e: Throwable) {
+            Log.e("TheMeteo", "WorkManager initialization failed: ${e.message}", e)
         }
     }
 

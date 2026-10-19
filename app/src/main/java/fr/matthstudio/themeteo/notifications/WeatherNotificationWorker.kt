@@ -8,8 +8,16 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import androidx.compose.ui.res.stringResource
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import java.util.concurrent.TimeUnit
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.BinaryDecoder
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
@@ -21,6 +29,8 @@ import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 class WeatherNotificationWorker(
@@ -35,7 +45,7 @@ class WeatherNotificationWorker(
     override suspend fun doWork(): Result {
         Log.d("WeatherWorker", "Starting background weather check")
 
-        app.weatherCache.refreshCurrentLocationSuspend()
+        //app.weatherCache.refreshCurrentLocationSuspend()
         
         val userSettings = app.container.userSettingsRepository
         val userLocations = app.container.userLocationsRepository
@@ -65,7 +75,7 @@ class WeatherNotificationWorker(
         
         for (location in locations) {
             val coords = when (location) {
-                is LocationIdentifier.CurrentUserLocation -> app.weatherCache.currentGpsPosition.value
+                is LocationIdentifier.CurrentUserLocation -> AppStateManager.currentGpsPosition.value
                 is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
             } ?: continue
             val locName = when (location) {
@@ -96,7 +106,7 @@ class WeatherNotificationWorker(
                     }
                 } else ""
                 
-                notificationHelper.showVigilanceNotification(title, text, vigilance.maxColorId)
+                notificationHelper.showVigilanceNotification(title, text, vigilance.maxColorId, location)
                 alertStateRepository.updateVigilanceLevel(locationKey, vigilance.maxColorId)
             } else if (vigilance.maxColorId < lastLevel) {
                 // Update state if level decreased
@@ -113,50 +123,126 @@ class WeatherNotificationWorker(
         }
 
         val lastNotifications = alertStateRepository.lastRainNotifications.first()
+        val lastDismissals = alertStateRepository.lastRainDismissals.first()
         val now = System.currentTimeMillis()
+
+        var isRainDetectedInAnyLocation = false
 
         for (location in targets) {
             val coords = when (location) {
-                is LocationIdentifier.CurrentUserLocation -> app.weatherCache.currentGpsPosition.value
-                is LocationIdentifier.Saved -> fr.matthstudio.themeteo.data.GpsCoordinates(location.location.latitude, location.location.longitude)
+                is LocationIdentifier.CurrentUserLocation -> AppStateManager.currentGpsPosition.value
+                is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
             } ?: continue
 
             val locationKey = Json.encodeToString(location)
-            val lastTime = lastNotifications[locationKey] ?: 0L
-            
-            // Don't notify more than once every 3 hours for rain
-            if (now - lastTime < 3 * 60 * 60 * 1000) continue
+            val lastNotifTime = lastNotifications[locationKey] ?: 0L
+            val lastDismissTime = lastDismissals[locationKey] ?: 0L
 
-            // Fetch hourly forecast for the next 6 hours
-            val models = listOf("ecmwf_ifs", "gfs_seamless")
-            val forecast = weatherService.getForecast(
-                coords.latitude,
-                coords.longitude,
-                models,
-                LocalDate.now(),
-                LocalDate.now().plusDays(1)
-            )
+            // Si l'utilisateur a supprimé la notification après l'avoir reçue, délai de 6h
+            // Sinon (notification pas supprimée), mise à jour toutes les 5 minutes
+            val isDismissedAfterNotif = lastDismissTime > lastNotifTime
+            val requiredCooldown = if (isDismissedAfterNotif) {
+                6 * 60 * 60 * 1000L // 6 heures si supprimée
+            } else {
+                5 * 60 * 1000L // 5 minutes si conservée (mise à jour)
+            }
 
-            val hourlyData = forecast?.get("ecmwf_ifs")?.first ?: forecast?.get("gfs_seamless")?.first
-            if (hourlyData != null) {
-                val currentTime = LocalDateTime.now()
-                val nextRain = hourlyData.firstOrNull { 
-                    it.time.isAfter(currentTime) &&
-                    it.time.isBefore(currentTime.plusHours(6)) && 
-                    (it.precipitationData.precipitation ?: 0.0) > 0.1
-                }
+            val canSendNotification = (now - lastNotifTime >= requiredCooldown)
 
-                if (nextRain != null) {
-                    val timeStr = String.format("%02d:%02d", nextRain.time.hour, nextRain.time.minute)
-                    val message = applicationContext.getString(R.string.rain_at_format, timeStr)
-                    notificationHelper.showRainNotification(applicationContext.getString(R.string.rain_alert_title), message)
+            // 1. Check rain within the hour (Météo-France)
+            val rainWithinHour = weatherService.getRainWithinHour(coords.latitude, coords.longitude)
+            val rainForecast1h = rainWithinHour?.properties?.forecast?.firstOrNull { it.rainIntensity > 1 }
+
+            if (rainForecast1h != null) {
+                isRainDetectedInAnyLocation = true
+                if (canSendNotification) {
+                    val timeStr = try {
+                        val zdt = OffsetDateTime.parse(rainForecast1h.time)
+                        val local = zdt.atZoneSameInstant(ZoneId.systemDefault())
+                        String.format("%02d:%02d", local.hour, local.minute)
+                    } catch (e: Exception) {
+                        rainForecast1h.time
+                    }
+                    val locationStr = if (location is LocationIdentifier.Saved) location.location.name else applicationContext.getString(R.string.current_location)
+                    val message = applicationContext.getString(R.string.rain_at_format, "$timeStr ($locationStr)")
+                    notificationHelper.showRainNotification(applicationContext.getString(R.string.rain_alert_title), message, locationKey, location)
                     alertStateRepository.updateRainNotificationTime(locationKey, now)
                 }
+                continue
+            }
+
+            // 2. Check short term forecast (AROME / IFS) for the next 6 hours
+            val rawShortTerm = weatherService.getShortTermForecast(coords.longitude, coords.latitude, applicationContext)
+            if (rawShortTerm != null) {
+                val shortForecast = BinaryDecoder.parseFullShortTerm(rawShortTerm.first, rawShortTerm.second)
+                val currentTime = LocalDateTime.now(ZoneOffset.UTC)
+
+                val nextRainStep = shortForecast.steps.firstOrNull { step ->
+                    step.time.isAfter(currentTime) &&
+                    step.time.isBefore(currentTime.plusHours(6)) &&
+                    step.precipitation > 0.1f
+                }
+
+                if (nextRainStep != null) {
+                    if (nextRainStep.time.isBefore(currentTime.plusHours(1))) {
+                        isRainDetectedInAnyLocation = true
+                    }
+
+                    if (canSendNotification) {
+                        val localTime = nextRainStep.time.atZone(ZoneOffset.UTC)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                        val timeStr = String.format("%02d:%02d", localTime.hour, localTime.minute)
+                        val locationStr = if (location is LocationIdentifier.Saved) location.location.name else applicationContext.getString(R.string.current_location)
+                        val message = applicationContext.getString(R.string.rain_at_format, "$timeStr ($locationStr)")
+                        notificationHelper.showRainNotification(applicationContext.getString(R.string.rain_alert_title), message, locationKey, location)
+                        alertStateRepository.updateRainNotificationTime(locationKey, now)
+                    }
+                }
+            }
+        }
+
+        // Ajustement dynamique de l'intervalle WorkManager :
+        // Si de la pluie est détectée dans l'heure -> intervalle court de 15 minutes (minimum WorkManager)
+        // Si aucune pluie n'est prévue -> retour à l'intervalle normal de 60 minutes (1 heure)
+        if (isRainDetectedInAnyLocation) {
+            updateWorkInterval(applicationContext, 15)
+        } else {
+            updateWorkInterval(applicationContext, 60)
+        }
+    }
+
+    companion object {
+        const val WORK_NAME = "WeatherAlertWork"
+        private var currentScheduledIntervalMinutes: Long = -1L
+
+        fun updateWorkInterval(context: Context, intervalMinutes: Long) {
+            if (currentScheduledIntervalMinutes == intervalMinutes) return
+            currentScheduledIntervalMinutes = intervalMinutes
+
+            try {
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+
+                val weatherWorkRequest = PeriodicWorkRequestBuilder<WeatherNotificationWorker>(
+                    intervalMinutes, TimeUnit.MINUTES
+                )
+                    .setConstraints(constraints)
+                    .build()
+
+                WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                    WORK_NAME,
+                    ExistingPeriodicWorkPolicy.UPDATE,
+                    weatherWorkRequest
+                )
+                Log.d("WeatherWorker", "Intervalle dynamique WorkManager changé à $intervalMinutes minutes")
+            } catch (e: Throwable) {
+                Log.e("WeatherWorker", "WorkManager unavailable or initialization error: ${e.message}")
             }
         }
     }
 
-    private fun getVigilanceLevelName(level: Int, lower: Boolean = false): String {
+    fun getVigilanceLevelName(level: Int, lower: Boolean = false): String {
         return if (lower)
             when (level) {
                 2 -> applicationContext.getString(R.string.weather_alert)
@@ -173,7 +259,7 @@ class WeatherNotificationWorker(
             }
     }
 
-    private fun mapPhenomenonIdToName(id: String): Int {
+    fun mapPhenomenonIdToName(id: String): Int {
         return when (id) {
             "1" -> R.string.violent_wind
             "2" -> R.string.rain_flood

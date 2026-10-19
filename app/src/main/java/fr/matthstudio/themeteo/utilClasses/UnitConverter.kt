@@ -19,11 +19,19 @@ object UnitConverter {
     /**
      * Convertit une température de Celsius vers l'unité cible.
      */
-    fun convertTemperature(celsius: Double, to: TemperatureUnit): Double {
+    fun convertTemperature(celsius: Float, to: TemperatureUnit): Float {
         return when (to) {
             TemperatureUnit.CELSIUS -> celsius
             TemperatureUnit.FAHRENHEIT -> (celsius * 9 / 5) + 32
-            TemperatureUnit.KELVIN -> celsius + 273.15
+            TemperatureUnit.KELVIN -> celsius + 273.15f
+        }
+    }
+
+    fun convertTemperature(celsius: Int, to: TemperatureUnit): Int {
+        return when (to) {
+            TemperatureUnit.CELSIUS -> celsius
+            TemperatureUnit.FAHRENHEIT -> (celsius.toDouble() * 9.0 / 5.0).toInt() + 32
+            TemperatureUnit.KELVIN -> celsius + 273
         }
     }
 
@@ -65,7 +73,7 @@ object UnitConverter {
      * Convertit, arrondit éventuellement et formate une température avec son symbole.
      */
     fun formatTemperature(
-        celsius: Double?,
+        celsius: Float?,
         unit: TemperatureUnit,
         roundToInt: Boolean,
         showUnitSymbol: Boolean = true,
@@ -98,27 +106,44 @@ object UnitConverter {
     }
 
     /**
-     * Convertit une vitesse de vent de km/h vers l'unité cible.
+     * Convertit une vitesse de vent de m/s vers l'unité cible (km/h ou mph).
      */
-    fun convertWind(kph: Double, to: WindUnit): Double {
+    fun convertWind(ms: Float, to: WindUnit): Float {
+        val kph = ms * 3.6f
         return when (to) {
             WindUnit.KPH -> kph
-            WindUnit.MPH -> kph * 0.621371
+            WindUnit.MPH -> kph * 0.621371f
         }
     }
 
     /**
-     * Formate une vitesse de vent avec son symbole.
+     * Formate une vitesse de vent (en m/s) avec son symbole.
      */
-    fun formatWind(kph: Double?, unit: WindUnit): String {
-        if (kph == null) return "--"
-        val converted = convertWind(kph, unit)
+    fun formatWind(ms: Float, unit: WindUnit): String {
+        val converted = convertWind(ms, unit)
         val formatted = formatValue(converted)
         val symbol = when (unit) {
             WindUnit.KPH -> "km/h"
             WindUnit.MPH -> "mph"
         }
         return "$formatted $symbol"
+    }
+
+    /**
+     * Convertit une direction en degrés (0-360°) en orientation cardinale (ex: S-O, N, E, etc.).
+     */
+    fun degreesToCardinal(degrees: Float): String {
+        val normalized = (degrees % 360 + 360) % 360
+        return when {
+            normalized >= 337.5f || normalized < 22.5f -> "N"
+            normalized < 67.5f -> "N-E"
+            normalized < 112.5f -> "E"
+            normalized < 157.5f -> "S-E"
+            normalized < 202.5f -> "S"
+            normalized < 247.5f -> "S-O"
+            normalized < 292.5f -> "O"
+            else -> "N-O"
+        }
     }
 }
 

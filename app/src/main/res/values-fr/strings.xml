@@ -110,7 +110,7 @@
     <string name="weed">Herbacées</string>
     <string name="pollen_components">Plantes en saison (composants)</string>
     <string name="rain_expected">Précipitations prévues</string>
-    <string name="rain_at_format">Prévues à %s</string>
+    <string name="rain_at_in_format">Prévues à %s dans %s</string>
     <string name="wind_unit_title">Unité de vitesse du vent</string>
     <string name="wind_unit_desc">Choisissez entre Kilomètres par heure et Miles par heure.</string>
     <string name="kph">km/h</string>
@@ -210,9 +210,9 @@
     <string name="ensemble_warning_message">Le mode ensemble fournit des informations plus détaillées mais consomme plus de données et de batterie. Il peut également être plus complexe à interpréter car il montre l\'éventail des possibles (ruban d\'incertitude).</string>
     <string name="ensemble_warning_confirm">J\'ai compris</string>
     <string name="ensemble_warning_cancel">Annuler</string>
-    <string name="remerciement_1">Un grand merci à Google Maps, Open-Meteo, RainViewer, EUMETSAT et Basmilius pour leurs travaux exceptionnels et la mise à disposition de ces ressources précieuses, sans qui cette application n\'aurait pas pu voir le jour.</string>
+    <string name="remerciement_1">Un grand merci à Google Maps et Basmilius pour leurs travaux exceptionnels et la mise à disposition de ces ressources précieuses, sans qui cette application n\'aurait pas pu voir le jour.</string>
     <string name="no_precipitations">Pas de précipitations prévues</string>
-    <string name="remerciement_2">Et une grande gratitude envers le travail exceptionnel de la communauté Open Source. Un immense merci à Open-Meteo et Basmilius pour le partage de leurs ressources et de leur savoir-faire.</string>
+    <string name="remerciement_2">Et une grande gratitude envers le travail exceptionnel de la communauté Open Source. Un immense merci à Basmilius pour le partage de ses ressources et de ses savoir-faire.</string>
     <string name="credits_sources_legal_mentions">Sources, Crédits &amp; Mentions Légales</string>
     <string name="temperature_unit_title">Unité de Température</string>
     <string name="temperature_unit_desc">Choisissez entre Celsius, Farenheit et Kelvin.</string>
@@ -225,14 +225,21 @@
     <string name="firebase_crashlytics_dialog_title">Activer Crashlytics ?</string>
     <string name="firebase_crashlytics_dialog_message">En activant Firebase Crashlytics, vous acceptez d\'envoyer des données techniques anonymes (modèle d\'appareil, trace d\'erreur) à Google en cas de plantage de l\'application. Cela nous aide à identifier et corriger les problèmes plus rapidement. Aucune donnée personnelle n\'est collectée.</string>
     <string name="gcu_title">Conditions Générales d\'Utilisation</string>
+    <string name="privacy_policy_title">Politique de Confidentialité</string>
+    <string name="terms_and_privacy">CGU &amp; Politique de Confidentialité</string>
+    <string name="open_in_browser">Ouvrir dans le navigateur</string>
     <string name="gcu_content_loading">Chargement des CGU…</string>
     <string name="gcu_content_error">Erreur lors du chargement des CGU. Veuillez vérifier votre connexion internet et réessayer.</string>
     <string name="accept">Accepter</string>
     <string name="decline">Refuser</string>
     <string name="retry">Réessayer</string>
+    <string name="continue_button">Continuer</string>
     <string name="gcu_scroll_to_bottom">Veuillez faire défiler jusqu\'en bas pour accepter</string>
     <string name="policy_update_title">Mise à jour des conditions</string>
     <string name="policy_update_message">Nos conditions d\'utilisation et/ou notre politique de confidentialité ont été mises à jour. Veuillez les consulter.</string>
+    <string name="force_update_title">Mise à jour obligatoire</string>
+    <string name="force_update_message_default">Une nouvelle version de TheMeteo est nécessaire pour continuer. Veuillez mettre à jour l\'application depuis le Google Play Store.</string>
+    <string name="update_button">Mettre à jour</string>
     <string name="grasses">Herbes</string>
     <string name="pollen_risks">Risques de Pollen</string>
     <string name="widget_settings">Paramètres du Widget</string>
@@ -294,4 +301,44 @@
     <string name="rain_radar">Radar de Pluie</string>
     <string name="click_to_view_full_screen">Cliquez pour passer en plein écran</string>
     <string name="sun_details">Détails Soleil et Lune</string>
+    <string name="permission_required">Autorisation requise</string>
+    <string name="no_rain_expected">Pas de pluie attendue</string>
+
+    <string name="technical_info_title">Informations techniques</string>
+    <string name="models_used">Modèles utilisés</string>
+    <string name="model_short_term">Court terme</string>
+    <string name="model_extended">Moyen / Long terme</string>
+    <string name="run_dates">Dates des runs</string>
+    <string name="run_short_term">Run court terme</string>
+    <string name="run_extended">Run étendu</string>
+    <string name="coordinates_and_distance">Coordonnées et Distance</string>
+    <string name="requested_pos">Demandé</string>
+    <string name="grid_pos">Point de grille</string>
+    <string name="distance_km">Écart</string>
+
+    <!-- AIFS / Period Strings -->
+    <string name="period_morning">Matin</string>
+    <string name="period_noon">Midi</string>
+    <string name="period_evening">Soir</string>
+    <string name="period_night">Nuit</string>
+    <string name="forecast_by_period">Prévisions par période</string>
+    <string name="period_comparison">Comparatif par période</string>
+    <string name="uncertainty_range">Marge d\'incertitude (P10–P90)</string>
+    <string name="apparent_temp_short">Ressenti</string>
+
+    <!-- Expert Mode -->
+    <string name="expert_mode_title">Mode Expert</string>
+    <string name="expert_mode_desc">Afficher les données avancées telles que les centiles d\'incertitude et les nuages par couches.</string>
+    <string name="rain_at_format">Pluie à %s</string>
+
+    <string name="scenarios">Scénarios :</string>
+    <string name="neige">Neige</string>
+    <string name="brouillard">Brouillard</string>
+    <string name="pluie">Pluie</string>
+    <string name="nuageux">Nuageux</string>
+    <string name="voil">Ciel Voilé</string>
+    <string name="sunny_spells">Éclaircies</string>
+    <string name="thunder_with_hail">Orage avec Grêle</string>
+    <string name="heavy_thunder">Orage Fort</string>
+    <string name="heavy_thunder_with_hail">Orage Fort avec Grêle</string>
 </resources>

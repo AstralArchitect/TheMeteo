@@ -1,6 +1,7 @@
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
+import com.google.protobuf.gradle.*
 
 plugins {
     alias(libs.plugins.android.application)
@@ -9,6 +10,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
     id("kotlin-parcelize")
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
+    id("com.google.protobuf") version "0.9.4"
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
 }
@@ -28,24 +30,19 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 775
-        versionName = "2.6.1"
+        versionCode = 798
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
-        // Configuration pour le build de débogage
         debug {
-            // Le suffixe sera ajouté au nom du package de l'application.
             applicationIdSuffix = ".debug"
-            // Le suffixe sera ajouté au nom de la version.
             versionNameSuffix = "-${getBuildDate()}"
-            isDebuggable = true // Cette ligne est implicite pour le debug, mais la laisser est clair
             buildConfigField("Boolean", "FIREBASE_ENABLED", "false")
         }
 
-        // Configuration pour le build de production
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -100,14 +97,36 @@ android {
     }
 
     sourceSets {
+        getByName("main") {
+            // Force l'affichage du dossier proto dans l'IDE
+            java.directories.add("src/main/proto")
+        }
         getByName("foss") {
-            java.srcDirs("src/releaseNoFirebase/java")
+            java.directories.add("src/releaseNoFirebase/java")
         }
     }
 }
 
 kotlin {
     jvmToolchain(17)
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:4.28.2"
+    }
+    generateProtoTasks {
+        all().forEach {
+            it.builtins {
+                id("java") {
+                    option("lite")
+                }
+                id("kotlin") {
+                    option("lite")
+                }
+            }
+        }
+    }
 }
 
 secrets {
@@ -119,6 +138,8 @@ dependencies {
     // Localisation GPS
     // Google Play Services Location API
     implementation(libs.play.services.location)
+    implementation(libs.playAppUpdate)
+    implementation(libs.playAppUpdateKtx)
     // Pour la gestion des permissions avec Compose
     implementation(libs.accompanist.permissions)
 

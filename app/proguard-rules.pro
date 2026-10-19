@@ -1,21 +1,47 @@
 # Add project specific ProGuard rules here.
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve Line Numbers and Attributes for debugging stacktraces
+-keepattributes SourceFile,LineNumberTable,Signature,InnerClasses,EnclosingMethod,*Annotation*
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ===================================================================
+# Kotlinx Serialization Rules
+# ===================================================================
+# Keep @Serializable classes and their generated companion serializers
+-keep @kotlinx.serialization.Serializable class * { *; }
+-keepclassmembers class * {
+    *** Companion;
+}
+-keepclassmembers class * implements kotlinx.serialization.KSerializer {
+    *** INSTANCE;
+}
+-keep,allowobfuscation class *$$serializer { *; }
+-keepclasseswithmembers class * {
+    @kotlinx.serialization.Serializable <init>(...);
+}
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable <fields>;
+    @kotlinx.serialization.SerialName <fields>;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ===================================================================
+# Protobuf Lite Rules
+# ===================================================================
+-keep class com.google.protobuf.** { *; }
+-keep class fr.matthstudio.themeteo.proto.** { *; }
+
+# ===================================================================
+# Application Data Models & Weather Classes
+# ===================================================================
+-keep class fr.matthstudio.themeteo.CDNMeteoMetadata { *; }
+-keep class fr.matthstudio.themeteo.CDNMetadataBounds { *; }
+-keep class fr.matthstudio.themeteo.PolicyUpdateInfo { *; }
+-keep class fr.matthstudio.themeteo.data.** { *; }
+-keep class fr.matthstudio.themeteo.utilClasses.** { *; }
+
+# ===================================================================
+# Ktor Network Client Rules & Warnings
+# ===================================================================
+-keep class io.ktor.** { *; }
+-dontwarn java.lang.management.**

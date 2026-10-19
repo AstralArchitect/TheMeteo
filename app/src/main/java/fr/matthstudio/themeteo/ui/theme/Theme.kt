@@ -301,6 +301,7 @@ private val cloudyLightScheme = lightScheme.copy(
     tertiary = tertiaryCloudyLight,
     onTertiary = onTertiaryCloudyLight,
     tertiaryContainer = tertiaryContainerCloudyLight,
+    onTertiaryContainer = onTertiaryContainerCloudyLight,
     background = backgroundCloudyLight,
     surface = backgroundCloudyLight
 )
@@ -316,7 +317,7 @@ private val cloudyDarkScheme = darkScheme.copy(
     tertiary = tertiaryCloudyDark,
     onTertiary = onTertiaryCloudyDark,
     tertiaryContainer = tertiaryContainerCloudyDark,
-    onTertiaryContainer = onSecondaryContainerCloudyDark, // Fallback cohérent pour le gris
+    onTertiaryContainer = onTertiaryContainerCloudyDark,
     background = backgroundCloudyDark,
     surface = backgroundCloudyDark
 )
@@ -455,14 +456,14 @@ private val nightDarkScheme = darkScheme.copy(
 
 fun getWeatherColorScheme(wmo: Int?, isNight: Boolean, darkTheme: Boolean): androidx.compose.material3.ColorScheme {
     return when (wmo) {
-        0, 1 -> {
+        0, 1, 4 -> {
             if (isNight) {
                 if (darkTheme) nightDarkScheme else nightLightScheme
             } else {
                 if (darkTheme) sunnyDarkScheme else sunnyLightScheme
             }
         }
-        2, 3, 45, 48 -> if (darkTheme) cloudyDarkScheme else cloudyLightScheme // Partly cloudy, overcast, fog
+        2, 3, 45, 48 -> if (darkTheme) cloudyDarkScheme else cloudyLightScheme // Partly cloudy, overcast, veiled, fog
         51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82 -> if (darkTheme) rainyDarkScheme else rainyLightScheme // Drizzle, Rain, Showers
         71, 73, 75, 77, 85, 86 -> if (darkTheme) snowyDarkScheme else snowyLightScheme // Snow
         95, 96, 99 -> if (darkTheme) stormyDarkScheme else stormyLightScheme // Thunderstorm

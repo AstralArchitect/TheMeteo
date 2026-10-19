@@ -6,14 +6,17 @@ package fr.matthstudio.themeteo.dayGraphsActivity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.DefaultScreen
+import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.UserSettings
-import fr.matthstudio.themeteo.WeatherCache
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.WeatherParser
 import fr.matthstudio.themeteo.WeatherService
-import fr.matthstudio.themeteo.getHourlyData
-import fr.matthstudio.themeteo.getDailyData
 import fr.matthstudio.themeteo.data.ForecastType
-import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -22,10 +25,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 
 /**
  * Ce ViewModel sert d'intermédiaire entre l'UI (WeatherScreen) et la logique de données (WeatherCache).
@@ -34,7 +40,7 @@ import java.time.LocalDateTime
  */
 @OptIn(FlowPreview::class) // Nécessaire pour l'opérateur debounce
 class WeatherViewModel(
-    weatherCache: WeatherCache,
+    private val weatherParser: WeatherParser,
     initialStartDateTime: LocalDateTime,
     val fullPeriod: Boolean,
     telemetryManager: TelemetryManager
@@ -47,10 +53,9 @@ class WeatherViewModel(
     val currentStartDateTime = MutableStateFlow(initialStartDateTime)
 
     /**
-     * Expose les paramètres utilisateur (modèle, arrondi, etc.) directement depuis le WeatherCache.
-     * L'UI se mettra à jour automatiquement si les paramètres changent dans le DataStore.
+     * Expose les paramètres utilisateur depuis AppStateManager.
      */
-    val userSettings: StateFlow<UserSettings> = weatherCache.userSettings
+    val userSettings: StateFlow<UserSettings?> = AppStateManager.userSettings
 
     /**
      * Un flux qui émet toutes les secondes pour les mises à jour en temps réel.
@@ -63,36 +68,60 @@ class WeatherViewModel(
     }
 
     /**
-     * Forecast pour 24 heures à partir de l'heure actuelle, ou pour toute la durée du modèle.
+     * Forecast horaire/synoptique du jour sélectionné ou des prochaines 24h.
+     * Gestion du Court Terme (J0-J2), Moyen Terme (J2-J7) et Long Terme Synoptique (> J+7).
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val hourlyForecast = combine(userSettings, currentStartDateTime) { settings, startDate ->
-        Pair(settings, startDate)
-    }.flatMapLatest { (settings, startDate) ->
-        val durationHours = if (fullPeriod) {
-            val maxDays = WeatherModelRegistry.getMaxPredictionDays(
-                settings.model,
-                settings.forecastType == ForecastType.ENSEMBLE,
-                settings.enableDurationExtension
-            )
-            maxDays * 24L
+    val hourlyForecast: StateFlow<WeatherDataState> = combine(
+        userSettings,
+        currentStartDateTime,
+        AppStateManager.selectedLocation,
+        AppStateManager.currentGpsPosition
+    ) { _, startDate, _, _ ->
+        if (startDate.hour == 0 && startDate.minute == 0) {
+            startDate.toLocalDate().atStartOfDay()
         } else {
-            24L
+            startDate.withMinute(0).withSecond(0).withNano(0)
         }
-        weatherCache.get(startDate, durationHours.toInt())
+    }.flatMapLatest { start ->
+        val durationHours = if (fullPeriod) 48L else 24L
+        val reqDate = start.toLocalDate()
+        val today = LocalDate.now()
+        val daysDiff = ChronoUnit.DAYS.between(today, reqDate)
+
+        val minMedSteps = 6
+        weatherParser.getShortTerm(start, durationHours.toInt()).flatMapLatest { shortState ->
+            if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
+                flowOf(shortState)
+            } else {
+                weatherParser.getMediumTerm(start, start.plusHours(durationHours)).flatMapLatest { medState ->
+                    if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= minMedSteps) {
+                        flowOf(medState)
+                    } else {
+                        weatherParser.getLongTerm(reqDate, reqDate).map { longState ->
+                            if (longState is WeatherDataState.Error && medState is WeatherDataState.SuccessMediumTermHourly && medState.data.isNotEmpty()) {
+                                medState
+                            } else {
+                                longState
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
 
     /**
      * Liste des jours disponibles pour le sélecteur.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val availableDays = userSettings.flatMapLatest { settings ->
-        val maxDays = WeatherModelRegistry.getMaxPredictionDays(
-            settings.model,
-            settings.forecastType == ForecastType.ENSEMBLE,
-            settings.enableDurationExtension
-        )
-        weatherCache.get(LocalDate.now(), maxDays.toLong())
+    val availableDays: StateFlow<WeatherDataState> = combine(
+        userSettings,
+        AppStateManager.selectedLocation,
+        AppStateManager.currentGpsPosition
+    ) { _, _, _ ->
+    }.flatMapLatest {
+        weatherParser.getDaily(LocalDate.now(), 14)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
 
     fun updateStartDate(dateTime: LocalDateTime) {
@@ -100,43 +129,12 @@ class WeatherViewModel(
     }
 
     /**
-     * État "Nuit" centralisé.
+     * États centralisés depuis AppStateManager.
      */
-    val isNight: StateFlow<Boolean> = combine(hourlyForecast, ticker) { state, _ ->
-        val now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0)
-        val reading = state.getHourlyData()?.find { it.time == now }
-        val radiation = reading?.skyInfo?.shortwaveRadiation
-        (radiation ?: 1.0) < 1.0
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val isNight: StateFlow<Boolean> = AppStateManager.isNight
+    val currentWmo: StateFlow<Int?> = AppStateManager.currentWmoCode
+    val currentCityName: StateFlow<String?> = AppStateManager.currentCityName
 
-    /**
-     * Code WMO actuel pour le thème.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val currentWmo: StateFlow<Int?> = combine(
-        weatherCache.selectedLocation,
-        weatherCache.userSettings
-    ) { _, _ ->
-    }.flatMapLatest {
-        weatherCache.get(java.time.LocalDateTime.now(), 1)
-    }.map { state ->
-        when (state) {
-            is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-            is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-            else -> null
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    /**
-     * Expose le nom de la ville actuelle récupéré via géocodage inverse.
-     */
-    val currentCityName: StateFlow<String?> = weatherCache.currentCityName
-
-    // --- 2. NETTOYAGE ---
-    /**
-     * S'assure de fermer les connexions réseau (client Ktor) lorsque le ViewModel est détruit
-     * pour éviter les fuites de ressources.
-     */
     override fun onCleared() {
         super.onCleared()
         weatherService.close()

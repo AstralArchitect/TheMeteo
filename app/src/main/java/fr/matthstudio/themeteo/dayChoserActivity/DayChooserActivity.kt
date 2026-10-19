@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Card
@@ -65,11 +65,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import fr.matthstudio.themeteo.DailyReading
+import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.data.DailyForecastUI
+import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import fr.matthstudio.themeteo.forecastMainActivity.ForecastMainActivity
@@ -83,8 +85,8 @@ import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
 import fr.matthstudio.themeteo.utilsActivities.SettingsActivity
+import fr.matthstudio.themeteo.widget.WidgetUtils
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -100,15 +102,28 @@ class DayChooserActivity : ComponentActivity() {
 
         // Instancier le viewModel
         val app = (this.application as TheMeteo)
-        weatherViewModel = WeatherViewModel(app.weatherCache, app.container.telemetryManager)
+        weatherViewModel = WeatherViewModel(
+            weatherParser = app.container.weatherParser,
+            userLocationsRepository = app.container.userLocationsRepository,
+            userSettingsRepository = app.container.userSettingsRepository,
+            telemetryManager = app.container.telemetryManager
+        )
         enableEdgeToEdge()
+
+        val locationExtra = intent.getStringExtra("LOCATION")
+        if (locationExtra != null) {
+            val location = WidgetUtils.deserializeLocation(locationExtra)
+            if (location != null) {
+                weatherViewModel.selectLocation(location)
+            }
+        }
         setContent {
             val userSettings by weatherViewModel.userSettings.collectAsState()
             val isNight by weatherViewModel.isNight.collectAsState()
             val currentWmo by weatherViewModel.currentWmo.collectAsState()
 
             TheMeteoTheme(
-                themeMode = userSettings.themeMode,
+                themeMode = userSettings?.themeMode ?: ThemeMode.FIXED,
                 currentWmoCode = currentWmo,
                 isNight = isNight
             ) {
@@ -152,33 +167,34 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
     if (showLocationSheet) {
         val savedLocations by weatherViewModel.savedLocations.collectAsState()
         val selectedLocation by weatherViewModel.selectedLocation.collectAsState()
-        val currentWeathers by weatherViewModel.currentWeather.collectAsState()
         val isPermissionGranted by weatherViewModel.isLocationPermissionGranted.collectAsState()
         val currentCityName by weatherViewModel.currentCityName.collectAsState()
         val searchState by weatherViewModel.searchState.collectAsState()
+        val userSettingsState by weatherViewModel.userSettings.collectAsState()
 
-        LocationManagementSheet(
-            savedLocations = savedLocations,
-            selectedLocation = selectedLocation,
-            currentWeathers = currentWeathers,
-            userSettings = weatherViewModel.userSettings.collectAsState().value,
-            isPermissionGranted = isPermissionGranted,
-            searchState = searchState,
-            currentCityName = currentCityName,
-            onSearch = { weatherViewModel.searchCity(it) },
-            onSelectLocation = { weatherViewModel.selectLocation(it) },
-            onRemoveLocation = { weatherViewModel.removeLocation(it) },
-            onRenameLocation = { location, newName -> weatherViewModel.renameLocation(location, newName) },
-            onReorderLocations = { weatherViewModel.reorderLocations(it) },
-            onSetDefaultLocation = { weatherViewModel.setDefaultLocation(it) },
-            onAddLocation = { weatherViewModel.addLocation(it) },
-            onMapClick = {
-                showLocationSheet = false
-                showMapPicker = true
-            },
-            onDismiss = { showLocationSheet = false },
-            sheetState = sheetState
-        )
+        if (userSettingsState != null) {
+            LocationManagementSheet(
+                savedLocations = savedLocations,
+                selectedLocation = selectedLocation,
+                userSettings = userSettingsState!!,
+                isPermissionGranted = isPermissionGranted,
+                searchState = searchState,
+                currentCityName = currentCityName,
+                onSearch = { weatherViewModel.searchCity(it) },
+                onSelectLocation = { weatherViewModel.selectLocation(it) },
+                onRemoveLocation = { weatherViewModel.removeLocation(it) },
+                onRenameLocation = { location, newName -> weatherViewModel.renameLocation(location, newName) },
+                onReorderLocations = { weatherViewModel.reorderLocations(it) },
+                onSetDefaultLocation = { weatherViewModel.setDefaultLocation(it) },
+                onAddLocation = { weatherViewModel.addLocation(it) },
+                onMapClick = {
+                    showLocationSheet = false
+                    showMapPicker = true
+                },
+                onDismiss = { showLocationSheet = false },
+                sheetState = sheetState
+            )
+        }
     }
 
     if (showMapPicker) {
@@ -304,10 +320,29 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                 val data = (dailyForecast as WeatherDataState.SuccessDaily).data
 
                 // Calculate absolute min and max temperatures for the entire forecast period
-                val minOfAll = data.mapNotNull { it.minTemperature }.minOrNull() ?: 0.0
-                val maxOfAll = data.mapNotNull { it.maxTemperature }.maxOrNull() ?: 0.0
+                val minOfAll = data.minOfOrNull { it.minTemperature } ?: 0.0f
+                val maxOfAll = data.maxOfOrNull { it.maxTemperature } ?: 0.0f
 
-                val chunkedData = data.chunked(2)
+                val rows = remember(data) {
+                    val list = mutableListOf<List<DailyForecastUI>>()
+                    var i = 0
+                    while (i < data.size) {
+                        val current = data[i]
+                        if ((current.scenario?.percentage ?: 100) < 100) {
+                            list.add(listOf(current))
+                            i++
+                        } else {
+                            if (i + 1 < data.size && (data[i + 1].scenario?.percentage ?: 100) == 100) {
+                                list.add(listOf(current, data[i + 1]))
+                                i += 2
+                            } else {
+                                list.add(listOf(current))
+                                i++
+                            }
+                        }
+                    }
+                    list
+                }
 
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
@@ -358,51 +393,7 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                             }
                         }
                     }
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.small,
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
-                                    alpha = 0.6f
-                                )
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .clickable {
-                                        val intent = Intent(
-                                            context,
-                                            DayGraphsActivity::class.java
-                                        ).apply {
-                                            putExtra("START_DATE_TIME", LocalDate.now().atStartOfDay())
-                                            putExtra("SELECTED_LOCATION", weatherViewModel.selectedLocation.value)
-                                            putExtra("FULL_PERIOD", true)
-                                        }
-                                        context.startActivity(intent)
-                                    }
-                                    .padding(8.dp)
-                                    .fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.AccessTime,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .padding(4.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-
-                                Text(
-                                    text = stringResource(R.string.full_period_forecast),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
-                    }
-                    items(chunkedData) { rowItems ->
+                    items(rows) { rowItems ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -417,8 +408,8 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
                                     )
                                 }
                             }
-                            // Add an empty space if the row has only one item to maintain alignment
-                            if (rowItems.size == 1) {
+                            // Add an empty space if the row has only one item that is deterministic
+                            if (rowItems.size == 1 && (rowItems.first().scenario?.percentage ?: 100) == 100) {
                                 Spacer(modifier = Modifier.weight(1f))
                             }
                         }
@@ -444,82 +435,33 @@ fun EnsembleIcon(wmo: Int, animated: Boolean, filter: ColorFilter?) {
  */
 @Composable
 fun SingleDailyForecastCard(
-    dayReading: DailyReading,
+    dayReading: DailyForecastUI,
     viewModel: WeatherViewModel,
-    minOfAll: Double,
-    maxOfAll: Double
+    minOfAll: Float,
+    maxOfAll: Float
 ) {
     val context = LocalContext.current
-    val weatherWord = weatherCodeToSimpleWord(dayReading.wmo)
-
     val userSettings by viewModel.userSettings.collectAsState()
-    val totalPrecipitation = dayReading.precipitation
+    val settings = userSettings ?: return
+    val isDark = isSystemInDarkTheme()
 
-    // Build annotated string for bold and colored temperatures and precipitation
-    val tempText = buildAnnotatedString {
-        withStyle(
-            style = SpanStyle(
-                fontWeight = FontWeight.Bold,
-                color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
-            )
-        ) {
-            append(UnitConverter.formatTemperature(dayReading.maxTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false))
-        }
-        append(" / ")
-        withStyle(
-            style = SpanStyle(
-                fontWeight = FontWeight.Bold,
-                color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
-            )
-        ) {
-            append(UnitConverter.formatTemperature(dayReading.minTemperature, userSettings.temperatureUnit, true, showUnitSymbol = false))
-        }
-    }
-    val precipitationText = buildAnnotatedString {
-        withStyle(
-            style = SpanStyle(
-                fontWeight = FontWeight.Bold
-            )
-        ) {
-            append("${totalPrecipitation?.toSmartString() ?: "--"} mm")
-        }
-    }
-    val windText = buildAnnotatedString {
-        withStyle(
-            style = SpanStyle(
-                fontWeight = FontWeight.Bold
-            )
-        ) {
-            append(UnitConverter.formatWind(dayReading.maxWind.windspeed, userSettings.windUnit))
-        }
-    }
-
+    val scenariosList = dayReading.scenarios ?: dayReading.scenario?.let { listOf(it) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
         colors = CardDefaults.cardColors(
-            containerColor = if (!isSystemInDarkTheme())
+            containerColor = if (!isDark)
                 MaterialTheme.colorScheme.background.copy(alpha = 0.4f)
             else
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
         )
     ) {
-        val isDark = isSystemInDarkTheme()
-        val weatherIconFilter = remember(isDark) {
-            if (!isDark) {
-                ColorFilter.colorMatrix(ColorMatrix().apply {
-                    setToScale(0.9f, 0.9f, 0.9f, 1f)
-                })
-            } else null
-        }
-
         Column(
             modifier = Modifier
                 .clickable {
                     val intent = Intent(context, DayGraphsActivity::class.java).apply {
-                        putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0))
-                        putExtra("SELECTED_LOCATION", viewModel.selectedLocation.value)
+                        putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0).toString())
                     }
                     context.startActivity(intent)
                 }
@@ -527,60 +469,179 @@ fun SingleDailyForecastCard(
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // First, display the full date
+            // Display date
             val dateFormatter = DateTimeFormatter.ofPattern("dd MMM")
             Text(
                 text = dayReading.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()) + " " + dayReading.date.format(dateFormatter),
                 style = MaterialTheme.typography.labelLarge
             )
 
-            // The image, the temperatures and the precipitation are displayed in a row
-            Row (
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val userSettings by viewModel.userSettings.collectAsState()
-                val isBatterySaverActive by (LocalContext.current.applicationContext as TheMeteo).weatherCache.isBatterySaverActive.collectAsState()
-                val animated = userSettings.enableAnimatedIcons && !isBatterySaverActive
+            if (!scenariosList.isNullOrEmpty()) {
+                // Affichage des scénarios à l'horizontale pour les jours long terme
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
+                    val animated = settings.enableAnimatedIcons && !isBatterySaverActive
 
-                if (dayReading.wmoEnsemble != null) {
-                    Box(modifier = Modifier.size(110.dp)) {
-                        Box(modifier = Modifier.align(Alignment.TopStart)) {
-                            EnsembleIcon(dayReading.wmoEnsemble.best, animated, weatherIconFilter)
+                    scenariosList.forEachIndexed { index, scenario ->
+                        val scenarioWord = weatherCodeToSimpleWord(scenario.wmo) ?: SimpleWeatherWord.SUNNY
+
+                        val scenarioTempText = buildAnnotatedString {
+                            withStyle(
+                                style = SpanStyle(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (scenario.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
+                                )
+                            ) {
+                                append(UnitConverter.formatTemperature(scenario.maxTemperature, settings.temperatureUnit, true, showUnitSymbol = false))
+                            }
+                            append(" / ")
+                            withStyle(
+                                style = SpanStyle(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (scenario.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
+                                )
+                            ) {
+                                append(UnitConverter.formatTemperature(scenario.minTemperature, settings.temperatureUnit, true, showUnitSymbol = false))
+                            }
                         }
-                        Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                            EnsembleIcon(dayReading.wmoEnsemble.worst, animated, weatherIconFilter)
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    color = if (!isDark)
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                    else
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Scénario ${index + 1}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Surface(
+                                shape = MaterialTheme.shapes.extraSmall,
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "${scenario.percentage}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            LottieWeatherIcon(
+                                iconPath = getLottieIconPath(scenarioWord, darkTheme = isDark),
+                                animate = animated,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .padding(vertical = 2.dp)
+                            )
+
+                            ResponsiveText(
+                                text = scenarioTempText,
+                                style = MaterialTheme.typography.labelSmall
+                            )
                         }
                     }
-                } else {
+                }
+            } else {
+                // Affichage classique pour les jours déterministes
+                val weatherWord = weatherCodeToSimpleWord(dayReading.wmoCode)
+                val totalPrecipitation = dayReading.precipitationSum
+
+                val tempText = buildAnnotatedString {
+                    withStyle(
+                        style = SpanStyle(
+                            fontWeight = FontWeight.Bold,
+                            color = if (dayReading.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
+                        )
+                    ) {
+                        append(UnitConverter.formatTemperature(dayReading.maxTemperature, settings.temperatureUnit, true, showUnitSymbol = false))
+                    }
+                    append(" / ")
+                    withStyle(
+                        style = SpanStyle(
+                            fontWeight = FontWeight.Bold,
+                            color = if (dayReading.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
+                        )
+                    ) {
+                        append(UnitConverter.formatTemperature(dayReading.minTemperature, settings.temperatureUnit, true, showUnitSymbol = false))
+                    }
+                }
+                val precipitationText = buildAnnotatedString {
+                    withStyle(
+                        style = SpanStyle(
+                            fontWeight = FontWeight.Bold
+                        )
+                    ) {
+                        if (totalPrecipitation > 0f) {
+                            append("${totalPrecipitation.toSmartString()} mm")
+                        } else {
+                            append("${dayReading.precipitationProbability}%")
+                        }
+                    }
+                }
+                val windText = buildAnnotatedString {
+                    withStyle(
+                        style = SpanStyle(
+                            fontWeight = FontWeight.Bold
+                        )
+                    ) {
+                        append(UnitConverter.formatWind(dayReading.maxWindSpeed, settings.windUnit))
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
+                    val animated = settings.enableAnimatedIcons && !isBatterySaverActive
+
                     if (weatherWord != null) {
                         LottieWeatherIcon(
-                            iconPath = getLottieIconPath(weatherWord, darkTheme = isSystemInDarkTheme()),
+                            iconPath = getLottieIconPath(weatherWord, darkTheme = isDark),
                             animate = animated,
                             modifier = Modifier
                                 .size(110.dp)
                                 .padding(bottom = 4.dp)
                         )
                     }
-                }
 
-                Column (
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.Bottom
-                ) {
-                    ResponsiveText(
-                        text = tempText,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    ResponsiveText(
-                        text = precipitationText,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    ResponsiveText(
-                        text = windText,
-                        style = MaterialTheme.typography.labelSmall
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.Bottom
+                    ) {
+                        ResponsiveText(
+                            text = tempText,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        ResponsiveText(
+                            text = precipitationText,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        ResponsiveText(
+                            text = windText,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
         }

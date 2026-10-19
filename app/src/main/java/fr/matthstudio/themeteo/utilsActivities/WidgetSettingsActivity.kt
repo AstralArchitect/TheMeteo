@@ -4,13 +4,17 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo.utilsActivities
 
+import android.Manifest
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,11 +77,16 @@ import androidx.glance.appwidget.state.getAppWidgetState
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import androidx.glance.state.PreferencesGlanceStateDefinition
+import fr.matthstudio.themeteo.AppStateManager
+import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherCache
-import fr.matthstudio.themeteo.forecastMainActivity.getPollenShortDescFromLevel
+import fr.matthstudio.themeteo.UserSettings
+import fr.matthstudio.themeteo.data.ForecastType
+import fr.matthstudio.themeteo.data.TemperatureUnit
+import fr.matthstudio.themeteo.data.ThemeMode
+import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import fr.matthstudio.themeteo.widget.DailyWeatherWidget
 import fr.matthstudio.themeteo.widget.WeatherWidget
@@ -100,29 +109,17 @@ class WidgetSettingsActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
-        val weatherCache = (application as TheMeteo).weatherCache
         
         setContent {
-            val userSettings by weatherCache.userSettings.collectAsState()
-            val currentWmo = remember { mutableStateOf<Int?>(null) }
-
-            LaunchedEffect(weatherCache.selectedLocation) {
-                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
-                    currentWmo.value = when (state) {
-                        is fr.matthstudio.themeteo.WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-                        is fr.matthstudio.themeteo.WeatherDataState.Error -> (state.staleData as? fr.matthstudio.themeteo.WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                        else -> null
-                    }
-                }
-            }
+            val userSettings by AppStateManager.userSettings.collectAsState()
+            val currentWmo by AppStateManager.currentWmoCode.collectAsState()
 
             TheMeteoTheme(
-                themeMode = userSettings.themeMode,
-                currentWmoCode = currentWmo.value,
+                themeMode = userSettings?.themeMode ?: ThemeMode.FIXED,
+                currentWmoCode = currentWmo,
                 isNight = false
             ) {
                 WidgetSettingsScreen(
-                    weatherCache = weatherCache,
                     appWidgetId = appWidgetId,
                     onBack = { 
                         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
@@ -137,19 +134,38 @@ class WidgetSettingsActivity : ComponentActivity() {
     }
 }
 
+fun isBackgroundLocationGranted(context: Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    } else {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetSettingsScreen(
-    weatherCache: WeatherCache,
     appWidgetId: Int,
     onBack: () -> Unit
 ) {
-    val settings by weatherCache.userSettings.collectAsState()
+    val settingsState by AppStateManager.userSettings.collectAsState()
+    val settings = settingsState ?: return
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     var selectedTheme by remember { mutableStateOf(WidgetUtils.THEME_SYSTEM) }
     var transparency by remember { mutableIntStateOf(0) }
+    var selectedLocation by remember { mutableStateOf<LocationIdentifier>(settings.defaultLocation) }
 
     // Load current settings if they exist
     LaunchedEffect(appWidgetId) {
@@ -162,6 +178,9 @@ fun WidgetSettingsScreen(
             )
             prefs[WidgetUtils.KEY_COLOR_THEME]?.let { selectedTheme = it }
             prefs[WidgetUtils.KEY_TRANSPARENCY]?.let { transparency = it }
+            prefs[WidgetUtils.KEY_LOCATION]?.let { locJson ->
+                WidgetUtils.deserializeLocation(locJson)?.let { selectedLocation = it }
+            }
         }
     }
 
@@ -169,6 +188,20 @@ fun WidgetSettingsScreen(
         scope.launch {
             WeatherWidget().updateAll(context)
             DailyWeatherWidget().updateAll(context)
+        }
+    }
+
+    fun saveLocationToWidget(location: LocationIdentifier) {
+        selectedLocation = location
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            scope.launch {
+                val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
+                updateAppWidgetState(context, glanceId) { prefs ->
+                    prefs[WidgetUtils.KEY_LOCATION] = WidgetUtils.serializeLocation(location)
+                }
+                WeatherWidget().update(context, glanceId)
+                DailyWeatherWidget().update(context, glanceId)
+            }
         }
     }
 
@@ -228,6 +261,76 @@ fun WidgetSettingsScreen(
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // --- LOCATION SELECTION ---
+            Text(
+                text = "Emplacement du widget",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.align(Alignment.Start).padding(bottom = 8.dp)
+            )
+
+            var locationDropdownExpanded by remember { mutableStateOf(false) }
+            val savedLocations by AppStateManager.savedLocations.collectAsState()
+            val isBgLocationGranted = remember(context) { isBackgroundLocationGranted(context) }
+
+            val currentLocationLabel = stringResource(R.string.current_location)
+            val selectedLocationLabel = when (val loc = selectedLocation) {
+                is LocationIdentifier.CurrentUserLocation -> currentLocationLabel
+                is LocationIdentifier.Saved -> loc.location.name
+            }
+
+            ExposedDropdownMenuBox(
+                expanded = locationDropdownExpanded,
+                onExpandedChange = { locationDropdownExpanded = !locationDropdownExpanded },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+            ) {
+                OutlinedTextField(
+                    value = selectedLocationLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Localisation") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = locationDropdownExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = locationDropdownExpanded,
+                    onDismissRequest = { locationDropdownExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(
+                                    text = currentLocationLabel,
+                                    color = if (isBgLocationGranted) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                                if (!isBgLocationGranted) {
+                                    Text(
+                                        text = "Non disponible (Localisation en arrière-plan 'Toujours autoriser' requise)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        },
+                        enabled = isBgLocationGranted,
+                        onClick = {
+                            saveLocationToWidget(LocationIdentifier.CurrentUserLocation)
+                            locationDropdownExpanded = false
+                        }
+                    )
+
+                    savedLocations.forEach { savedLoc ->
+                        DropdownMenuItem(
+                            text = { Text(savedLoc.name) },
+                            onClick = {
+                                saveLocationToWidget(LocationIdentifier.Saved(savedLoc))
+                                locationDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
             // --- THEME SELECTION ---
             Text(
                 text = "Widget Theme",

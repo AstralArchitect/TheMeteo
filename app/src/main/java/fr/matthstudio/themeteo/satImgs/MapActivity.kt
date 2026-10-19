@@ -24,10 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
+import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
-import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherDataState
+import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,26 +74,14 @@ class MapActivity : ComponentActivity() {
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         Configuration.getInstance().userAgentValue = packageName
 
-        val weatherCache = (application as TheMeteo).weatherCache
-
         enableEdgeToEdge()
         setContent {
-            val userSettings by weatherCache.userSettings.collectAsState()
-            val currentWmo = remember { mutableStateOf<Int?>(null) }
-
-            LaunchedEffect(weatherCache.selectedLocation) {
-                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
-                    currentWmo.value = when (state) {
-                        is WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-                        is WeatherDataState.Error -> (state.staleData as? WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                        else -> null
-                    }
-                }
-            }
+            val userSettings by AppStateManager.userSettings.collectAsState()
+            val currentWmo by AppStateManager.currentWmoCode.collectAsState()
 
             TheMeteoTheme(
-                themeMode = userSettings.themeMode,
-                currentWmoCode = currentWmo.value,
+                themeMode = userSettings?.themeMode ?: ThemeMode.FIXED,
+                currentWmoCode = currentWmo,
                 isNight = false
             ) {
                 MapScreen()
@@ -152,11 +140,10 @@ class MapActivity : ComponentActivity() {
                             }
 
                             // Observe Location
-                            val weatherCache = (application as TheMeteo).weatherCache
                             lifecycleScope.launch {
                                 combine(
-                                    weatherCache.selectedLocation,
-                                    weatherCache.currentGpsPosition
+                                    AppStateManager.selectedLocation,
+                                    AppStateManager.currentGpsPosition
                                 ) { selected, gps ->
                                     when (selected) {
                                         is LocationIdentifier.Saved -> GeoPoint(selected.location.latitude, selected.location.longitude)

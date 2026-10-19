@@ -5,7 +5,6 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.utilsActivities
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -26,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,52 +38,44 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.DefaultScreen
+import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
+import fr.matthstudio.themeteo.ResolvedPolicyInfo
 import fr.matthstudio.themeteo.TheMeteo
-import fr.matthstudio.themeteo.WeatherCache
+import fr.matthstudio.themeteo.UserSettings
+import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.data.WindUnit
-import fr.matthstudio.themeteo.data.WeatherModelRegistry
+import fr.matthstudio.themeteo.data.UserSettingsRepository
 import fr.matthstudio.themeteo.data.GpsCoordinates
-import fr.matthstudio.themeteo.data.getDisplayName
+import fr.matthstudio.themeteo.ui.PolicyViewerDialog
 import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 class SettingsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // On récupère le cache directement depuis l'application
-        val weatherCache = (application as TheMeteo).weatherCache
+        val userSettingsRepository = (application as TheMeteo).container.userSettingsRepository
 
         setContent {
-            val userSettings by weatherCache.userSettings.collectAsState()
-            // Pour le mode météo, on peut tenter de récupérer le code WMO actuel si dispo
-            // On peut s'abonner au flux du cache
-            val currentWmo = remember { mutableStateOf<Int?>(null) }
-            
-            LaunchedEffect(weatherCache.selectedLocation, weatherCache.userSettings) {
-                weatherCache.get(java.time.LocalDateTime.now(), 1).collect { state ->
-                    currentWmo.value = when (state) {
-                        is fr.matthstudio.themeteo.WeatherDataState.SuccessHourly -> state.data.firstOrNull()?.wmo
-                        is fr.matthstudio.themeteo.WeatherDataState.Error -> (state.staleData as? fr.matthstudio.themeteo.WeatherDataState.SuccessHourly)?.data?.firstOrNull()?.wmo
-                        else -> null
-                    }
-                }
-            }
-            
+            val userSettings by AppStateManager.userSettings.collectAsState()
+            val currentWmo by AppStateManager.currentWmoCode.collectAsState()
+
             TheMeteoTheme(
-                themeMode = userSettings.themeMode,
-                currentWmoCode = currentWmo.value,
+                themeMode = userSettings?.themeMode ?: ThemeMode.FIXED,
+                currentWmoCode = currentWmo,
                 isNight = false
             ) {
-                // On passe le cache à l'écran des paramètres
-                SettingsScreen(cache = weatherCache)
+                SettingsScreen(userSettingsRepository = userSettingsRepository)
             }
         }
     }
@@ -93,12 +83,12 @@ class SettingsActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(cache: WeatherCache) {
+fun SettingsScreen(userSettingsRepository: UserSettingsRepository) {
     val activity = LocalActivity.current
-    // On collecte l'état des paramètres depuis le cache
-    val userSettings by cache.userSettings.collectAsState()
-    val selectedLocation by cache.selectedLocation.collectAsState()
-    val gpsPosition by cache.currentGpsPosition.collectAsState()
+    val userSettingsState by AppStateManager.userSettings.collectAsState()
+    val userSettings = userSettingsState ?: return
+    val selectedLocation by AppStateManager.selectedLocation.collectAsState()
+    val gpsPosition by AppStateManager.currentGpsPosition.collectAsState()
 
     // On calcule les coordonnées pour filtrer les modèles
     val currentCoords = when (val loc = selectedLocation) {
@@ -109,9 +99,44 @@ fun SettingsScreen(cache: WeatherCache) {
     // On a besoin d'une coroutine scope pour appeler les fonctions suspend du repository
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
+    val weatherService = remember { WeatherService() }
+
     var showEnsembleDialog by remember { mutableStateOf(false) }
     var showCrashlyticsDialog by remember { mutableStateOf(false) }
     var showNotificationPermissionDialog by remember { mutableStateOf(false) }
+    var showTermsDialog by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+
+    fun openTerms() {
+        if (resolvedPolicy != null) {
+            showTermsDialog = true
+        } else {
+            scope.launch {
+                val remote = weatherService.getPolicyUpdateInfo()
+                val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
+                if (resolved != null) {
+                    AppStateManager.updateResolvedPolicyInfo(resolved)
+                    showTermsDialog = true
+                }
+            }
+        }
+    }
+
+    fun openPrivacy() {
+        if (resolvedPolicy != null) {
+            showPrivacyDialog = true
+        } else {
+            scope.launch {
+                val remote = weatherService.getPolicyUpdateInfo()
+                val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
+                if (resolved != null) {
+                    AppStateManager.updateResolvedPolicyInfo(resolved)
+                    showPrivacyDialog = true
+                }
+            }
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -169,8 +194,8 @@ fun SettingsScreen(cache: WeatherCache) {
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch {
-                        cache.userSettingsRepository.updateForecastType(ForecastType.ENSEMBLE)
-                        cache.userSettingsRepository.updateModel("ecmwf_ifs025_ensemble")
+                        userSettingsRepository.updateForecastType(ForecastType.ENSEMBLE)
+                        userSettingsRepository.updateModel("ecmwf_ifs025_ensemble")
                     }
                     showEnsembleDialog = false
                 }) {
@@ -193,7 +218,7 @@ fun SettingsScreen(cache: WeatherCache) {
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch {
-                        cache.userSettingsRepository.updateFirebaseConsent("GRANTED")
+                        userSettingsRepository.updateFirebaseConsent("GRANTED")
                     }
                     showCrashlyticsDialog = false
                 }) {
@@ -230,27 +255,11 @@ fun SettingsScreen(cache: WeatherCache) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            ModelSelectionSetting(
-                currentModel = userSettings.model,
-                availableModels = if (currentCoords != null) 
-                    WeatherModelRegistry.getAvailableModels(currentCoords.latitude, currentCoords.longitude, userSettings.forecastType == ForecastType.ENSEMBLE)
-                else 
-                    WeatherModelRegistry.models.filter { it.isGlobal && it.isEnsemble == (userSettings.forecastType == ForecastType.ENSEMBLE) },
-                onModelSelected = { newModel ->
-                    scope.launch {
-                        // On met à jour via le repository contenu dans le cache
-                        cache.userSettingsRepository.updateModel(newModel)
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
             ThemeModeSetting(
                 currentMode = userSettings.themeMode,
                 onModeSelected = { newMode ->
                     scope.launch {
-                        cache.userSettingsRepository.updateThemeMode(newMode)
+                        userSettingsRepository.updateThemeMode(newMode)
                     }
                 }
             )
@@ -261,35 +270,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 isChecked = userSettings.roundToInt,
                 onCheckedChange = { shouldRound ->
                     scope.launch {
-                        // On met à jour via le repository contenu dans le cache
-                        cache.userSettingsRepository.updateRoundToInt(shouldRound)
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            ModelFallbackSetting(
-                isChecked = userSettings.enableModelFallback || userSettings.enableDurationExtension,
-                enabled = userSettings.forecastType != ForecastType.ENSEMBLE && !userSettings.enableDurationExtension,
-                onCheckedChange = { enabled ->
-                    scope.launch {
-                        cache.userSettingsRepository.updateEnableModelFallback(enabled)
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            DurationExtensionSetting(
-                isChecked = userSettings.enableDurationExtension,
-                enabled = userSettings.forecastType != ForecastType.ENSEMBLE,
-                onCheckedChange = { enabled ->
-                    scope.launch {
-                        cache.userSettingsRepository.updateEnableDurationExtension(enabled)
-                        if (enabled) {
-                            cache.userSettingsRepository.updateEnableModelFallback(true)
-                        }
+                        userSettingsRepository.updateRoundToInt(shouldRound)
                     }
                 }
             )
@@ -300,7 +281,18 @@ fun SettingsScreen(cache: WeatherCache) {
                 isChecked = userSettings.enableAnimatedIcons,
                 onCheckedChange = { enabled ->
                     scope.launch {
-                        cache.userSettingsRepository.updateEnableAnimatedIcons(enabled)
+                        userSettingsRepository.updateEnableAnimatedIcons(enabled)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ExpertModeSetting(
+                isChecked = userSettings.expertMode,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        userSettingsRepository.updateExpertMode(enabled)
                     }
                 }
             )
@@ -311,7 +303,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 currentUnit = userSettings.temperatureUnit,
                 onUnitSelected = { newUnit ->
                     scope.launch {
-                        cache.userSettingsRepository.updateTemperatureUnit(newUnit)
+                        userSettingsRepository.updateTemperatureUnit(newUnit)
                     }
                 }
             )
@@ -322,7 +314,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 useEurAqi = userSettings.useEurAqi,
                 onSettingChange = { useEurAqi ->
                     scope.launch {
-                        cache.userSettingsRepository.updateUseEurAqi(useEurAqi)
+                        userSettingsRepository.updateUseEurAqi(useEurAqi)
                     }
                 }
             )
@@ -333,23 +325,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 currentUnit = userSettings.windUnit,
                 onUnitSelected = { newUnit ->
                     scope.launch {
-                        cache.userSettingsRepository.updateWindUnit(newUnit)
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            ForecastTypeSetting(
-                currentType = userSettings.forecastType,
-                onTypeSelected = { newType ->
-                    if (newType == ForecastType.ENSEMBLE && userSettings.forecastType == ForecastType.DETERMINISTIC) {
-                        showEnsembleDialog = true
-                    } else if (newType == ForecastType.DETERMINISTIC && userSettings.forecastType == ForecastType.ENSEMBLE) {
-                        scope.launch {
-                            cache.userSettingsRepository.updateForecastType(newType)
-                            cache.userSettingsRepository.updateModel("ecmwf_ifs")
-                        }
+                        userSettingsRepository.updateWindUnit(newUnit)
                     }
                 }
             )
@@ -360,13 +336,10 @@ fun SettingsScreen(cache: WeatherCache) {
                 isOn = userSettings.defaultScreen == DefaultScreen.FORECAST_MAIN,
                 onSettingChange = { isOn ->
                     scope.launch {
-                        // 1. Mettre à jour le paramètre
-                        cache.userSettingsRepository.updateDefaultActivity(if (isOn) DefaultScreen.FORECAST_MAIN else DefaultScreen.DAY_CHOSER)
+                        userSettingsRepository.updateDefaultActivity(if (isOn) DefaultScreen.FORECAST_MAIN else DefaultScreen.DAY_CHOSER)
+
+                        delay(500.milliseconds)
                         
-                        // 2. Attendre 1 seconde
-                        kotlinx.coroutines.delay(500)
-                        
-                        // 3. Relancer l'application
                         val packageManager = activity?.packageManager
                         val intent = packageManager?.getLaunchIntentForPackage(activity.packageName)
                         val componentName = intent?.component
@@ -386,7 +359,7 @@ fun SettingsScreen(cache: WeatherCache) {
                         showCrashlyticsDialog = true
                     } else {
                         scope.launch {
-                            cache.userSettingsRepository.updateFirebaseConsent("DENIED")
+                            userSettingsRepository.updateFirebaseConsent("DENIED")
                         }
                     }
                 }
@@ -400,7 +373,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 isChecked = userSettings.enableRainNotifications,
                 onCheckedChange = { enabled ->
                     scope.launch {
-                        cache.userSettingsRepository.updateEnableRainNotifications(enabled)
+                        userSettingsRepository.updateEnableRainNotifications(enabled)
                         if (enabled) {
                             checkAndRequestNotificationPermission()
                         }
@@ -416,7 +389,7 @@ fun SettingsScreen(cache: WeatherCache) {
                 isChecked = userSettings.enableVigilanceNotifications,
                 onCheckedChange = { enabled ->
                     scope.launch {
-                        cache.userSettingsRepository.updateEnableVigilanceNotifications(enabled)
+                        userSettingsRepository.updateEnableVigilanceNotifications(enabled)
                         if (enabled) {
                             checkAndRequestNotificationPermission()
                         }
@@ -425,6 +398,33 @@ fun SettingsScreen(cache: WeatherCache) {
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { openTerms() },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.gcu_title),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { openPrivacy() },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.privacy_policy_title),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             FilledTonalButton(
                 onClick = {
@@ -449,6 +449,24 @@ fun SettingsScreen(cache: WeatherCache) {
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp)
             )
+
+            resolvedPolicy?.let { policy ->
+                if (showTermsDialog) {
+                    PolicyViewerDialog(
+                        title = stringResource(R.string.gcu_title),
+                        url = policy.gcuUrl,
+                        onDismiss = { showTermsDialog = false }
+                    )
+                }
+
+                if (showPrivacyDialog) {
+                    PolicyViewerDialog(
+                        title = stringResource(R.string.privacy_policy_title),
+                        url = policy.privacyPolicyUrl,
+                        onDismiss = { showPrivacyDialog = false }
+                    )
+                }
+            }
         }
     }
 }
@@ -558,100 +576,31 @@ fun AirQualityIndexSetting(
 }
 
 @Composable
-fun ForecastTypeSetting(
-    currentType: ForecastType,
-    onTypeSelected: (ForecastType) -> Unit
+fun ExpertModeSetting(
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
 ) {
-    val shape = RoundedCornerShape(40.dp)
-    val selectedIndex = if (currentType == ForecastType.DETERMINISTIC) 0 else 1
-
-    Column {
-        Text(stringResource(R.string.forecast_type_title), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(R.string.forecast_type_desc),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(80.dp)
-                .padding(16.dp)
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                    shape = shape
-                )
-                .clip(shape)
-        ) {
-            SegmentItem(
-                label = stringResource(R.string.deterministic),
-                isSelected = selectedIndex == 0,
-                modifier = Modifier.weight(1f),
-                onClick = { onTypeSelected(ForecastType.DETERMINISTIC) }
-            )
-            Box(modifier = Modifier
-                .fillMaxHeight()
-                .width(1.dp)
-                .background(Color.White.copy(alpha = 0.5f)))
-            SegmentItem(
-                label = stringResource(R.string.ensemble),
-                isSelected = selectedIndex == 1,
-                modifier = Modifier.weight(1f),
-                onClick = { onTypeSelected(ForecastType.ENSEMBLE) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!isChecked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.expert_mode_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.expert_mode_desc),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ModelSelectionSetting(
-    currentModel: String,
-    availableModels: List<fr.matthstudio.themeteo.data.WeatherModel>,
-    onModelSelected: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Column {
-        Text(stringResource(R.string.weather_model_title), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(R.string.chose_model),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange
         )
-
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = !expanded }
-        ) {
-            val selectedModel = availableModels.firstOrNull { it.apiName == currentModel }
-            OutlinedTextField(
-                value = selectedModel?.getDisplayName() ?: currentModel,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Selected Model") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, true)
-                    .fillMaxWidth()
-            )
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                availableModels.forEach { model ->
-                    DropdownMenuItem(
-                        text = { Text(model.getDisplayName()) },
-                        onClick = {
-                            onModelSelected(model.apiName)
-                            expanded = false
-                        }
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -833,78 +782,6 @@ fun AnimatedIconsSetting(
         Switch(
             checked = isChecked,
             onCheckedChange = onCheckedChange
-        )
-    }
-}
-
-@Composable
-fun ModelFallbackSetting(
-    isChecked: Boolean,
-    enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    val alpha = if (enabled) 1f else 0.5f
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled) { onCheckedChange(!isChecked) }
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                stringResource(R.string.fill_missing_vars_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
-            )
-            Text(
-                stringResource(R.string.fill_missing_vars_desc),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
-            )
-        }
-        Switch(
-            checked = isChecked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled
-        )
-    }
-}
-
-@Composable
-fun DurationExtensionSetting(
-    isChecked: Boolean,
-    enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    val alpha = if (enabled) 1f else 0.5f
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled) { onCheckedChange(!isChecked) }
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                stringResource(R.string.extend_duration_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
-            )
-            Text(
-                stringResource(R.string.extend_duration_desc),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
-            )
-        }
-        Switch(
-            checked = isChecked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled
         )
     }
 }

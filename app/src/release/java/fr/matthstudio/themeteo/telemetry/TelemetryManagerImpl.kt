@@ -21,6 +21,7 @@ class TelemetryManagerImpl(context: Context) : TelemetryManager {
 
     override fun setConsentGranted(granted: Boolean) {
         crashlytics?.isCrashlyticsCollectionEnabled = granted
+        android.util.Log.d("Telemetry", "Crashlytics collection enabled: $granted")
     }
 
     override fun logException(throwable: Throwable) {
