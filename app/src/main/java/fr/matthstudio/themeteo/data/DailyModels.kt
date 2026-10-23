@@ -28,6 +28,7 @@ data class DailyForecastUI(
     val precipitationSum: Float,
     val precipitationProbability: Int,
     val maxWindSpeed: Float,
+    val maxWindGust: Float = 0f,
     val dominantWindDirection: Float,
     val sunrise: String,
     val sunset: String,

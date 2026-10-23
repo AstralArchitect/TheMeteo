@@ -43,6 +43,11 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
+    companion object {
+        lateinit var instance: TheMeteo
+            private set
+    }
+
     lateinit var container: AppContainer
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -51,6 +56,7 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         container = AppDataContainer(this)
 
         setupAppStateManager()

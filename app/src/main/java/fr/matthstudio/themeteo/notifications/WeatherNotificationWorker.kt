@@ -45,8 +45,9 @@ class WeatherNotificationWorker(
     override suspend fun doWork(): Result {
         Log.d("WeatherWorker", "Starting background weather check")
 
-        //app.weatherCache.refreshCurrentLocationSuspend()
-        
+        val intervalMinutes = getScheduledIntervalMinutes(applicationContext)
+        val is15MinMode = intervalMinutes == 15L
+
         val userSettings = app.container.userSettingsRepository
         val userLocations = app.container.userLocationsRepository
         val alertState = app.container.alertStateRepository
@@ -60,11 +61,12 @@ class WeatherNotificationWorker(
         savedLocations.forEach { allLocations.add(LocationIdentifier.Saved(it)) }
 
         // 2. Fetch data and analyze
-        if (userSettings.enableVigilanceNotifications.first()) {
+        // En mode 15mn, SEULEMENT la pluie dans l'heure est téléchargée
+        if (!is15MinMode && userSettings.enableVigilanceNotifications.first()) {
             checkVigilance(allLocations, alertState)
         }
         if (userSettings.enableRainNotifications.first()) {
-            checkRain(defaultLocation, alertState)
+            checkRain(defaultLocation, alertState, is15MinMode)
         }
 
         return Result.success()
@@ -115,7 +117,11 @@ class WeatherNotificationWorker(
         }
     }
 
-    private suspend fun checkRain(defaultLocation: LocationIdentifier, alertStateRepository: fr.matthstudio.themeteo.data.AlertStateRepository) {
+    private suspend fun checkRain(
+        defaultLocation: LocationIdentifier,
+        alertStateRepository: fr.matthstudio.themeteo.data.AlertStateRepository,
+        is15MinMode: Boolean
+    ) {
         val targets = mutableListOf<LocationIdentifier>()
         targets.add(defaultLocation)
         if (defaultLocation !is LocationIdentifier.CurrentUserLocation) {
@@ -171,31 +177,33 @@ class WeatherNotificationWorker(
                 continue
             }
 
-            // 2. Check short term forecast (AROME / IFS) for the next 6 hours
-            val rawShortTerm = weatherService.getShortTermForecast(coords.longitude, coords.latitude, applicationContext)
-            if (rawShortTerm != null) {
-                val shortForecast = BinaryDecoder.parseFullShortTerm(rawShortTerm.first, rawShortTerm.second)
-                val currentTime = LocalDateTime.now(ZoneOffset.UTC)
+            // 2. Check short term forecast (AROME / IFS) for the next 6 hours (uniquement si NON en mode 15mn)
+            if (!is15MinMode) {
+                val rawShortTerm = weatherService.getShortTermForecast(coords.longitude, coords.latitude, applicationContext)
+                if (rawShortTerm != null) {
+                    val shortForecast = BinaryDecoder.parseFullShortTerm(rawShortTerm.first, rawShortTerm.second)
+                    val currentTime = LocalDateTime.now(ZoneOffset.UTC)
 
-                val nextRainStep = shortForecast.steps.firstOrNull { step ->
-                    step.time.isAfter(currentTime) &&
-                    step.time.isBefore(currentTime.plusHours(6)) &&
-                    step.precipitation > 0.1f
-                }
-
-                if (nextRainStep != null) {
-                    if (nextRainStep.time.isBefore(currentTime.plusHours(1))) {
-                        isRainDetectedInAnyLocation = true
+                    val nextRainStep = shortForecast.steps.firstOrNull { step ->
+                        step.time.isAfter(currentTime) &&
+                        step.time.isBefore(currentTime.plusHours(6)) &&
+                        step.precipitation > 0.1f
                     }
 
-                    if (canSendNotification) {
-                        val localTime = nextRainStep.time.atZone(ZoneOffset.UTC)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                        val timeStr = String.format("%02d:%02d", localTime.hour, localTime.minute)
-                        val locationStr = if (location is LocationIdentifier.Saved) location.location.name else applicationContext.getString(R.string.current_location)
-                        val message = applicationContext.getString(R.string.rain_at_format, "$timeStr ($locationStr)")
-                        notificationHelper.showRainNotification(applicationContext.getString(R.string.rain_alert_title), message, locationKey, location)
-                        alertStateRepository.updateRainNotificationTime(locationKey, now)
+                    if (nextRainStep != null) {
+                        if (nextRainStep.time.isBefore(currentTime.plusHours(1))) {
+                            isRainDetectedInAnyLocation = true
+                        }
+
+                        if (canSendNotification) {
+                            val localTime = nextRainStep.time.atZone(ZoneOffset.UTC)
+                                .withZoneSameInstant(ZoneId.systemDefault())
+                            val timeStr = String.format("%02d:%02d", localTime.hour, localTime.minute)
+                            val locationStr = if (location is LocationIdentifier.Saved) location.location.name else applicationContext.getString(R.string.current_location)
+                            val message = applicationContext.getString(R.string.rain_at_format, "$timeStr ($locationStr)")
+                            notificationHelper.showRainNotification(applicationContext.getString(R.string.rain_alert_title), message, locationKey, location)
+                            alertStateRepository.updateRainNotificationTime(locationKey, now)
+                        }
                     }
                 }
             }
@@ -213,11 +221,26 @@ class WeatherNotificationWorker(
 
     companion object {
         const val WORK_NAME = "WeatherAlertWork"
+        private const val PREFS_NAME = "weather_worker_prefs"
+        private const val KEY_INTERVAL_MINUTES = "interval_minutes"
+
         private var currentScheduledIntervalMinutes: Long = -1L
+
+        fun getScheduledIntervalMinutes(context: Context): Long {
+            if (currentScheduledIntervalMinutes != -1L) {
+                return currentScheduledIntervalMinutes
+            }
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            currentScheduledIntervalMinutes = prefs.getLong(KEY_INTERVAL_MINUTES, 60L)
+            return currentScheduledIntervalMinutes
+        }
 
         fun updateWorkInterval(context: Context, intervalMinutes: Long) {
             if (currentScheduledIntervalMinutes == intervalMinutes) return
             currentScheduledIntervalMinutes = intervalMinutes
+
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putLong(KEY_INTERVAL_MINUTES, intervalMinutes).apply()
 
             try {
                 val constraints = Constraints.Builder()

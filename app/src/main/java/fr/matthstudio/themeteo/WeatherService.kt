@@ -13,6 +13,7 @@ import android.os.Parcelable
 import android.util.Log
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
+import fr.matthstudio.themeteo.data.VigilanceDomainProvider
 import fr.matthstudio.themeteo.forecastMainActivity.toEventLocalDateTime
 import fr.matthstudio.themeteo.proto.ExtendedForecastPointPayload
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
@@ -22,7 +23,6 @@ import fr.matthstudio.themeteo.utilClasses.AirQualityLocation
 import fr.matthstudio.themeteo.utilClasses.AirQualityPeriod
 import fr.matthstudio.themeteo.utilClasses.AirQualityRequest
 import fr.matthstudio.themeteo.utilClasses.AlertStep
-import fr.matthstudio.themeteo.utilClasses.GovernmentInvertedGeocodingAPIResponse
 import fr.matthstudio.themeteo.utilClasses.MeteoFranceRainResponse
 import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
@@ -412,6 +412,7 @@ data class CDNMetadataBounds(
 )
 
 class WeatherService(private val telemetryManager: TelemetryManager? = null) {
+    private val vigilanceDomainProvider by lazy { VigilanceDomainProvider() }
     // On définit la config une seule fois ici
     private val jsonParser = Json {
         ignoreUnknownKeys = true
@@ -780,47 +781,47 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
-    // Placeholder pour la fonction de localisation du département
+    /**
+     * Récupère le code du département pour des coordonnées (lat, lon).
+     * Utilise l'intersection spatiale avec le GeoJSON officiel de Météo-France (avec enclaves fusionnées).
+     */
     private suspend fun getDepartmentCodeFromLocation(lat: Double, lon: Double): String? {
-        // On commence avec une précision élevée (ex : 6 décimales)
-        // ou la précision actuelle si nécessaire.
-        var precision = 6
-
-        while (precision >= 0) {
-            // Formate les coordonnées avec le nombre de décimales actuel
-            val formattedLat = String.format(JavaLocale.US, "%.${precision}f", lat)
-            val formattedLon = String.format(JavaLocale.US, "%.${precision}f", lon)
-
-            val url = "https://api-adresse.data.gouv.fr/reverse/?lat=$formattedLat&lon=$formattedLon"
-
-            try {
-                val response = client.get(url)
-
-                if (response.status.value == 200) {
-                    val fullResponse = response.body<GovernmentInvertedGeocodingAPIResponse>()
-
-                    // Vérifie si on a au moins un résultat
-                    val feature = fullResponse.features.firstOrNull()
-                    if (feature != null) {
-                        // Succès : on renvoie les 2 premiers chiffres du code postal
-                        return feature.properties.postcode.substring(0, 2)
-                    }
-                    // Si la liste est vide, la boucle continue et réduit la précision
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Log.e("WeatherService", "Erreur Geocoding à la précision $precision : ${e.message}")
-                telemetryManager?.logException(e)
-                // En cas d'erreur réseau, on peut choisir d'arrêter ou de continuer
-                return null
+        try {
+            val domainCode = vigilanceDomainProvider.getVigilanceDomain(lat, lon)
+            if (!domainCode.isNullOrBlank()) {
+                val formatted = formatDeptCode(domainCode)
+                Log.d("WeatherService", "Département trouvé via GeoJSON Météo-France : $formatted")
+                return formatted
             }
-
-            Log.d("WeatherService", "Aucun résultat à $precision décimales, réduction de la précision...")
-            precision--
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Erreur lors de la recherche spatiale du domaine de vigilance", e)
         }
 
-        // Si on arrive ici, aucune précision n'a donné de résultat
+        // Fallback secours : API Pluie Météo-France (/v3/rain)
+        try {
+            val rainData = getRainWithinHour(lat, lon)
+            val deptFromRain = rainData?.properties?.frenchDepartment
+            if (!deptFromRain.isNullOrBlank()) {
+                val formatted = formatDeptCode(deptFromRain)
+                Log.d("WeatherService", "Département trouvé via Météo-France Rain API : $formatted")
+                return formatted
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Erreur Météo-France Rain API", e)
+        }
+
         return null
+    }
+
+    private fun formatDeptCode(dept: String): String {
+        val trimmed = dept.trim()
+        return if (trimmed.length == 1 && trimmed.all { it.isDigit() }) {
+            "0$trimmed"
+        } else {
+            trimmed
+        }
     }
 
     suspend fun getCurrentWeather(positions: List<Pair<Double, Double>>) : Map<Pair<Double, Double>, CurrentWeatherReading>? {
@@ -988,11 +989,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
                 val responseBuf = client.get("https://weatherdata.19374629.xyz/arome_short_term.bin") {
                     header("Range", "bytes=${range.first}-${range.second}")
+                    header("Accept-Encoding", "identity")
                 }
 
                 if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
 
-                val response = ShortTermPointPayload.parseFrom(responseBuf.readRawBytes())
+                val bytes = responseBuf.readRawBytes()
+                val response = ShortTermPointPayload.parseFrom(bytes)
 
                 val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context) ?: throw Exception("Unable to get LocalDateTime from the metadata")
 
@@ -1003,11 +1006,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
                 val responseBuf = client.get("https://weatherdata.19374629.xyz/ifs_short_term.bin") {
                     header("Range", "bytes=${range.first}-${range.second}")
+                    header("Accept-Encoding", "identity")
                 }
 
                 if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
 
-                val response = ShortTermPointPayload.parseFrom(responseBuf.readRawBytes())
+                val bytes = responseBuf.readRawBytes()
+                val response = ShortTermPointPayload.parseFrom(bytes)
 
                 val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context)
                     ?: throw Exception("Unable to get LocalDateTime from the metadata")
@@ -1028,11 +1033,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
             val responseBuf = client.get("https://weatherdata.19374629.xyz/global_extended_forecast.bin") {
                 header("Range", "bytes=${range.first}-${range.second}")
+                header("Accept-Encoding", "identity")
             }
 
             if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
 
-            val response = ExtendedForecastPointPayload.parseFrom(responseBuf.readRawBytes())
+            val bytes = responseBuf.readRawBytes()
+            val response = ExtendedForecastPointPayload.parseFrom(bytes)
 
             val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context)
                 ?: throw Exception("Unable to get LocalDateTime from the metadata")
@@ -1080,7 +1087,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     suspend fun getPolicyUpdateInfo(): PolicyUpdateInfo? {
         return try {
             val responseText = try {
-                client.get("https://raw.githubusercontent.com/AstralArchitect/AstralArchitect.github.io/refs/heads/main/TheMeteo-privacy-policy/last-updates.json").bodyAsText()
+                client.get("https://themeteodocs.19374629.xyz/last-updates.json").bodyAsText()
             } catch (e: Exception) {
                 throw e
             }
@@ -1095,7 +1102,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     suspend fun getTermsOfUse(): String? {
         return try {
-            client.get("https://astralarchitect.github.io/TheMeteo-privacy-policy/terms.html").body<String>()
+            client.get("https://themeteodocs.19374629.xyz/terms.html").body<String>()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("WeatherService", "Error fetching terms of use: ${e.message}")
@@ -1103,4 +1110,6 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             null
         }
     }
+
+
 }

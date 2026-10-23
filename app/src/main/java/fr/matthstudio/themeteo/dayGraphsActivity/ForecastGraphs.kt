@@ -154,6 +154,7 @@ fun GenericGraphGlobal(
             .horizontalScroll(scrollState),
     ) {
         var forecast: List<Number>
+        var maxForecast: List<Number>? = null
         val times: List<String>
 
         if (shortTermData != null) {
@@ -166,7 +167,10 @@ fun GenericGraphGlobal(
                     UnitConverter.convertTemperature(dp, temperatureUnit)
                 }
                 GraphType.PRECIPITATION_PROB -> shortTermData.map { it.precipitationProbability ?: 0 }
-                GraphType.PRECIPITATION -> shortTermData.map { it.precipitation }
+                GraphType.PRECIPITATION -> {
+                    maxForecast = shortTermData.map { it.maxPossiblePrecipitation }
+                    shortTermData.map { it.precipitation }
+                }
                 GraphType.RAIN -> shortTermData.map { (it.precipitation - it.snowfall).coerceAtLeast(0f) }
                 GraphType.SNOWFALL -> shortTermData.map { it.snowfall }
                 GraphType.WIND_SPEED -> shortTermData.map { UnitConverter.convertWind(it.windSpeed, windUnit) }
@@ -207,6 +211,10 @@ fun GenericGraphGlobal(
 
         if (forecast.isEmpty()) return@Box
 
+        val hasMaxPrecip = maxForecast != null && maxForecast.indices.any { i ->
+            maxForecast[i].toFloat() > forecast[i].toFloat() + 0.01f
+        }
+
         val textColor: Int = AndroidColor.rgb(
             MaterialTheme.colorScheme.onBackground.red,
             MaterialTheme.colorScheme.onBackground.green,
@@ -221,6 +229,9 @@ fun GenericGraphGlobal(
             val xPadding = with(density) { 20.dp.toPx() }
             val yPadding = 80f
             var maxValue = forecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
+            if (hasMaxPrecip && maxForecast != null) {
+                maxValue = maxOf(maxValue, maxForecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() })
+            }
             var minValue = forecast.minOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
 
             if (valueRange != null) {
@@ -264,24 +275,93 @@ fun GenericGraphGlobal(
                 )
             )
 
+            // Courbe principale (ligne continue)
             drawPath(linePath, graphColor, style = Stroke(width = 8f))
 
-            forecast.forEachIndexed { i, point ->
-                val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
+            // Courbe max possible precipitation (ligne en pointillé)
+            if (hasMaxPrecip && maxForecast != null) {
+                val mf = maxForecast
+                val maxLinePath = Path()
+                val maxFirstX = xPadding
+                val maxFirstY = size.height - yPadding - (((if (roundToInt) mf[0].toDouble().roundToInt().toDouble() else mf[0].toDouble()) - minValue) * yScale)
+                maxLinePath.moveTo(maxFirstX, maxFirstY.toFloat())
 
-                drawCircle(Color.White, radius = 6f, center = Offset(x, y.toFloat()))
+                mf.forEachIndexed { i, point ->
+                    val x = xPadding + (i * xStep)
+                    val y = size.height - yPadding - (((if (roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
+                    maxLinePath.lineTo(x, y.toFloat())
+                }
 
-                drawContext.canvas.nativeCanvas.drawText(
-                    if (roundToInt) point.toDouble().roundToInt().toString() else point.toSmartString(),
-                    x,
-                    y.toFloat() - 20f,
-                    Paint().apply {
-                        textAlign = Paint.Align.CENTER
-                        textSize = 40f
-                        color = textColor
-                    }
+                drawPath(
+                    path = maxLinePath,
+                    color = graphColor.copy(alpha = 0.85f),
+                    style = Stroke(
+                        width = 5f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                    )
                 )
+            }
+
+            forecast.forEachIndexed { i, mainPoint ->
+                val x = xPadding + (i * xStep)
+                val mainValDouble = if (roundToInt) mainPoint.toDouble().roundToInt().toDouble() else mainPoint.toDouble()
+                val yMain = size.height - yPadding - ((mainValDouble - minValue) * yScale)
+
+                val maxPoint = maxForecast?.getOrNull(i)
+                val maxValDouble = maxPoint?.let { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
+                val isMaxHigher = hasMaxPrecip && maxValDouble != null && (maxPoint.toFloat() > mainPoint.toFloat() + 0.05f)
+
+                if (isMaxHigher && maxValDouble != null && maxPoint != null) {
+                    val yMax = size.height - yPadding - ((maxValDouble - minValue) * yScale)
+                    val deltaY = (yMain - yMax).toFloat()
+
+                    // Point sur la courbe max
+                    drawCircle(graphColor.copy(alpha = 0.85f), radius = 5f, center = Offset(x, yMax.toFloat()))
+
+                    // Texte pour la valeur max (au-dessus du point max)
+                    drawContext.canvas.nativeCanvas.drawText(
+                        if (roundToInt) maxPoint.toDouble().roundToInt().toString() else maxPoint.toSmartString(),
+                        x,
+                        yMax.toFloat() - 18f,
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 34f
+                            color = textColor
+                            alpha = (255 * 0.85f).toInt()
+                            isFakeBoldText = true
+                        }
+                    )
+
+                    // Point sur la courbe principale
+                    drawCircle(Color.White, radius = 6f, center = Offset(x, yMain.toFloat()))
+
+                    // Texte pour la valeur principale (en-dessous du point principal si conflit vertical, sinon au-dessus)
+                    val mainTextY = if (deltaY < 50f) yMain.toFloat() + 36f else yMain.toFloat() - 20f
+                    drawContext.canvas.nativeCanvas.drawText(
+                        if (roundToInt) mainPoint.toDouble().roundToInt().toString() else mainPoint.toSmartString(),
+                        x,
+                        mainTextY,
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 40f
+                            color = textColor
+                        }
+                    )
+                } else {
+                    // Pas de valeur max distincte : affichage standard au-dessus du point principal
+                    drawCircle(Color.White, radius = 6f, center = Offset(x, yMain.toFloat()))
+
+                    drawContext.canvas.nativeCanvas.drawText(
+                        if (roundToInt) mainPoint.toDouble().roundToInt().toString() else mainPoint.toSmartString(),
+                        x,
+                        yMain.toFloat() - 20f,
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 40f
+                            color = textColor
+                        }
+                    )
+                }
 
                 drawContext.canvas.nativeCanvas.drawText(
                     times[i],

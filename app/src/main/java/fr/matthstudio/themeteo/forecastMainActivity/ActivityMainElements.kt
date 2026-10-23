@@ -6,6 +6,8 @@ package fr.matthstudio.themeteo.forecastMainActivity
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Paint
+import android.graphics.Color as AndroidColor
 import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -70,7 +72,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.ScrollState
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.matthstudio.themeteo.AppStateManager
@@ -426,6 +431,12 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
                     scrollState = scrollState
                 )
             }
+
+            HourlyRainRateRow(
+                hourlyForecast = hourlyForecast,
+                scrollState = scrollState
+            )
+
             if (variable != ChosenVar.WIND)
                 WeatherIconGraph(viewModel, null, scrollState = scrollState)
 
@@ -456,6 +467,63 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HourlyRainRateRow(
+    hourlyForecast: WeatherDataState,
+    scrollState: ScrollState = rememberScrollState(),
+    contentWidth: Dp = 1250.dp
+) {
+    val steps = (hourlyForecast as? WeatherDataState.SuccessShortTermHourly)?.data ?: return
+    if (steps.isEmpty()) return
+
+    val hasRain = steps.any { it.precipitation >= 0.05f }
+    if (!hasRain) return
+
+    val density = LocalDensity.current
+    val textColor = if (isSystemInDarkTheme()) Color(0xFF64B5F6) else Color(0xFF356486)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState)
+            .padding(top = 2.dp, bottom = 2.dp)
+    ) {
+        Canvas(
+            modifier = Modifier
+                .width(contentWidth)
+                .height(10.dp)
+        ) {
+            val xPaddingPx = with(density) { 20.dp.toPx() }
+            val canvasWidthPx = size.width
+            val xStepPx = (canvasWidthPx - 2 * xPaddingPx) / (steps.size - 1).coerceAtLeast(1)
+
+            steps.forEachIndexed { i, step ->
+                val precip = step.precipitation
+                if (precip >= 0.05f) {
+                    val x = xPaddingPx + (i * xStepPx)
+                    val text = precip.toSmartString()
+
+                    drawContext.canvas.nativeCanvas.drawText(
+                        text,
+                        x,
+                        size.height - 4f,
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 32f
+                            color = AndroidColor.rgb(
+                                (textColor.red * 255).toInt(),
+                                (textColor.green * 255).toInt(),
+                                (textColor.blue * 255).toInt()
+                            )
+                            isFakeBoldText = true
+                        }
+                    )
                 }
             }
         }

@@ -26,6 +26,8 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.jvm.javaio.toInputStream
+import android.util.Log
+import java.io.File
 import java.nio.ByteBuffer
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -136,16 +138,41 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         }
     }
 
+    private val radarCacheDir by lazy {
+        File(applicationContext.cacheDir, "radar_cache").apply {
+            if (!exists()) mkdirs()
+        }
+    }
+
+    private fun cleanOldRadarCache() {
+        try {
+            val threeHoursAgo = System.currentTimeMillis() - (3 * 3600 * 1000L)
+            radarCacheDir.listFiles()?.forEach { file ->
+                if (file.lastModified() < threeHoursAgo) {
+                    file.delete()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("RainMapViewModel", "Error cleaning radar cache", e)
+        }
+    }
+
     private suspend fun fetchRadar(url: String, timestamp: Long): TimeFrame? {
         return try {
-            val response = client.get(url)
-            val inputStream = response.bodyAsChannel().toInputStream()
+            cleanOldRadarCache()
 
-            val options = BitmapFactory.Options().apply {
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
+            val fileName = url.substringAfterLast("/")
+            val cachedFile = File(radarCacheDir, fileName)
+            val threeHoursAgo = System.currentTimeMillis() - (3 * 3600 * 1000L)
 
-            val bitmap = BitmapFactory.decodeStream(inputStream, null, options) ?: return null
+            val bitmap: Bitmap = if (cachedFile.exists() && cachedFile.length() > 0 && cachedFile.lastModified() >= threeHoursAgo) {
+                BitmapFactory.decodeFile(cachedFile.absolutePath) ?: run {
+                    cachedFile.delete()
+                    downloadAndCacheRadar(url, cachedFile)
+                }
+            } else {
+                downloadAndCacheRadar(url, cachedFile)
+            } ?: return null
 
             TimeFrame(
                 time = timestamp,
@@ -158,11 +185,26 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         }
     }
 
+    private suspend fun downloadAndCacheRadar(url: String, targetFile: File): Bitmap? {
+        return try {
+            val response = client.get(url)
+            val bytes = response.body<ByteArray>()
+            if (bytes.isNotEmpty()) {
+                targetFile.writeBytes(bytes)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     data class RadarFile(val url: String, val timestamp: Long)
 
     /**
      * Génère une liste de noms de fichiers radar basés sur l'heure actuelle.
-     * Le dernier fichier est calculé selon la formule : roundToMod5(T - 6mn).
+     * Le dernier fichier est calculé selon la formule : roundToMod15(T - 15mn).
      *
      * @param currentTime L'heure de référence (par défaut l'heure actuelle).
      * @param count Le nombre de fichiers à générer (par défaut 8 images).
@@ -175,12 +217,12 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
         val baseUrl = "https://radar-images.19374629.xyz/"
 
-        var latestTime = currentTime.minusMinutes(5)
-        val roundedMinute = (latestTime.minute / 5) * 5
+        var latestTime = currentTime.minusMinutes(15)
+        val roundedMinute = (latestTime.minute / 15) * 15
         latestTime = latestTime.withMinute(roundedMinute).withSecond(0).withNano(0)
 
         return (0 until count).map { i ->
-            val time = latestTime.minusMinutes((i * 5).toLong())
+            val time = latestTime.minusMinutes((i * 15).toLong())
             val filename = "radar_${time.format(formatter)}00.webp"
             val timestamp = time.toEpochSecond(ZoneOffset.UTC)
             RadarFile(baseUrl + filename, timestamp)

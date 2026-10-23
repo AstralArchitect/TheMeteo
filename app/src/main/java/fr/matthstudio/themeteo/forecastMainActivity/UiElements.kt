@@ -467,7 +467,26 @@ fun DailyForecastRow(
                 )
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            // Vent
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 8.dp)
+                    .weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                val gustValue = if (dayReading.maxWindGust > 0f) dayReading.maxWindGust else dayReading.maxWindSpeed
+                val maxGustKph = UnitConverter.convertWind(gustValue, WindUnit.KPH)
+                val maxWind = UnitConverter.convertWind(dayReading.maxWindSpeed, WindUnit.KPH)
+                if (maxGustKph >= 40f || maxWind >= 30f) {
+                    Icon(
+                        Icons.Rounded.Air,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isDark) Color(0xFF80CBC4) else Color(0xFF00695C)
+                    )
+                }
+            }
 
             // Températures
             Row(

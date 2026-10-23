@@ -18,6 +18,7 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 @Parcelize
 @Serializable
@@ -186,15 +187,15 @@ class NewWeatherCache(
     }
 
     private fun isShortTermUsable(cached: CachedShortTermForecast): Boolean {
-        val now = LocalDateTime.now()
+        val nowUTC = LocalDateTime.now(ZoneOffset.UTC)
         val lastStepTime = cached.data.steps.lastOrNull()?.time ?: return false
-        return lastStepTime.isAfter(now)
+        return lastStepTime.isAfter(nowUTC)
     }
 
     private fun isExtendedUsable(cached: CachedExtendedTermForecast): Boolean {
-        val today = LocalDate.now()
+        val todayUTC = LocalDate.now(ZoneOffset.UTC)
         val lastDay = cached.data.longTermDays.lastOrNull()?.date ?: return false
-        return !lastDay.isBefore(today)
+        return !lastDay.isBefore(todayUTC)
     }
 
     suspend fun getShortFromIndex(

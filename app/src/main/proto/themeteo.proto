@@ -15,12 +15,13 @@ option swift_prefix = "TM";
 message ShortTermStep {
     sint32 hour_offset_from_00z = 1;        // Décalage en heures par rapport à 00:00 UTC du jour J0 (ex: -12..+59)
 
-    // Tampon de 5 variables Float16 (10 octets, IEEE 754 half-precision little-endian) :
+    // Tampon de 6 variables Float16 (12 octets, IEEE 754 half-precision little-endian) :
     //  0: wind_speed (m/s)
     //  1: wind_direction (0-360°)
     //  2: wind_gust_speed (m/s)
     //  3: total_precipitation (mm/h)
     //  4: snow_precipitation (mm/h)
+    //  5: max_possible_precipitation (mm/h - pire cumul 5x5 parmi tous les membres)
     bytes packed_floats_f16 = 2;
 
     // Tampon de 11 variables entières (11 octets) :

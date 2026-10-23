@@ -140,3 +140,22 @@ data class RainForecast(
     @SerialName("rain_intensity") val rainIntensity: Int,
     @SerialName("rain_intensity_description") val rainIntensityDescription: String
 )
+
+@Serializable
+data class MeteoFranceCurrentDomainResponse(
+    val domain: String? = null
+)
+
+@Serializable
+data class MeteoFrancePlace(
+    val insee: String? = null,
+    val name: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val country: String? = null,
+    val admin: String? = null,
+    val admin2: String? = null,
+    val dept: String? = null,
+    val timezone: String? = null
+)
+

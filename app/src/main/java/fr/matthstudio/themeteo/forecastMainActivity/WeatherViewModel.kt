@@ -475,7 +475,7 @@ class WeatherViewModel(
         AppStateManager.updateResolvedPolicyInfo(resolved)
         remotePolicyUpdateInfo = remoteInfo
 
-        val currentSettings = userSettings.filterNotNull().first()
+        val currentSettings = userSettings.first()
 
         if (!currentSettings.hasOpenedAppOnce) {
             userSettingsRepository.updateLastGcuUpdate(resolved.lastGcuUpdate)

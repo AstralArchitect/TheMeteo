@@ -394,6 +394,7 @@ class WeatherParser(
                     val precipSum = shortSteps.sumOf { it.precipitation.toDouble() }.toFloat()
                     val precipProb = shortSteps.mapNotNull { it.precipitationProbability }.maxOrNull() ?: 0
                     val maxWind = shortSteps.maxOf { it.windSpeed }
+                    val maxGust = shortSteps.maxOfOrNull { it.windGust } ?: maxWind
                     val windDir = shortSteps.firstOrNull()?.windDirection ?: 0f
                     val wmo = computeDailyWmoCode(shortSteps.map { Pair(it.time, it.wmoCode) }, zoneId)
 
@@ -405,6 +406,7 @@ class WeatherParser(
                         precipitationSum = precipSum,
                         precipitationProbability = precipProb,
                         maxWindSpeed = maxWind,
+                        maxWindGust = maxGust,
                         dominantWindDirection = windDir,
                         sunrise = "",
                         sunset = ""
@@ -417,6 +419,7 @@ class WeatherParser(
                     val precipSum = 0f // Moyen terme : somme masquée sur la journée, l'UI affiche l'icône WMO et le PoP %
                     val precipProb = mediumSteps.maxOf { it.precipitationProbability }
                     val maxWind = mediumSteps.maxOf { it.windSpeedP50 }
+                    val maxGust = mediumSteps.maxOfOrNull { it.windGustP50 } ?: maxWind
                     val windDir = mediumSteps.firstOrNull()?.windDirection ?: 0f
                     val wmo = computeDailyWmoCode(mediumSteps.map { Pair(it.time, it.wmoCode) }, zoneId)
 
@@ -428,6 +431,7 @@ class WeatherParser(
                         precipitationSum = precipSum,
                         precipitationProbability = precipProb,
                         maxWindSpeed = maxWind,
+                        maxWindGust = maxGust,
                         dominantWindDirection = windDir,
                         sunrise = "",
                         sunset = ""
@@ -462,6 +466,7 @@ class WeatherParser(
 
                     val mainScenario = allScenarios.first()
                     val mainSteps = synopticDay.scenarios.first().steps
+                    val maxGust = mainSteps.maxOfOrNull { it.windGustP50 } ?: mainScenario.maxWindSpeed
                     val precipSumMain = 0f
 
                     DailyForecastUI(
@@ -472,6 +477,7 @@ class WeatherParser(
                         precipitationSum = precipSumMain,
                         precipitationProbability = mainScenario.precipitationProbability,
                         maxWindSpeed = mainScenario.maxWindSpeed,
+                        maxWindGust = maxGust,
                         dominantWindDirection = mainScenario.dominantWindDirection,
                         sunrise = "",
                         sunset = "",
@@ -486,6 +492,7 @@ class WeatherParser(
                     val precipSum = 0f
                     val precipProb = mediumSteps.maxOf { it.precipitationProbability }
                     val maxWind = mediumSteps.maxOf { it.windSpeedP50 }
+                    val maxGust = mediumSteps.maxOfOrNull { it.windGustP50 } ?: maxWind
                     val windDir = mediumSteps.firstOrNull()?.windDirection ?: 0f
                     val wmo = computeDailyWmoCode(mediumSteps.map { Pair(it.time, it.wmoCode) }, zoneId)
 
@@ -497,6 +504,7 @@ class WeatherParser(
                         precipitationSum = precipSum,
                         precipitationProbability = precipProb,
                         maxWindSpeed = maxWind,
+                        maxWindGust = maxGust,
                         dominantWindDirection = windDir,
                         sunrise = "",
                         sunset = ""
@@ -509,6 +517,7 @@ class WeatherParser(
                     val precipSum = shortSteps.sumOf { it.precipitation.toDouble() }.toFloat()
                     val precipProb = shortSteps.mapNotNull { it.precipitationProbability }.maxOrNull() ?: 0
                     val maxWind = shortSteps.maxOf { it.windSpeed }
+                    val maxGust = shortSteps.maxOfOrNull { it.windGust } ?: maxWind
                     val windDir = shortSteps.firstOrNull()?.windDirection ?: 0f
                     val wmo = computeDailyWmoCode(shortSteps.map { Pair(it.time, it.wmoCode) }, zoneId)
 
@@ -520,6 +529,7 @@ class WeatherParser(
                         precipitationSum = precipSum,
                         precipitationProbability = precipProb,
                         maxWindSpeed = maxWind,
+                        maxWindGust = maxGust,
                         dominantWindDirection = windDir,
                         sunrise = "",
                         sunset = ""

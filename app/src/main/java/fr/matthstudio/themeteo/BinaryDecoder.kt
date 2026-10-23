@@ -39,6 +39,7 @@ data class ShortTermStepUI(
     val windGust: Float,
     val precipitation: Float,
     val snowfall: Float,
+    val maxPossiblePrecipitation: Float,
     val precipitationProbability: Int?,
     val thunderstormProbability: Int?,
     val humidity: Int?,
@@ -149,12 +150,16 @@ object BinaryDecoder {
         // 3. Pression MSL (Octet 3 : uint8 non signé, offset de 850 hPa)
         val pressure = 850.0f + decodeUint8(bytes, 3).toFloat()
 
-        // 4. Variables Float16 (5 variables compactées)
+        // 4. Variables Float16 (6 variables compactées)
         val windSpeed = decodeFloat16(floats, 0)
         val windDirection = decodeFloat16(floats, 1)
         val windGust = decodeFloat16(floats, 2)
         val precipitation = decodeFloat16(floats, 3)
         val snowfall = decodeFloat16(floats, 4)
+        var maxPossiblePrecipitation = decodeFloat16(floats, 5).let { if (it.isNaN()) null else it }
+        if (((maxPossiblePrecipitation ?: precipitation) - precipitation) < 5) {
+            maxPossiblePrecipitation = precipitation
+        }
 
         // 5. Pourcentages (Octets 4 à 10 : int8 signé, -1 si NaN / indisponible)
         fun decodePct(idx: Int): Int? {
@@ -173,6 +178,7 @@ object BinaryDecoder {
             windGust = windGust,
             precipitation = precipitation,
             snowfall = snowfall,
+            maxPossiblePrecipitation = maxPossiblePrecipitation ?: precipitation,
             precipitationProbability = decodePct(4),
             thunderstormProbability = decodePct(5),
             humidity = decodePct(6),

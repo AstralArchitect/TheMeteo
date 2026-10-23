@@ -30,6 +30,7 @@ interface AppContainer {
     val locationProvider: LocationProvider // Ajout du LocationProvider
     val telemetryManager: TelemetryManager
     val weatherParser: WeatherParser
+    val vigilanceDomainProvider: VigilanceDomainProvider
 }
 
 class AppDataContainer(private val context: Context) : AppContainer {
@@ -63,6 +64,10 @@ class AppDataContainer(private val context: Context) : AppContainer {
 
     override val weatherParser: WeatherParser by lazy {
         WeatherParser(context.applicationContext as Application, applicationScope)
+    }
+
+    override val vigilanceDomainProvider: VigilanceDomainProvider by lazy {
+        VigilanceDomainProvider(context)
     }
 }
 
