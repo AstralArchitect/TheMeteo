@@ -157,7 +157,7 @@ object BinaryDecoder {
         val precipitation = decodeFloat16(floats, 3)
         val snowfall = decodeFloat16(floats, 4)
         var maxPossiblePrecipitation = decodeFloat16(floats, 5).let { if (it.isNaN()) null else it }
-        if (((maxPossiblePrecipitation ?: precipitation) - precipitation) < 5) {
+        if (((maxPossiblePrecipitation ?: precipitation) - precipitation) < 3 && precipitation != 0f) {
             maxPossiblePrecipitation = precipitation
         }
 

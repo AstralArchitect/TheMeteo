@@ -127,14 +127,10 @@ class ForecastMainActivity : ComponentActivity() {
         )
 
         val locationExtra = intent.getStringExtra("LOCATION")
-        val locationToSelect = if (locationExtra != null) {
-            WidgetUtils.deserializeLocation(locationExtra)
-                ?: weatherViewModel.userSettings.value?.defaultLocation
-        } else {
-            weatherViewModel.userSettings.value?.defaultLocation
-        }
-        if (locationToSelect != null) {
-            weatherViewModel.selectLocation(locationToSelect)
+        if (locationExtra != null) {
+            WidgetUtils.deserializeLocation(locationExtra)?.let { location ->
+                weatherViewModel.selectLocation(location)
+            }
         }
 
         enableEdgeToEdge()
@@ -199,23 +195,28 @@ fun BentoCardContent(
             }
         }
         BentoCardType.RAIN_RADAR -> {
-            val location by viewModel.selectedLocation.collectAsState()
-            val userLocation by viewModel.userLocation.collectAsState()
-            val coords = when (val loc = location) {
-                is LocationIdentifier.CurrentUserLocation -> userLocation
-                is LocationIdentifier.Saved -> fr.matthstudio.themeteo.data.GpsCoordinates(loc.location.latitude, loc.location.longitude)
-            }
-            RainMapPreviewCard(
-                lat = coords?.latitude ?: 48.8566,
-                lon = coords?.longitude ?: 2.3522,
-                onClick = {
-                    val intent = Intent(context, RainMapActivity::class.java).apply {
-                        putExtra("LAT", coords?.latitude ?: 48.8566)
-                        putExtra("LON", coords?.longitude ?: 2.3522)
-                    }
-                    context.startActivity(intent)
+            val isRadarAvailable by viewModel.isRainRadarAvailable.collectAsState()
+            if (isRadarAvailable) {
+                val location by viewModel.selectedLocation.collectAsState()
+                val userLocation by viewModel.userLocation.collectAsState()
+                val coords = when (val loc = location) {
+                    is LocationIdentifier.CurrentUserLocation -> userLocation
+                    is LocationIdentifier.Saved -> fr.matthstudio.themeteo.data.GpsCoordinates(loc.location.latitude, loc.location.longitude)
                 }
-            )
+                if (coords != null) {
+                    RainMapPreviewCard(
+                        lat = coords.latitude,
+                        lon = coords.longitude,
+                        onClick = {
+                            val intent = Intent(context, RainMapActivity::class.java).apply {
+                                putExtra("LAT", coords.latitude)
+                                putExtra("LON", coords.longitude)
+                            }
+                            context.startActivity(intent)
+                        }
+                    )
+                }
+            }
         }
         BentoCardType.RAIN_WITHIN_HOUR -> RainWithinHourCard(viewModel)
         BentoCardType.ADDITIONAL_INFOS -> AdditionalInfos(viewModel, context)
@@ -230,6 +231,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val hourlyForecast by viewModel.next24hForecast.collectAsState()
     val isNight by viewModel.isNight.collectAsState()
     val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
+    val isRadarAvailable by viewModel.isRainRadarAvailable.collectAsState()
 
     LaunchedEffect(Unit) {
         AppStateManager.inAppUpdateEvent.collect {
@@ -481,7 +483,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                                 val targetItem = visibleItems.find { item ->
                                     val targetIndex = currentOrder.indexOfFirst { it.name == item.key }
-                                    val isTargetDraggable = item.key != BentoCardType.VIGILANCE.name &&
+                                    val isTargetDraggable = item.size > 0 &&
+                                            item.key != BentoCardType.VIGILANCE.name &&
                                             item.key != BentoCardType.RAIN_WITHIN_HOUR.name &&
                                             item.key != BentoCardType.ADDITIONAL_INFOS.name
                                     item.key != key && targetIndex != -1 && isTargetDraggable &&
@@ -727,7 +730,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
                         val isDraggable = cardType != BentoCardType.VIGILANCE &&
                                 cardType != BentoCardType.RAIN_WITHIN_HOUR &&
-                                cardType != BentoCardType.ADDITIONAL_INFOS
+                                cardType != BentoCardType.ADDITIONAL_INFOS &&
+                                (cardType != BentoCardType.RAIN_RADAR || isRadarAvailable)
 
                         Box(
                             modifier = Modifier

@@ -2,7 +2,6 @@ package fr.matthstudio.themeteo
 
 import android.app.Application
 import android.location.Location
-import android.media.projection.MediaProjectionAppContent
 import android.util.Log
 import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.DailyForecastUI
@@ -45,13 +44,13 @@ class WeatherParser(
     private val appContext: Application,
     private val scope: CoroutineScope
 ) {
-    private val weatherService = WeatherService((appContext as TheMeteo).container.telemetryManager)
+    private val weatherService = (appContext as TheMeteo).container.weatherService
     private val weatherCache = NewWeatherCache(appContext as TheMeteo)
 
     init {
         scope.launch {
-            AppStateManager.selectedLocation.collect { location ->
-                update(location)
+            AppStateManager.selectedLocation.collect {
+                updateCurrentWmoAndNight()
             }
         }
         startHourlyTicker()
@@ -59,6 +58,7 @@ class WeatherParser(
 
     fun clearCacheTimes() {
         weatherCache.clearFetchTimes()
+        weatherService.clearVolatileCaches()
     }
 
     private fun startHourlyTicker() {
@@ -79,7 +79,11 @@ class WeatherParser(
 
     private suspend fun updateCurrentWmoAndNight() {
         val location = AppStateManager.selectedLocation.value
-        val coords = resolveCoordinates(location) ?: return
+        val coords = resolveCoordinates(
+            identifier = location,
+            allowHardwareLookup = false,
+            updateRemoteCityName = false
+        ) ?: return
 
         val sunCalc = FullSunCalculator(coords.latitude, coords.longitude)
         val sunData = sunCalc.getCompleteSunData()
@@ -112,27 +116,26 @@ class WeatherParser(
         }
     }
 
-    private suspend fun update(location: LocationIdentifier) {
-        val coords = resolveCoordinates(location) ?: return
-
-        // Exécution du pipeline court terme
-        val rawData = weatherService.getShortTermForecast(coords.latitude, coords.longitude, appContext)
-        if (rawData != null) {
-            val forecast = BinaryDecoder.parseFullShortTerm(rawData.first, rawData.second)
-            // L'étape suivante sera de stocker 'forecast' dans le cache interne
-        }
-    }
-
     suspend fun getCityName(lat: Double, lon: Double): String? {
         return weatherService.getCityNameFromCoords(lat, lon, appContext)
     }
 
-    private suspend fun resolveCoordinates(identifier: LocationIdentifier): GpsCoordinates? {
+    suspend fun getCachedOrFetchShortTerm(location: LocationIdentifier): ShortTermForecastUI? {
+        return fetchShortTermForecast(location = location, forceRefresh = false)
+    }
+
+    private suspend fun resolveCoordinates(
+        identifier: LocationIdentifier,
+        allowHardwareLookup: Boolean = true,
+        updateRemoteCityName: Boolean = true
+    ): GpsCoordinates? {
         val coords = when (identifier) {
             is LocationIdentifier.CurrentUserLocation -> {
                 val current = AppStateManager.currentGpsPosition.value
                 if (current != null) {
                     current
+                } else if (!allowHardwareLookup) {
+                    null
                 } else {
                     val app = appContext as? TheMeteo
                     val directCoords = app?.container?.locationProvider?.getCurrentLocation()
@@ -151,7 +154,7 @@ class WeatherParser(
             is LocationIdentifier.Saved -> GpsCoordinates(identifier.location.latitude, identifier.location.longitude)
         }
 
-        if (identifier is LocationIdentifier.CurrentUserLocation && coords != null) {
+        if (updateRemoteCityName && identifier is LocationIdentifier.CurrentUserLocation && coords != null) {
             scope.launch {
                 try {
                     val cityName = getCityName(coords.latitude, coords.longitude)
@@ -354,19 +357,29 @@ class WeatherParser(
         emit(WeatherDataState.Loading)
 
         val zoneId = ZoneId.systemDefault()
+        val today = LocalDate.now()
+        val requiresExtended = ChronoUnit.DAYS.between(today, endDate) > 0
 
         val time = LocalDateTime.now()
         val (shortForecast, extendedForecast) = coroutineScope {
-            val shortDeferred = async { fetchShortTermForecast(location) }
-            val extendedDeferred = async { fetchExtendedTermForecast(location) }
-            Pair(shortDeferred.await(), extendedDeferred.await())
+            if (requiresExtended) {
+                val shortDeferred = async { fetchShortTermForecast(location) }
+                val extendedDeferred = async { fetchExtendedTermForecast(location) }
+                Pair(shortDeferred.await(), extendedDeferred.await())
+            } else {
+                val shortOnly = fetchShortTermForecast(location)
+                val hasShortForStart = shortOnly?.steps?.any { step ->
+                    step.time.atZone(ZoneId.of("UTC")).withZoneSameInstant(zoneId).toLocalDate() == startDate
+                } == true
+                val extFallback = if (hasShortForStart) null else fetchExtendedTermForecast(location)
+                Pair(shortOnly, extFallback)
+            }
         }
         val duration = Duration.between(time, LocalDateTime.now())
 
         Log.d("WeatherParser", "Got short and extended forecast in ${duration.toMillis()} ms")
 
         val resultList = mutableListOf<DailyForecastUI>()
-        val today = LocalDate.now()
         var currentDate = startDate
         while (!currentDate.isAfter(endDate)) {
             val daysDiff = ChronoUnit.DAYS.between(today, currentDate)
@@ -546,7 +559,11 @@ class WeatherParser(
             currentDate = currentDate.plusDays(1)
         }
 
-        emit(WeatherDataState.SuccessDaily(resultList))
+        if (resultList.isEmpty()) {
+            emit(WeatherDataState.Error("No forecast data available"))
+        } else {
+            emit(WeatherDataState.SuccessDaily(resultList))
+        }
     }
 
     private val shortTermMutex = Mutex()

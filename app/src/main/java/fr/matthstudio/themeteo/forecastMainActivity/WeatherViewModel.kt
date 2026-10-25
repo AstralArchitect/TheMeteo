@@ -78,7 +78,7 @@ class WeatherViewModel(
     private val telemetryManager: TelemetryManager
 ) : ViewModel() {
 
-    val weatherService = WeatherService(telemetryManager)
+    val weatherService: WeatherService = (appContext as TheMeteo).container.weatherService
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI VIA APPSTATEMANAGER ---
 
@@ -225,14 +225,47 @@ class WeatherViewModel(
         return GpsCoordinates(roundedLat, roundedLon)
     }
 
+    /**
+     * Indique si la localisation actuelle ou sélectionnée est située dans le domaine de France
+     * (défini par les métadonnées AROME). Conditionne l'affichage de la carte rain radar dans le forecast.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val isRainRadarAvailable: StateFlow<Boolean> = combine(
+        selectedLocation,
+        AppStateManager.currentGpsPosition,
+        refreshCounter
+    ) { loc, gps, _ ->
+        resolveCoords(loc, gps)
+    }.distinctUntilChanged().flatMapLatest { coords ->
+        flow {
+            if (coords != null) {
+                emit(weatherService.isPointInFranceDomain(coords.latitude, coords.longitude))
+            } else {
+                emit(false)
+            }
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        run {
+            val initialCoords = resolveCoords(AppStateManager.selectedLocation.value, AppStateManager.currentGpsPosition.value)
+            if (initialCoords != null) {
+                weatherService.isPointInFranceDomainSync(initialCoords.latitude, initialCoords.longitude)
+            } else {
+                false
+            }
+        }
+    )
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val next24hForecast: StateFlow<WeatherDataState> = combine(
         selectedLocation,
         AppStateManager.currentGpsPosition,
         refreshCounter
-    ) { _, _, _ ->
-    }.flatMapLatest {
-        weatherParser.getShortTerm(LocalDateTime.now().withMinute(0).withSecond(0).withNano(0), 24)
+    ) { loc, gps, counter ->
+        Triple(loc, resolveCoords(loc, gps), counter)
+    }.distinctUntilChanged().flatMapLatest { (loc, _, _) ->
+        weatherParser.getShortTerm(LocalDateTime.now().withMinute(0).withSecond(0).withNano(0), 24, loc)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -249,9 +282,10 @@ class WeatherViewModel(
         selectedLocation,
         AppStateManager.currentGpsPosition,
         refreshCounter
-    ) { _, _, _ ->
-    }.flatMapLatest {
-        weatherParser.getDaily(LocalDate.now(), 14)
+    ) { loc, gps, counter ->
+        Triple(loc, resolveCoords(loc, gps), counter)
+    }.distinctUntilChanged().flatMapLatest { (loc, _, _) ->
+        weatherParser.getDaily(LocalDate.now(), 14, loc)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -263,8 +297,9 @@ class WeatherViewModel(
         selectedLocation,
         AppStateManager.currentGpsPosition,
         refreshCounter
-    ) { _, _, _ ->
-    }.flatMapLatest {
+    ) { loc, gps, counter ->
+        Pair(resolveCoords(loc, gps), counter)
+    }.distinctUntilChanged().flatMapLatest {
         flow {
             emit(weatherParser.getTechnicalInfo())
         }
@@ -282,9 +317,9 @@ class WeatherViewModel(
         selectedLocation,
         AppStateManager.currentGpsPosition,
         refreshCounter
-    ) { loc, gps, _ ->
-        resolveCoords(loc, gps)
-    }.distinctUntilChanged().flatMapLatest { coords ->
+    ) { loc, gps, counter ->
+        Pair(resolveCoords(loc, gps), counter)
+    }.distinctUntilChanged().flatMapLatest { (coords, _) ->
         flow {
             if (coords != null) {
                 val airQuality = weatherService.getAirQuality(coords.latitude, coords.longitude, appContext)
@@ -313,7 +348,7 @@ class WeatherViewModel(
         userSettings
     ) { state, settings ->
         if (state is WeatherDataState.SuccessAirQuality) {
-            mapToEnvironmentalUI(state.data.first, state.data.second, state.data.third, settings?.useEurAqi ?: true)
+            mapToEnvironmentalUI(state.data.first, state.data.second, state.data.third, settings.useEurAqi)
         } else {
             null
         }
@@ -331,9 +366,9 @@ class WeatherViewModel(
         selectedLocation,
         AppStateManager.currentGpsPosition,
         refreshCounter
-    ) { loc, gps, _ ->
-        resolveCoords(loc, gps)
-    }.distinctUntilChanged().flatMapLatest { coords ->
+    ) { loc, gps, counter ->
+        Pair(resolveCoords(loc, gps), counter)
+    }.distinctUntilChanged().flatMapLatest { (coords, _) ->
         flow {
             if (coords != null) {
                 val vigilance = weatherService.getVigilanceForLocation(coords.latitude, coords.longitude)
@@ -391,9 +426,9 @@ class WeatherViewModel(
         AppStateManager.currentGpsPosition,
         refreshCounter,
         fiveMinuteTicker
-    ) { loc, gps, _, ticker ->
-        Pair(resolveCoords(loc, gps), ticker)
-    }.distinctUntilChanged().flatMapLatest { (coords, _) ->
+    ) { loc, gps, counter, ticker ->
+        Triple(resolveCoords(loc, gps), counter, ticker)
+    }.distinctUntilChanged().flatMapLatest { (coords, _, _) ->
         flow {
             if (coords != null) {
                 val rain = weatherService.getRainWithinHour(coords.latitude, coords.longitude)
@@ -553,8 +588,9 @@ class WeatherViewModel(
      * Le ViewModel transmet cette demande au WeatherCache, qui est la source de vérité.
      */
     fun selectLocation(location: LocationIdentifier) {
-        AppStateManager.updateSelectedLocation(location)
-        _refreshCounter.value = 0
+        if (AppStateManager.selectedLocation.value != location) {
+            AppStateManager.updateSelectedLocation(location)
+        }
     }
 
     /**
@@ -623,20 +659,21 @@ class WeatherViewModel(
         val reqDate = startDateTime.toLocalDate()
         return combine(
             selectedLocation,
-            userSettings,
+            AppStateManager.currentGpsPosition,
             refreshCounter
-        ) { _, _, _ ->
-        }.flatMapLatest {
+        ) { loc, gps, counter ->
+            Triple(loc, resolveCoords(loc, gps), counter)
+        }.distinctUntilChanged().flatMapLatest { (loc, _, _) ->
             val durationInHours = Duration.between(startDateTime, endDateTime).toHours().coerceAtLeast(1)
-            weatherParser.getShortTerm(startDateTime, durationInHours.toInt()).flatMapLatest { shortState ->
+            weatherParser.getShortTerm(startDateTime, durationInHours.toInt(), loc).flatMapLatest { shortState ->
                 if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
                     flowOf(shortState)
                 } else {
-                    weatherParser.getMediumTerm(startDateTime, endDateTime).flatMapLatest { medState ->
+                    weatherParser.getMediumTerm(startDateTime, endDateTime, loc).flatMapLatest { medState ->
                         if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= 8) {
                             flowOf(medState)
                         } else {
-                            weatherParser.getLongTerm(reqDate, reqDate)
+                            weatherParser.getLongTerm(reqDate, reqDate, loc)
                         }
                     }
                 }
@@ -645,15 +682,15 @@ class WeatherViewModel(
     }
 
     /**
-     * Rafraîchit uniquement la localisation et force la mise à jour des données
-     * sans invalider le cache météo (contrairement à refresh()).
+     * Rafraîchit uniquement la localisation GPS lors du retour au premier plan,
+     * sans forcer le retéléchargement si les coordonnées arrondies (~100m) n'ont pas changé.
      */
     fun refreshLocation() {
         val app = appContext as? TheMeteo
         val granted = app?.container?.locationProvider?.checkLocationPermission()
             ?: AppStateManager.isLocationPermissionGranted.value
         AppStateManager.updateLocationPermission(granted)
-        if (granted && app != null) {
+        if (granted && app != null && AppStateManager.selectedLocation.value is LocationIdentifier.CurrentUserLocation) {
             viewModelScope.launch {
                 val coords = app.container.locationProvider.getCurrentLocation()
                 if (coords != null) {
@@ -661,7 +698,6 @@ class WeatherViewModel(
                 }
             }
         }
-        _refreshCounter.value++
     }
 
     fun consumeLocationSettingsException() {
@@ -669,17 +705,13 @@ class WeatherViewModel(
     }
 
     fun refresh() {
+        weatherParser.clearCacheTimes()
         _refreshCounter.value++
     }
 
     // --- 4. NETTOYAGE ---
 
-    /**
-     * S'assure de fermer les connexions réseau (client Ktor) lorsque le ViewModel est détruit
-     * pour éviter les fuites de ressources.
-     */
     override fun onCleared() {
         super.onCleared()
-        weatherService.close()
     }
 }

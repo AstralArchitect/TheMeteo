@@ -99,7 +99,7 @@ class WeatherWidget : GlanceAppWidget() {
         Log.d("WeatherWidget", "glanceId: $id -> selectedLocation: $selectedLocation")
 
         val manager = WidgetCacheManager(context)
-        val data = manager.refreshIfNeeded(selectedLocation)
+        val data = manager.refreshIfNeeded(selectedLocation, includeMultiDay = false)
 
         Log.d("WeatherWidget", "glanceId: $id -> data result: hourly=${data?.hourly?.size}, daily=${data?.daily?.size}")
 

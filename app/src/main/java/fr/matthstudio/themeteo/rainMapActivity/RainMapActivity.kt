@@ -5,10 +5,11 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo.rainMapActivity
 
 import android.os.Bundle
+import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,12 +18,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -56,6 +59,7 @@ import fr.matthstudio.themeteo.ui.theme.TheMeteoTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
@@ -63,6 +67,7 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.GroundOverlay
 import org.osmdroid.views.overlay.Marker
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import kotlin.math.roundToInt
@@ -74,12 +79,21 @@ import androidx.core.graphics.withSave
 import fr.matthstudio.themeteo.data.ThemeMode
 
 class RainMapActivity : ComponentActivity() {
-    private lateinit var viewModel: RainMapViewModel
+    private val viewModel: RainMapViewModel by viewModels {
+        RainMapViewModel.Factory(application)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val app = this.application
-        viewModel = RainMapViewModel(app)
+
+        Configuration.getInstance().apply {
+            load(this@RainMapActivity, PreferenceManager.getDefaultSharedPreferences(this@RainMapActivity))
+            osmdroidBasePath = File(cacheDir, "osmdroid").apply { mkdirs() }
+            osmdroidTileCache = File(cacheDir, "osmdroid/tiles").apply { mkdirs() }
+            tileFileSystemCacheMaxBytes = 50L * 1024L * 1024L
+            tileFileSystemCacheTrimBytes = 40L * 1024L * 1024L
+            userAgentValue = packageName
+        }
 
         val initialLat = intent.getDoubleExtra("LAT", 48.8566)
         val initialLon = intent.getDoubleExtra("LON", 2.3522)
@@ -116,7 +130,13 @@ fun RainMapScreen(viewModel: RainMapViewModel, initialLat: Double, initialLon: D
             }
             is RainMapUiState.Error -> {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(text = "Error: ${state.message}", color = MaterialTheme.colorScheme.error)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "Error: ${state.message}", color = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(onClick = { viewModel.refresh() }) {
+                            Text("Réessayer")
+                        }
+                    }
                 }
             }
             is RainMapUiState.Success -> {
@@ -138,7 +158,7 @@ fun RainMapContent(
     initialLat: Double,
     initialLon: Double
 ) {
-    var currentIndex by remember { mutableIntStateOf(frames.lastIndex) }
+    var currentIndex by remember(frames) { mutableIntStateOf(frames.lastIndex.coerceAtLeast(0)) }
     var isPlaying by remember { mutableStateOf(false) }
     var mapView: MapView? by remember { mutableStateOf(null) }
     
@@ -232,8 +252,8 @@ fun RainMapContent(
     }
 
     // Animation Loop
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
+    LaunchedEffect(isPlaying, frames.size) {
+        if (isPlaying && frames.isNotEmpty()) {
             while (isPlaying) {
                 delay(1000.milliseconds)
                 currentIndex = (currentIndex + 1) % frames.size
@@ -400,12 +420,13 @@ fun RainMapContent(
                 }
 
                 Slider(
-                    value = currentIndex.toFloat(),
+                    value = currentIndex.coerceIn(0, frames.lastIndex.coerceAtLeast(0)).toFloat(),
                     onValueChange = {
-                        currentIndex = it.roundToInt()
+                        currentIndex = it.roundToInt().coerceIn(0, frames.lastIndex.coerceAtLeast(0))
                         isPlaying = false
                     },
-                    valueRange = 0f..frames.lastIndex.toFloat(),
+                    enabled = frames.size > 1,
+                    valueRange = 0f..maxOf(1, frames.lastIndex).toFloat(),
                     steps = if (frames.size > 2) frames.size - 2 else 0,
                     colors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,

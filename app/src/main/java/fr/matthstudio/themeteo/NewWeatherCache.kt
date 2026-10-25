@@ -94,12 +94,25 @@ class NewWeatherCache(
     private val cacheDir = File(applicationContext.cacheDir, "weather_cache").apply { if (!exists()) mkdirs() }
     private val oldCacheFile = File(applicationContext.cacheDir, "new_weather_cache.json")
 
-    // En mémoire vive (RAM) : conservation de la ville active uniquement (1 seule entrée)
-    private val shortTermCache = mutableMapOf<Long, CachedShortTermForecast>()
-    private val extendedForecastCache = mutableMapOf<Long, CachedExtendedTermForecast>()
+    companion object {
+        private const val MAX_RAM_ENTRIES = 6
+        private const val METADATA_RECHECK_INTERVAL_MS = 30 * 60 * 1000L
+    }
 
-    private val lastShortFetchTimes = mutableMapOf<Long, Long>()
-    private val lastExtendedFetchTimes = mutableMapOf<Long, Long>()
+    // En mémoire vive (RAM) : petit cache LRU borné pour éviter de relire le disque lors d'alternance multi-villes / widgets
+    private val shortTermCache = object : LinkedHashMap<Long, CachedShortTermForecast>(MAX_RAM_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, CachedShortTermForecast>?): Boolean {
+            return size > MAX_RAM_ENTRIES
+        }
+    }
+    private val extendedForecastCache = object : LinkedHashMap<Long, CachedExtendedTermForecast>(MAX_RAM_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, CachedExtendedTermForecast>?): Boolean {
+            return size > MAX_RAM_ENTRIES
+        }
+    }
+
+    private val lastShortFetchTimes = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+    private val lastExtendedFetchTimes = java.util.concurrent.ConcurrentHashMap<Long, Long>()
 
     init {
         // Supprime l'ancien fichier de cache monolithique s'il existe
@@ -154,13 +167,19 @@ class NewWeatherCache(
         }
     }
 
+    @Synchronized
+    private fun getShortInRam(index: Long): CachedShortTermForecast? = shortTermCache[index]
+
+    @Synchronized
     private fun keepShortInRam(index: Long, item: CachedShortTermForecast) {
-        shortTermCache.clear()
         shortTermCache[index] = item
     }
 
+    @Synchronized
+    private fun getExtendedInRam(index: Long): CachedExtendedTermForecast? = extendedForecastCache[index]
+
+    @Synchronized
     private fun keepExtendedInRam(index: Long, item: CachedExtendedTermForecast) {
-        extendedForecastCache.clear()
         extendedForecastCache[index] = item
     }
 
@@ -168,6 +187,7 @@ class NewWeatherCache(
         // Obsolet avec le stockage individuel par fichier de ville
     }
 
+    @Synchronized
     fun clearCache() {
         shortTermCache.clear()
         extendedForecastCache.clear()
@@ -203,7 +223,7 @@ class NewWeatherCache(
         forceRefresh: Boolean = false,
         fetchMetadata: suspend () -> CDNMeteoMetadata? = { null }
     ): Pair<ShortTermForecastUI?, CDNMeteoMetadata?> {
-        var cachedPoint = shortTermCache[index]
+        var cachedPoint = getShortInRam(index)
         if (cachedPoint == null) {
             cachedPoint = loadShortFromDisk(index)
             if (cachedPoint != null) {
@@ -216,7 +236,7 @@ class NewWeatherCache(
 
         val isUsable = cachedPoint != null && isShortTermUsable(cachedPoint)
 
-        if (cachedPoint != null && isUsable && !forceRefresh && (now - lastFetchTime < 10 * 60 * 1000L)) {
+        if (cachedPoint != null && isUsable && !forceRefresh && (now - lastFetchTime < METADATA_RECHECK_INTERVAL_MS)) {
             return Pair(cachedPoint.data, null)
         }
 
@@ -233,7 +253,10 @@ class NewWeatherCache(
         val point = cachedPoint ?: return Pair(null, meta)
 
         return if (!forceRefresh && isUsable && !point.runHourUTC.isBefore(serverRunUTC)) {
-            Pair(point.data, meta)
+            val refreshedPoint = point.copy(fetchTimestamp = now)
+            keepShortInRam(index, refreshedPoint)
+            saveShortToDisk(index, refreshedPoint)
+            Pair(refreshedPoint.data, meta)
         } else {
             Pair(null, meta)
         }
@@ -261,7 +284,7 @@ class NewWeatherCache(
         forceRefresh: Boolean = false,
         fetchMetadata: suspend () -> CDNMeteoMetadata? = { null }
     ): Pair<ExtendedForecastUI?, CDNMeteoMetadata?> {
-        var cachedPoint = extendedForecastCache[index]
+        var cachedPoint = getExtendedInRam(index)
         if (cachedPoint == null) {
             cachedPoint = loadExtendedFromDisk(index)
             if (cachedPoint != null) {
@@ -274,7 +297,7 @@ class NewWeatherCache(
 
         val isUsable = cachedPoint != null && isExtendedUsable(cachedPoint)
 
-        if (cachedPoint != null && isUsable && !forceRefresh && (now - lastFetchTime < 10 * 60 * 1000L)) {
+        if (cachedPoint != null && isUsable && !forceRefresh && (now - lastFetchTime < METADATA_RECHECK_INTERVAL_MS)) {
             return Pair(cachedPoint.data, null)
         }
 
@@ -291,7 +314,10 @@ class NewWeatherCache(
         val point = cachedPoint ?: return Pair(null, meta)
 
         return if (!forceRefresh && isUsable && !point.runHourUTC.isBefore(serverRunUTC)) {
-            Pair(point.data, meta)
+            val refreshedPoint = point.copy(fetchTimestamp = now)
+            keepExtendedInRam(index, refreshedPoint)
+            saveExtendedToDisk(index, refreshedPoint)
+            Pair(refreshedPoint.data, meta)
         } else {
             Pair(null, meta)
         }

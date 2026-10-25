@@ -83,7 +83,10 @@ class SettingsActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(userSettingsRepository: UserSettingsRepository) {
+fun SettingsScreen(
+    userSettingsRepository: UserSettingsRepository,
+    weatherService: WeatherService? = (LocalContext.current.applicationContext as? TheMeteo)?.container?.weatherService
+) {
     val activity = LocalActivity.current
     val userSettingsState by AppStateManager.userSettings.collectAsState()
     val userSettings = userSettingsState ?: return
@@ -100,7 +103,6 @@ fun SettingsScreen(userSettingsRepository: UserSettingsRepository) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
-    val weatherService = remember { WeatherService() }
 
     var showEnsembleDialog by remember { mutableStateOf(false) }
     var showCrashlyticsDialog by remember { mutableStateOf(false) }
@@ -113,7 +115,7 @@ fun SettingsScreen(userSettingsRepository: UserSettingsRepository) {
             showTermsDialog = true
         } else {
             scope.launch {
-                val remote = weatherService.getPolicyUpdateInfo()
+                val remote = weatherService?.getPolicyUpdateInfo()
                 val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
                 if (resolved != null) {
                     AppStateManager.updateResolvedPolicyInfo(resolved)
@@ -128,7 +130,7 @@ fun SettingsScreen(userSettingsRepository: UserSettingsRepository) {
             showPrivacyDialog = true
         } else {
             scope.launch {
-                val remote = weatherService.getPolicyUpdateInfo()
+                val remote = weatherService?.getPolicyUpdateInfo()
                 val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
                 if (resolved != null) {
                     AppStateManager.updateResolvedPolicyInfo(resolved)

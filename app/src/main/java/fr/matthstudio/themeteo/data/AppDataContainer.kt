@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import fr.matthstudio.themeteo.WeatherParser
+import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import fr.matthstudio.themeteo.telemetry.TelemetryManagerImpl
 import kotlinx.coroutines.CoroutineScope
@@ -29,8 +30,9 @@ interface AppContainer {
     val alertStateRepository: AlertStateRepository
     val locationProvider: LocationProvider // Ajout du LocationProvider
     val telemetryManager: TelemetryManager
-    val weatherParser: WeatherParser
     val vigilanceDomainProvider: VigilanceDomainProvider
+    val weatherService: WeatherService
+    val weatherParser: WeatherParser
 }
 
 class AppDataContainer(private val context: Context) : AppContainer {
@@ -62,12 +64,19 @@ class AppDataContainer(private val context: Context) : AppContainer {
         TelemetryManagerImpl(context)
     }
 
-    override val weatherParser: WeatherParser by lazy {
-        WeatherParser(context.applicationContext as Application, applicationScope)
-    }
-
     override val vigilanceDomainProvider: VigilanceDomainProvider by lazy {
         VigilanceDomainProvider(context)
     }
-}
 
+    override val weatherService: WeatherService by lazy {
+        WeatherService(
+            telemetryManager = telemetryManager,
+            appContext = context.applicationContext,
+            externalVigilanceDomainProvider = vigilanceDomainProvider
+        )
+    }
+
+    override val weatherParser: WeatherParser by lazy {
+        WeatherParser(context.applicationContext as Application, applicationScope)
+    }
+}

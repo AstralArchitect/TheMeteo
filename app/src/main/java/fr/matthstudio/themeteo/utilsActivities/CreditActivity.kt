@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -43,6 +44,7 @@ import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.BuildConfig
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.ResolvedPolicyInfo
+import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherService
 import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.ui.PolicyViewerDialog
@@ -77,11 +79,13 @@ class CreditActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreditScreen(onBack: () -> Unit) {
+fun CreditScreen(
+    onBack: () -> Unit,
+    weatherService: WeatherService? = (LocalContext.current.applicationContext as? TheMeteo)?.container?.weatherService
+) {
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
-    val weatherService = remember { WeatherService() }
     var showTermsDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
 
@@ -90,7 +94,7 @@ fun CreditScreen(onBack: () -> Unit) {
             showTermsDialog = true
         } else {
             scope.launch {
-                val remote = weatherService.getPolicyUpdateInfo()
+                val remote = weatherService?.getPolicyUpdateInfo()
                 val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
                 if (resolved != null) {
                     AppStateManager.updateResolvedPolicyInfo(resolved)
@@ -105,7 +109,7 @@ fun CreditScreen(onBack: () -> Unit) {
             showPrivacyDialog = true
         } else {
             scope.launch {
-                val remote = weatherService.getPolicyUpdateInfo()
+                val remote = weatherService?.getPolicyUpdateInfo()
                 val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
                 if (resolved != null) {
                     AppStateManager.updateResolvedPolicyInfo(resolved)

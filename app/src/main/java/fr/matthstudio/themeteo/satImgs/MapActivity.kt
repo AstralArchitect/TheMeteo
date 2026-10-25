@@ -43,6 +43,8 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.GroundOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.TilesOverlay
+import java.io.File
+import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -51,6 +53,7 @@ import java.util.TimeZone
 import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 class MapActivity : ComponentActivity() {
 
@@ -71,8 +74,14 @@ class MapActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = packageName
+        Configuration.getInstance().apply {
+            load(this@MapActivity, PreferenceManager.getDefaultSharedPreferences(this@MapActivity))
+            osmdroidBasePath = File(cacheDir, "osmdroid").apply { mkdirs() }
+            osmdroidTileCache = File(cacheDir, "osmdroid/tiles").apply { mkdirs() }
+            tileFileSystemCacheMaxBytes = 50L * 1024L * 1024L
+            tileFileSystemCacheTrimBytes = 40L * 1024L * 1024L
+            userAgentValue = packageName
+        }
 
         enableEdgeToEdge()
         setContent {
@@ -136,7 +145,7 @@ class MapActivity : ComponentActivity() {
                                 val initialTime = times.last()
                                 selectedIsoTime.value = initialTime
                                 currentTimeIndex = (times.size - 1).toFloat()
-                                updateMapContent(initialTime)
+                                updateMapContent(initialTime, isDayOverlay)
                             }
 
                             // Observe Location
@@ -214,15 +223,19 @@ class MapActivity : ComponentActivity() {
                             
                             Slider(
                                 value = currentTimeIndex,
-                                onValueChange = { 
+                                onValueChange = {
                                     currentTimeIndex = it
-                                    val index = it.toInt()
+                                    val index = it.roundToInt().coerceIn(0, (times.size - 1).coerceAtLeast(0))
+                                    if (index < times.size) {
+                                        selectedIsoTime.value = times[index]
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    val index = currentTimeIndex.roundToInt().coerceIn(0, (times.size - 1).coerceAtLeast(0))
                                     if (index < times.size) {
                                         val newTime = times[index]
-                                        if (selectedIsoTime.value != newTime) {
-                                            selectedIsoTime.value = newTime
-                                            updateMapContent(newTime)
-                                        }
+                                        selectedIsoTime.value = newTime
+                                        updateMapContent(newTime, isDayOverlay)
                                     }
                                 },
                                 valueRange = 0f..(if (times.isNotEmpty()) (times.size - 1).toFloat() else 0f),
@@ -263,13 +276,9 @@ class MapActivity : ComponentActivity() {
         }
     }
 
-    private fun updateMapContent(isoTime: String) {
-        // 1. Update Snapshot (Background)
+    private fun updateMapContent(isoTime: String, isDay: Boolean) {
         fetchAndSetSnapshot(isoTime)
-        // 2. Update Tiles (Overlay)
-        val isDay = snapshotOverlay == null || true // Placeholder for logic if needed
-        // Actually, we use the toggleButton state or isDayOverlay state
-        // But since this is called from slider, we should respect the current overlay type
+        updateTilesOverlay(isoTime, isDay)
     }
 
     private fun fetchAndSetSnapshot(isoTime: String) {
@@ -277,11 +286,38 @@ class MapActivity : ComponentActivity() {
         snapshotJob = lifecycleScope.launch {
             val bitmap = withContext(Dispatchers.IO) {
                 try {
+                    val snapshotCacheDir = File(cacheDir, "sat_snapshots").apply { if (!exists()) mkdirs() }
+                    val threeHoursAgo = System.currentTimeMillis() - 3 * 3600 * 1000L
+                    snapshotCacheDir.listFiles()?.forEach { file ->
+                        if (file.lastModified() < threeHoursAgo) file.delete()
+                    }
+
+                    val safeKey = isoTime.replace(":", "-")
+                    val cachedFile = File(snapshotCacheDir, "sat_$safeKey.jpg")
+                    if (cachedFile.exists() && cachedFile.length() > 0L) {
+                        BitmapFactory.decodeFile(cachedFile.absolutePath)?.let { return@withContext it }
+                        cachedFile.delete()
+                    }
+
                     val url = "https://view.eumetsat.int/geoserver/wms?service=WMS&version=1.1.0&request=GetMap&layers=msg_fes:rgb_natural&styles=&bbox=-70,-70,70,70&width=1024&height=1024&srs=EPSG:4326&format=image/jpeg&time=$isoTime"
-                    val connection = URL(url).openConnection()
-                    connection.connect()
-                    val input = connection.getInputStream()
-                    BitmapFactory.decodeStream(input)
+                    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 10_000
+                        readTimeout = 15_000
+                    }
+                    try {
+                        if (connection.responseCode in 200..299) {
+                            val bytes = connection.inputStream.use { it.readBytes() }
+                            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (decoded != null && bytes.isNotEmpty()) {
+                                runCatching { cachedFile.writeBytes(bytes) }
+                            }
+                            decoded
+                        } else {
+                            null
+                        }
+                    } finally {
+                        connection.disconnect()
+                    }
                 } catch (e: Exception) {
                     null
                 }

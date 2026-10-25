@@ -11,11 +11,11 @@ import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.LocationIdentifier
+import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherParser
 import fr.matthstudio.themeteo.WeatherService
-import fr.matthstudio.themeteo.data.ForecastType
 import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.data.SavedLocation
 import fr.matthstudio.themeteo.data.TemperatureUnit
@@ -31,11 +31,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -51,7 +53,7 @@ class WeatherViewModel(
     private val telemetryManager: TelemetryManager
 ) : ViewModel() {
 
-    val weatherService = WeatherService(telemetryManager)
+    val weatherService: WeatherService = TheMeteo.instance.container.weatherService
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI VIA APPSTATEMANAGER ---
 
@@ -112,17 +114,28 @@ class WeatherViewModel(
      */
     val isLocationPermissionGranted: StateFlow<Boolean> = AppStateManager.isLocationPermissionGranted
 
+    private fun resolveCoords(location: LocationIdentifier, gpsCoords: GpsCoordinates?): GpsCoordinates? {
+        val raw = when (location) {
+            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
+            is LocationIdentifier.CurrentUserLocation -> gpsCoords
+        } ?: return null
+
+        val roundedLat = (raw.latitude * 1000.0).roundToInt() / 1000.0
+        val roundedLon = (raw.longitude * 1000.0).roundToInt() / 1000.0
+        return GpsCoordinates(roundedLat, roundedLon)
+    }
+
     /**
      * Forecast pour les prochains jours
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val forecast: StateFlow<WeatherDataState> = combine(
-        userSettings,
         selectedLocation,
         AppStateManager.currentGpsPosition
-    ) { _, _, _ ->
-    }.flatMapLatest {
-        weatherParser.getDaily(LocalDate.now(), 14)
+    ) { loc, gps ->
+        Pair(loc, resolveCoords(loc, gps))
+    }.distinctUntilChanged().flatMapLatest { (loc, _) ->
+        weatherParser.getDaily(LocalDate.now(), 14, loc)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -251,12 +264,7 @@ class WeatherViewModel(
 
     // --- 4. NETTOYAGE ---
 
-    /**
-     * S'assure de fermer les connexions réseau (client Ktor) lorsque le ViewModel est détruit
-     * pour éviter les fuites de ressources.
-     */
     override fun onCleared() {
         super.onCleared()
-        weatherService.close()
     }
 }

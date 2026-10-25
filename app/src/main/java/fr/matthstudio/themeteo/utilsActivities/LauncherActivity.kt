@@ -37,6 +37,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -80,7 +81,7 @@ class LauncherActivity : ComponentActivity() {
         val userSettingsRepo = container.userSettingsRepository
 
         lifecycleScope.launch {
-            val weatherService = WeatherService()
+            val weatherService = container.weatherService
             val remotePolicy = weatherService.getPolicyUpdateInfo()
             if (remotePolicy != null) {
                 if (remotePolicy.isUpdateRequired(BuildConfig.VERSION_CODE)) {
@@ -341,18 +342,21 @@ fun ServiceSection(title: String, description: String) {
 }
 
 @Composable
-fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
+fun GcuDialog(
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+    weatherService: WeatherService? = (LocalContext.current.applicationContext as? TheMeteo)?.container?.weatherService
+) {
     var isLoading by remember { mutableStateOf(true) }
     var hasError by remember { mutableStateOf(false) }
     var hasScrolledToBottom by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
-    val weatherService = remember { WeatherService() }
 
     LaunchedEffect(Unit) {
         if (resolvedPolicy == null) {
-            val remote = weatherService.getPolicyUpdateInfo()
+            val remote = weatherService?.getPolicyUpdateInfo()
             val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
             if (resolved != null) {
                 AppStateManager.updateResolvedPolicyInfo(resolved)
@@ -466,17 +470,19 @@ fun GcuDialog(onAccept: () -> Unit, onDecline: () -> Unit) {
 }
 
 @Composable
-fun PrivacyPolicyDialog(onContinue: () -> Unit) {
+fun PrivacyPolicyDialog(
+    onContinue: () -> Unit,
+    weatherService: WeatherService? = (LocalContext.current.applicationContext as? TheMeteo)?.container?.weatherService
+) {
     var isLoading by remember { mutableStateOf(true) }
     var hasError by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     val resolvedPolicy by AppStateManager.resolvedPolicyInfo.collectAsState()
-    val weatherService = remember { WeatherService() }
 
     LaunchedEffect(Unit) {
         if (resolvedPolicy == null) {
-            val remote = weatherService.getPolicyUpdateInfo()
+            val remote = weatherService?.getPolicyUpdateInfo()
             val resolved = remote?.getPolicyForVersion(BuildConfig.VERSION_CODE)
             if (resolved != null) {
                 AppStateManager.updateResolvedPolicyInfo(resolved)

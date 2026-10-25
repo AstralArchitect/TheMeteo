@@ -7,31 +7,26 @@ package fr.matthstudio.themeteo.dayGraphsActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fr.matthstudio.themeteo.AppStateManager
-import fr.matthstudio.themeteo.DefaultScreen
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherParser
-import fr.matthstudio.themeteo.WeatherService
-import fr.matthstudio.themeteo.data.ForecastType
-import fr.matthstudio.themeteo.data.TemperatureUnit
-import fr.matthstudio.themeteo.data.ThemeMode
-import fr.matthstudio.themeteo.data.WindUnit
+import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
+import java.time.LocalDate
+import java.time.LocalDateTime
+import kotlin.math.roundToInt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 
 /**
  * Ce ViewModel sert d'intermédiaire entre l'UI (WeatherScreen) et la logique de données (WeatherCache).
@@ -43,10 +38,8 @@ class WeatherViewModel(
     private val weatherParser: WeatherParser,
     initialStartDateTime: LocalDateTime,
     val fullPeriod: Boolean,
-    telemetryManager: TelemetryManager
+    @Suppress("UNUSED_PARAMETER") telemetryManager: TelemetryManager
 ) : ViewModel() {
-
-    private val weatherService = WeatherService(telemetryManager)
 
     // --- 1. ÉTATS PRINCIPAUX EXPOSÉS À L'UI ---
 
@@ -57,14 +50,15 @@ class WeatherViewModel(
      */
     val userSettings: StateFlow<UserSettings?> = AppStateManager.userSettings
 
-    /**
-     * Un flux qui émet toutes les secondes pour les mises à jour en temps réel.
-     */
-    private val ticker = kotlinx.coroutines.flow.flow {
-        while (true) {
-            emit(Unit)
-            kotlinx.coroutines.delay(1000)
-        }
+    private fun resolveCoords(location: LocationIdentifier, gpsCoords: GpsCoordinates?): GpsCoordinates? {
+        val raw = when (location) {
+            is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
+            is LocationIdentifier.CurrentUserLocation -> gpsCoords
+        } ?: return null
+
+        val roundedLat = (raw.latitude * 1000.0).roundToInt() / 1000.0
+        val roundedLon = (raw.longitude * 1000.0).roundToInt() / 1000.0
+        return GpsCoordinates(roundedLat, roundedLon)
     }
 
     /**
@@ -73,32 +67,30 @@ class WeatherViewModel(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val hourlyForecast: StateFlow<WeatherDataState> = combine(
-        userSettings,
         currentStartDateTime,
         AppStateManager.selectedLocation,
         AppStateManager.currentGpsPosition
-    ) { _, startDate, _, _ ->
-        if (startDate.hour == 0 && startDate.minute == 0) {
+    ) { startDate, loc, gps ->
+        val normalizedStart = if (startDate.hour == 0 && startDate.minute == 0) {
             startDate.toLocalDate().atStartOfDay()
         } else {
             startDate.withMinute(0).withSecond(0).withNano(0)
         }
-    }.flatMapLatest { start ->
+        Triple(normalizedStart, loc, resolveCoords(loc, gps))
+    }.distinctUntilChanged().flatMapLatest { (start, loc, _) ->
         val durationHours = if (fullPeriod) 48L else 24L
         val reqDate = start.toLocalDate()
-        val today = LocalDate.now()
-        val daysDiff = ChronoUnit.DAYS.between(today, reqDate)
 
         val minMedSteps = 6
-        weatherParser.getShortTerm(start, durationHours.toInt()).flatMapLatest { shortState ->
+        weatherParser.getShortTerm(start, durationHours.toInt(), loc).flatMapLatest { shortState ->
             if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
                 flowOf(shortState)
             } else {
-                weatherParser.getMediumTerm(start, start.plusHours(durationHours)).flatMapLatest { medState ->
+                weatherParser.getMediumTerm(start, start.plusHours(durationHours), loc).flatMapLatest { medState ->
                     if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= minMedSteps) {
                         flowOf(medState)
                     } else {
-                        weatherParser.getLongTerm(reqDate, reqDate).map { longState ->
+                        weatherParser.getLongTerm(reqDate, reqDate, loc).map { longState ->
                             if (longState is WeatherDataState.Error && medState is WeatherDataState.SuccessMediumTermHourly && medState.data.isNotEmpty()) {
                                 medState
                             } else {
@@ -116,12 +108,12 @@ class WeatherViewModel(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val availableDays: StateFlow<WeatherDataState> = combine(
-        userSettings,
         AppStateManager.selectedLocation,
         AppStateManager.currentGpsPosition
-    ) { _, _, _ ->
-    }.flatMapLatest {
-        weatherParser.getDaily(LocalDate.now(), 14)
+    ) { loc, gps ->
+        Pair(loc, resolveCoords(loc, gps))
+    }.distinctUntilChanged().flatMapLatest { (loc, _) ->
+        weatherParser.getDaily(LocalDate.now(), 14, loc)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
 
     fun updateStartDate(dateTime: LocalDateTime) {
@@ -134,9 +126,4 @@ class WeatherViewModel(
     val isNight: StateFlow<Boolean> = AppStateManager.isNight
     val currentWmo: StateFlow<Int?> = AppStateManager.currentWmoCode
     val currentCityName: StateFlow<String?> = AppStateManager.currentCityName
-
-    override fun onCleared() {
-        super.onCleared()
-        weatherService.close()
-    }
 }

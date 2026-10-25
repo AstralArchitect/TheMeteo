@@ -2,45 +2,36 @@
 TheMeteo - A modern weather app.
 Copyright (C) 2026  AstralArchitect
  */
-/*
-TheMeteo - A modern weather app.
-Copyright (C) 2026  AstralArchitect
- */
 
 package fr.matthstudio.themeteo
 
 import android.app.Application
 import android.util.Log
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
+import coil.disk.DiskCache
 import fr.matthstudio.themeteo.data.AppContainer
 import fr.matthstudio.themeteo.data.AppDataContainer
-import fr.matthstudio.themeteo.data.ForecastType
-import fr.matthstudio.themeteo.data.LocationProvider
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.notifications.WeatherNotificationWorker
-import androidx.work.Configuration
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-import java.io.File
-import java.util.concurrent.TimeUnit
 
 class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
     companion object {
@@ -50,6 +41,7 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
 
     lateinit var container: AppContainer
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var hasInitializedSelectedLocation = false
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().build()
@@ -59,15 +51,8 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
         instance = this
         container = AppDataContainer(this)
 
-        setupAppStateManager()
         setupWorkManager()
-
-        try {
-            val testWork = OneTimeWorkRequestBuilder<WeatherNotificationWorker>().build()
-            WorkManager.getInstance(this).enqueue(testWork)
-        } catch (e: Throwable) {
-            Log.e("TheMeteo", "Error enqueuing testWork: ${e.message}", e)
-        }
+        setupAppStateManager()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -123,30 +108,43 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
                 AppStateManager.updateUserSettings(settings)
                 AppStateManager.updateThemeMode(settings.themeMode)
                 container.telemetryManager.setConsentGranted(settings.firebaseConsent == "GRANTED")
-                if (AppStateManager.selectedLocation.value == LocationIdentifier.CurrentUserLocation) {
-                    AppStateManager.updateSelectedLocation(settings.defaultLocation)
+
+                if (!hasInitializedSelectedLocation) {
+                    hasInitializedSelectedLocation = true
+                    if (AppStateManager.selectedLocation.value == LocationIdentifier.CurrentUserLocation) {
+                        AppStateManager.updateSelectedLocation(settings.defaultLocation)
+                    }
+                }
+
+                if (settings.enableRainNotifications || settings.enableVigilanceNotifications) {
+                    WeatherNotificationWorker.ensureWorkScheduled(this@TheMeteo)
+                } else {
+                    WeatherNotificationWorker.cancelWork(this@TheMeteo)
                 }
             }
         }
 
+        // Ne maintient l'écoute GPS continue que lorsque l'application est au premier plan (STARTED),
+        // afin d'éviter les réveils GPS et recalculs réseau continus en arrière-plan.
         applicationScope.launch {
-            AppStateManager.isLocationPermissionGranted
-                .flatMapLatest { granted ->
-                    if (granted) {
-                        launch {
-                            val coords = container.locationProvider.getCurrentLocation()
-                            if (coords != null) {
-                                AppStateManager.updateGpsPosition(coords)
+            ProcessLifecycleOwner.get().lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AppStateManager.isLocationPermissionGranted
+                    .flatMapLatest { granted ->
+                        if (granted) {
+                            container.locationProvider.locationFlow.onStart {
+                                val coords = container.locationProvider.getCurrentLocation()
+                                if (coords != null) {
+                                    emit(coords)
+                                }
                             }
+                        } else {
+                            flowOf(null)
                         }
-                        container.locationProvider.locationFlow
-                    } else {
-                        flowOf(null)
                     }
-                }
-                .collect { coords ->
-                    AppStateManager.updateGpsPosition(coords)
-                }
+                    .collect { coords ->
+                        AppStateManager.updateGpsPosition(coords)
+                    }
+            }
         }
 
         applicationScope.launch {
@@ -161,7 +159,6 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
             if (!WorkManager.isInitialized()) {
                 WorkManager.initialize(this, workManagerConfiguration)
             }
-            WeatherNotificationWorker.updateWorkInterval(this, 60)
         } catch (e: Throwable) {
             Log.e("TheMeteo", "WorkManager initialization failed: ${e.message}", e)
         }
@@ -172,6 +169,13 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
             .components {
                 add(SvgDecoder.Factory())
             }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(File(cacheDir, "image_cache"))
+                    .maxSizeBytes(30L * 1024L * 1024L)
+                    .build()
+            }
+            .respectCacheHeaders(false)
             .build()
     }
 }

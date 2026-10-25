@@ -30,7 +30,7 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 801
+        versionCode = 803
         versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -200,6 +200,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.room.external.antlr)
     implementation(libs.androidx.ui.graphics)
+    testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 

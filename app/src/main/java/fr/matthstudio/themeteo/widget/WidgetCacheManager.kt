@@ -63,12 +63,17 @@ class WidgetCacheManager(private val context: Context) {
             ?: prefs[KEY_WIDGET_DATA]?.let { try { json.decodeFromString<WidgetWeatherData>(it) } catch (e: Exception) { null } }
     }
 
-    suspend fun refreshIfNeeded(location: LocationIdentifier, forceRefresh: Boolean = false): WidgetWeatherData? {
+    suspend fun refreshIfNeeded(
+        location: LocationIdentifier,
+        forceRefresh: Boolean = false,
+        includeMultiDay: Boolean = true
+    ): WidgetWeatherData? {
         val current = getWidgetData(location).first()
         val now = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC)
+        val hasNeededDaily = !includeMultiDay || (current?.daily != null && current.daily.size > 1)
 
         // Ne rafraîchir que si nécessaire (1 heure = 3600 secondes)
-        if (!forceRefresh && current != null && current.locationIdentifier == location && (now - current.lastUpdatedEpochSeconds) < CACHE_EXPIRATION_MINUTES * 60) {
+        if (!forceRefresh && current != null && hasNeededDaily && current.locationIdentifier == location && (now - current.lastUpdatedEpochSeconds) < CACHE_EXPIRATION_MINUTES * 60) {
             return current
         }
 
@@ -93,19 +98,29 @@ class WidgetCacheManager(private val context: Context) {
             val startTime = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0)
 
             var hourly: List<ShortTermStepUI>? = null
-            weatherParser.getShortTerm(startTime, 24, location).collect { state ->
-                if (state is WeatherDataState.SuccessShortTermHourly) hourly = state.data
+            if (!includeMultiDay || current?.hourly == null || forceRefresh || (now - (current.lastUpdatedEpochSeconds)) >= CACHE_EXPIRATION_MINUTES * 60) {
+                weatherParser.getShortTerm(startTime, 24, location).collect { state ->
+                    if (state is WeatherDataState.SuccessShortTermHourly) hourly = state.data
+                }
             }
 
             var daily: List<DailyForecastUI>? = null
-            weatherParser.getDaily(startTime.toLocalDate(), 7, location).collect { state ->
+            val daysToFetch = if (includeMultiDay) 7L else 0L
+            weatherParser.getDaily(startTime.toLocalDate(), daysToFetch, location).collect { state ->
                 if (state is WeatherDataState.SuccessDaily) daily = state.data
             }
 
             if (hourly != null || daily != null) {
+                val mergedDaily = when {
+                    includeMultiDay && daily != null -> daily
+                    !includeMultiDay && current?.daily != null && current.daily.size > 1 && daily != null -> {
+                        listOf(daily.first()) + current.daily.filter { it.date > daily.first().date }
+                    }
+                    else -> daily ?: current?.daily
+                }
                 val newData = WidgetWeatherData(
                     hourly = hourly ?: current?.hourly,
-                    daily = daily ?: current?.daily,
+                    daily = mergedDaily,
                     lastUpdatedEpochSeconds = now,
                     locationIdentifier = location,
                     cityName = detectedCityName

@@ -16,6 +16,7 @@ import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import fr.matthstudio.themeteo.data.VigilanceDomainProvider
 import fr.matthstudio.themeteo.forecastMainActivity.toEventLocalDateTime
 import fr.matthstudio.themeteo.proto.ExtendedForecastPointPayload
+import fr.matthstudio.themeteo.proto.ShortTermPointPayload
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import fr.matthstudio.themeteo.utilClasses.AirQualityForecastResponse
 import fr.matthstudio.themeteo.utilClasses.AirQualityInfo
@@ -28,8 +29,6 @@ import fr.matthstudio.themeteo.utilClasses.PhenomenonAlert
 import fr.matthstudio.themeteo.utilClasses.PollenResponse
 import fr.matthstudio.themeteo.utilClasses.VigilanceInfos
 import fr.matthstudio.themeteo.utilClasses.VigilanceMapResponse
-import fr.matthstudio.themeteo.proto.ShortTermPointPayload
-import fr.matthstudio.themeteo.proto.ShortTermPointPayloadKt
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -42,13 +41,30 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readBytes
-import io.ktor.client.statement.readRawBytes
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentLength
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import java.io.File
+import java.security.MessageDigest
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.round
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
@@ -59,6 +75,7 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
@@ -71,21 +88,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import java.lang.Math.clamp
-import java.security.MessageDigest
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.CancellationException
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.roundToInt
-import kotlin.math.sqrt
-import java.util.Locale as JavaLocale
+import okhttp3.Cache
 
 // --- DATA CLASSES ---
 @Serializable
@@ -409,38 +413,108 @@ data class CDNMetadataBounds(
     @SerialName("lon_min") val lonMin: Double,
     @SerialName("lon_max") val lonMax: Double,
     val resolution: Double
-)
+) {
+    fun contains(lat: Double, lon: Double): Boolean {
+        return lat in latMin..latMax && lon in lonMin..lonMax
+    }
+}
 
-class WeatherService(private val telemetryManager: TelemetryManager? = null) {
-    private val vigilanceDomainProvider by lazy { VigilanceDomainProvider() }
+class WeatherService(
+    private val telemetryManager: TelemetryManager? = null,
+    private val appContext: Context? = null,
+    externalVigilanceDomainProvider: VigilanceDomainProvider? = null,
+    private val isSharedInstance: Boolean = appContext != null
+) {
+    private data class TimedEntry<T>(val value: T, val timestampMs: Long)
+
+    companion object {
+        private const val VIGILANCE_TTL_MS = 15 * 60 * 1000L
+        private const val AIR_QUALITY_TTL_MS = 30 * 60 * 1000L
+        private const val ENV_FORECAST_TTL_MS = 60 * 60 * 1000L
+        private const val RAIN_WITHIN_HOUR_TTL_MS = 4 * 60 * 1000L
+        private const val METADATA_TTL_MS = 2 * 60 * 1000L
+        private const val POLICY_TTL_MS = 30 * 60 * 1000L
+        private const val NO_DEPT_SENTINEL = "__NONE__"
+    }
+
+    private val vigilanceDomainProvider by lazy {
+        externalVigilanceDomainProvider ?: VigilanceDomainProvider(appContext)
+    }
+
     // On définit la config une seule fois ici
     private val jsonParser = Json {
         ignoreUnknownKeys = true
-        prettyPrint = true
+        prettyPrint = false
         coerceInputValues = true
     }
+
     private val client =
         HttpClient(OkHttp) {
+            engine {
+                config {
+                    appContext?.let { ctx ->
+                        cache(Cache(File(ctx.cacheDir, "okhttp_http_cache"), 20L * 1024L * 1024L))
+                    }
+                }
+            }
             install(ContentNegotiation) {
                 json(jsonParser)
             }
             install(HttpTimeout) {
                 requestTimeoutMillis = 15000 // 15 secondes max
                 connectTimeoutMillis = 10000
+                socketTimeoutMillis = 15000
             }
-            // DÉCOMMENTER CE BLOC POUR LE LOGGING
-            if (BuildConfig.DEBUG)
-            {
+            if (BuildConfig.DEBUG) {
                 install(Logging) {
                     logger = object : Logger {
                         override fun log(message: String) {
-                            Log.d("HTTP Client", message) // Affiche les logs dans Logcat
+                            Log.d("HTTP Client", message)
                         }
                     }
-                    level = LogLevel.ALL // Log toutes les informations, y compris l'URL et le corps de la réponse
+                    // LogLevel.INFO évite de sérialiser/afficher des réponses volumineuses en RAM
+                    level = LogLevel.INFO
                 }
             }
         }
+
+    @Volatile
+    private var cachedSigningSha1: String? = null
+
+    private val cityNameCache = ConcurrentHashMap<Pair<Double, Double>, String>()
+    private val cityNameMutex = Mutex()
+
+    private val departmentCodeCache = ConcurrentHashMap<Pair<Double, Double>, String>()
+
+    private val airQualityCache = ConcurrentHashMap<Pair<Double, Double>, TimedEntry<AirQualityInfo>>()
+    private val airQualityForecastCache = ConcurrentHashMap<Pair<Double, Double>, TimedEntry<AirQualityForecastResponse>>()
+    private val pollenCache = ConcurrentHashMap<Pair<Double, Double>, TimedEntry<PollenResponse>>()
+    private val rainWithinHourCache = ConcurrentHashMap<Pair<Double, Double>, TimedEntry<MeteoFranceRainResponse>>()
+
+    private val vigilanceMutex = Mutex()
+    private var cachedVigilanceMap: TimedEntry<VigilanceMapResponse>? = null
+
+    private val metadataMutex = Mutex()
+    private var cachedAromeMeta: TimedEntry<CDNMeteoMetadata>? = null
+    private var cachedIfsMeta: TimedEntry<CDNMeteoMetadata>? = null
+    private var cachedExtendedMeta: TimedEntry<CDNMeteoMetadata>? = null
+
+    private val policyMutex = Mutex()
+    private var cachedPolicyInfo: TimedEntry<PolicyUpdateInfo>? = null
+
+    fun clearVolatileCaches() {
+        cachedAromeMeta = null
+        cachedIfsMeta = null
+        cachedExtendedMeta = null
+        cachedVigilanceMap = null
+        airQualityCache.clear()
+        airQualityForecastCache.clear()
+        pollenCache.clear()
+        rainWithinHourCache.clear()
+    }
+
+    private fun roundCoord2(value: Double): Double = round(value * 100.0) / 100.0
+    private fun roundCoord3(value: Double): Double = round(value * 1000.0) / 1000.0
 
     suspend fun searchCity(query: String): List<GeocodingResult>? {
         if (query.isBlank()) return emptyList()
@@ -461,45 +535,52 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     }
 
     // Fonction pour récupérer l'empreinte SHA-1 de ton app dynamiquement
-    fun getSigningSha1(context: Context): String? {    try {
-        val packageName = context.packageName
-        val packageManager = context.packageManager
+    fun getSigningSha1(context: Context): String? {
+        cachedSigningSha1?.let { return it }
+        try {
+            val packageName = context.packageName
+            val packageManager = context.packageManager
 
-        // PackageManager.GET_SIGNATURES est déprécié, mais nécessaire pour les API < 28
-        @Suppress("DEPRECATION")
-        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        } else {
-            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-        }
-
-        val signature = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageInfo.signingInfo?.apkContentsSigners?.firstOrNull()
-                ?: packageInfo.signingInfo?.signingCertificateHistory?.firstOrNull()
-        } else {
-            // Pour les anciennes versions, on utilise la méthode dépréciée
+            // PackageManager.GET_SIGNATURES est déprécié, mais nécessaire pour les API < 28
             @Suppress("DEPRECATION")
-            (packageInfo.signatures?.firstOrNull())
-        }
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            }
 
-        if (signature == null) {
-            Log.e("SigningInfo", "Impossible de trouver la signature du certificat.")
+            val signature = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.signingInfo?.apkContentsSigners?.firstOrNull()
+                    ?: packageInfo.signingInfo?.signingCertificateHistory?.firstOrNull()
+            } else {
+                // Pour les anciennes versions, on utilise la méthode dépréciée
+                @Suppress("DEPRECATION")
+                (packageInfo.signatures?.firstOrNull())
+            }
+
+            if (signature == null) {
+                Log.e("SigningInfo", "Impossible de trouver la signature du certificat.")
+                return null
+            }
+
+            val md = MessageDigest.getInstance("SHA-1")
+            val digest = md.digest(signature.toByteArray())
+            // On transforme le tableau de bytes en une chaîne hexadécimale SANS les ":"
+            val sha1 = digest.joinToString("") { "%02X".format(it) }
+            cachedSigningSha1 = sha1
+            return sha1
+        } catch (e: Exception) {
+            telemetryManager?.logException(e)
+            Log.e("SigningInfo", "Erreur lors de la récupération du SHA-1", e)
             return null
         }
-
-        val md = MessageDigest.getInstance("SHA-1")
-        val digest = md.digest(signature.toByteArray())
-        // On transforme le tableau de bytes en une chaîne hexadécimale SANS les ":"
-        return digest.joinToString("") { "%02X".format(it) }
-
-    } catch (e: Exception) {
-        telemetryManager?.logException(e)
-        Log.e("SigningInfo", "Erreur lors de la récupération du SHA-1", e)
-        return null
-    }
     }
 
     suspend fun getAirQuality(latitude: Double, longitude: Double, context: Context): AirQualityInfo? {
+        val key = Pair(roundCoord2(latitude), roundCoord2(longitude))
+        val now = System.currentTimeMillis()
+        airQualityCache[key]?.takeIf { now - it.timestampMs < AIR_QUALITY_TTL_MS }?.let { return it.value }
+
         val url = "https://airquality.googleapis.com/v1/currentConditions:lookup"
         val sha1 = getSigningSha1(context) ?: return null
         val packageName = context.packageName
@@ -523,11 +604,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                     )
                 )
                 // Ktor s'occupe de la sérialisation en JSON grâce au plugin ContentNegotiation
-                contentType(io.ktor.http.ContentType.Application.Json)
+                contentType(ContentType.Application.Json)
             }
 
             if (response.status.value == 200) {
-                response.body<AirQualityInfo>()
+                val result = response.body<AirQualityInfo>()
+                airQualityCache[key] = TimedEntry(result, now)
+                result
             } else {
                 val errorBody = response.body<String>()
                 Log.e("AirQuality", "Erreur API Google : ${response.status} - $errorBody")
@@ -543,6 +626,10 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     }
 
     suspend fun getAirQualityForecast(latitude: Double, longitude: Double, context: Context): AirQualityForecastResponse? {
+        val key = Pair(roundCoord2(latitude), roundCoord2(longitude))
+        val now = System.currentTimeMillis()
+        airQualityForecastCache[key]?.takeIf { now - it.timestampMs < ENV_FORECAST_TTL_MS }?.let { return it.value }
+
         val url = "https://airquality.googleapis.com/v1/forecast:lookup"
         val sha1 = getSigningSha1(context) ?: return null
         val packageName = context.packageName
@@ -569,11 +656,13 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
                         languageCode = java.util.Locale.getDefault().language
                     )
                 )
-                contentType(io.ktor.http.ContentType.Application.Json)
+                contentType(ContentType.Application.Json)
             }
 
             if (response.status.value == 200) {
-                response.body<AirQualityForecastResponse>()
+                val result = response.body<AirQualityForecastResponse>()
+                airQualityForecastCache[key] = TimedEntry(result, now)
+                result
             } else {
                 val errorBody = response.body<String>()
                 Log.e("AirQuality", "Erreur API Google Forecast : ${response.status} - $errorBody")
@@ -586,44 +675,43 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
-    private val cityNameCache = java.util.concurrent.ConcurrentHashMap<Pair<Double, Double>, String>()
-
     suspend fun getCityNameFromCoords(latitude: Double, longitude: Double, context: Context): String? {
-        val roundedLat = (latitude * 100.0).let { kotlin.math.round(it) / 100.0 }
-        val roundedLon = (longitude * 100.0).let { kotlin.math.round(it) / 100.0 }
-        val key = Pair(roundedLat, roundedLon)
-
+        val key = Pair(roundCoord2(latitude), roundCoord2(longitude))
         cityNameCache[key]?.let { return it }
 
-        val url = "https://maps.googleapis.com/maps/api/geocode/json"
-        val sha1 = getSigningSha1(context) ?: return null
-        return try {
-            val response = client.get(url) {
-                parameter("latlng", "$latitude,$longitude")
-                parameter("key", BuildConfig.MAPS_API_KEY)
-                parameter("language", java.util.Locale.getDefault().language)
-                parameter("result_type", "locality|sublocality|administrative_area_level_1|administrative_area_level_2")
-                header("X-Android-Package", context.packageName)
-                header("X-Android-Cert", sha1)
-            }
-            if (response.status.value == 200) {
-                val geocodingResponse = response.body<GoogleGeocodingResponse>()
-                if (geocodingResponse.status == "OK" && geocodingResponse.results.isNotEmpty()) {
-                    val components = geocodingResponse.results.first().addressComponents
-                    val name = components.find { "locality" in it.types }?.longName
-                        ?: components.find { "sublocality" in it.types }?.longName
-                        ?: components.find { "administrative_area_level_2" in it.types }?.longName
-                        ?: components.find { "administrative_area_level_1" in it.types }?.longName
-                    if (name != null) {
-                        cityNameCache[key] = name
-                    }
-                    name
+        return cityNameMutex.withLock {
+            cityNameCache[key]?.let { return@withLock it }
+
+            val url = "https://maps.googleapis.com/maps/api/geocode/json"
+            val sha1 = getSigningSha1(context) ?: return@withLock null
+            try {
+                val response = client.get(url) {
+                    parameter("latlng", "$latitude,$longitude")
+                    parameter("key", BuildConfig.MAPS_API_KEY)
+                    parameter("language", java.util.Locale.getDefault().language)
+                    parameter("result_type", "locality|sublocality|administrative_area_level_1|administrative_area_level_2")
+                    header("X-Android-Package", context.packageName)
+                    header("X-Android-Cert", sha1)
+                }
+                if (response.status.value == 200) {
+                    val geocodingResponse = response.body<GoogleGeocodingResponse>()
+                    if (geocodingResponse.status == "OK" && geocodingResponse.results.isNotEmpty()) {
+                        val components = geocodingResponse.results.first().addressComponents
+                        val name = components.find { "locality" in it.types }?.longName
+                            ?: components.find { "sublocality" in it.types }?.longName
+                            ?: components.find { "administrative_area_level_2" in it.types }?.longName
+                            ?: components.find { "administrative_area_level_1" in it.types }?.longName
+                        if (name != null) {
+                            cityNameCache[key] = name
+                        }
+                        name
+                    } else null
                 } else null
-            } else null
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            telemetryManager?.logException(e)
-            null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                telemetryManager?.logException(e)
+                null
+            }
         }
     }
 
@@ -631,6 +719,10 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
      * Récupère les prévisions de pollen auprès de l'API Google Maps Pollen.
      */
     suspend fun getPollenForecast(latitude: Double, longitude: Double, context: Context): PollenResponse? {
+        val key = Pair(roundCoord2(latitude), roundCoord2(longitude))
+        val now = System.currentTimeMillis()
+        pollenCache[key]?.takeIf { now - it.timestampMs < ENV_FORECAST_TTL_MS }?.let { return it.value }
+
         // L'endpoint pour les prévisions (forecast)
         val url = "https://pollen.googleapis.com/v1/forecast:lookup"
 
@@ -654,7 +746,9 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
 
             if (response.status.value == 200) {
-                response.body<PollenResponse>()
+                val result = response.body<PollenResponse>()
+                pollenCache[key] = TimedEntry(result, now)
+                result
             } else {
                 val errorBody = response.body<String>()
                 Log.e("PollenAPI", "Erreur API Google : ${response.status} - $errorBody")
@@ -670,14 +764,30 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     }
 
     /**
-     * Récupère les textes de vigilance spécifiques au département de l'utilisateur.
+     * Récupère la carte nationale de vigilance Météo-France avec mise en cache mémoire + disque (15 min),
+     * afin de ne pas retélécharger le fichier national complet pour chaque ville ou réveil du Worker.
      */
-    suspend fun getVigilanceForLocation(lat: Double, lon: Double): VigilanceInfos? {
-        val departmentCode = getDepartmentCodeFromLocation(lat, lon) ?: return null
+    private suspend fun getNationalVigilanceMap(): VigilanceMapResponse? = vigilanceMutex.withLock {
+        val now = System.currentTimeMillis()
+        cachedVigilanceMap?.takeIf { now - it.timestampMs < VIGILANCE_TTL_MS }?.let {
+            return@withLock it.value
+        }
+
+        val diskFile = appContext?.let { File(it.cacheDir, "vigilance_encours_cache.json") }
+        if (diskFile != null && diskFile.exists() && now - diskFile.lastModified() < VIGILANCE_TTL_MS) {
+            runCatching {
+                val cached = jsonParser.decodeFromString<VigilanceMapResponse>(diskFile.readText())
+                cachedVigilanceMap = TimedEntry(cached, diskFile.lastModified())
+                return@withLock cached
+            }.onFailure {
+                diskFile.delete()
+            }
+        }
+
         val url = "https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours"
         val apiKey = BuildConfig.METEO_FRANCE_VIGILANCE_API_KEY
 
-        return try {
+        try {
             val response = client.get(url) {
                 header("accept", "*/*")
                 header("apikey", apiKey)
@@ -685,69 +795,89 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
             if (response.status.value == 200) {
                 val fullResponse = response.body<VigilanceMapResponse>()
-
-                val now = OffsetDateTime.now()
-
-                // 1. On récupère les périodes qui contiennent notre département
-                val periodsWithDept = fullResponse.product.periods.mapNotNull { period ->
-                    val dept = period.timelaps.domainIds.find { it.domainId == departmentCode }
-                    if (dept != null) period to dept else null
+                cachedVigilanceMap = TimedEntry(fullResponse, now)
+                if (diskFile != null) {
+                    runCatching { diskFile.writeText(jsonParser.encodeToString(fullResponse)) }
                 }
-
-                // 2. Fusionner les alertes par phénomène
-                val mergedAlerts = periodsWithDept
-                    .flatMap { (period, dept) ->
-                        dept.phenomenonItems.map { it to period }
-                    }
-                    .filter { (phenom, _) -> phenom.phenomenonMaxColorId > 1 }
-                    .groupBy { (phenom, _) -> phenom.phenomenonId }
-                    .mapNotNull { (id, pairs) ->
-                        // On traite chaque paire (PhenomenonItem, VigilancePeriod)
-                        val steps = pairs.flatMap { (phenom, period) ->
-                            if (phenom.timelapsItems.isEmpty()) {
-                                // Si pas de timelaps détaillés (ex : Crues), on crée un step couvrant toute la période
-                                listOf(AlertStep(period.beginValidityTime, period.endValidityTime, phenom.phenomenonMaxColorId))
-                            } else {
-                                phenom.timelapsItems.map { AlertStep(it.beginTime, it.endTime, it.colorId) }
-                            }
-                        }
-
-                        // Filtrer les steps qui sont terminés
-                        val filteredSteps = steps.filter {
-                            try {
-                                OffsetDateTime.parse(it.endTime).isAfter(now)
-                            } catch (e: Exception) {
-                                if (e is CancellationException) throw e
-                                true
-                            }
-                        }.sortedBy { it.beginTime }
-
-                        if (filteredSteps.isEmpty()) return@mapNotNull null
-
-                        PhenomenonAlert(
-                            phenomenonId = id,
-                            maxColorId = filteredSteps.maxOf { it.colorId },
-                            steps = filteredSteps
-                        )
-                    }
-
-                // 3. Déterminer le maxColorId global sur les alertes restantes (1 par défaut si vide)
-                val globalMaxColor = mergedAlerts.maxOfOrNull { it.maxColorId } ?: 1
-
-                VigilanceInfos(
-                    departmentCode = departmentCode,
-                    maxColorId = globalMaxColor,
-                    alerts = mergedAlerts
-                )
+                fullResponse
             } else {
                 val errorBody = response.body<String>()
                 Log.e("WeatherService", "Erreur API Carte Vigilance : ${response.status} - $errorBody")
                 telemetryManager?.logEvent("api_error", mapOf("api" to "meteo-france-vigilance", "status" to response.status.value, "error" to errorBody))
-                null
+                cachedVigilanceMap?.value
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("WeatherService", "Exception lors de la récupération de la carte vigilance", e)
+            telemetryManager?.logException(e)
+            cachedVigilanceMap?.value
+        }
+    }
+
+    /**
+     * Récupère les textes de vigilance spécifiques au département de l'utilisateur.
+     */
+    suspend fun getVigilanceForLocation(lat: Double, lon: Double): VigilanceInfos? {
+        val departmentCode = getDepartmentCodeFromLocation(lat, lon) ?: return null
+        val fullResponse = getNationalVigilanceMap() ?: return null
+
+        return try {
+            val now = OffsetDateTime.now()
+
+            // 1. On récupère les périodes qui contiennent notre département
+            val periodsWithDept = fullResponse.product.periods.mapNotNull { period ->
+                val dept = period.timelaps.domainIds.find { it.domainId == departmentCode }
+                if (dept != null) period to dept else null
+            }
+
+            // 2. Fusionner les alertes par phénomène
+            val mergedAlerts = periodsWithDept
+                .flatMap { (period, dept) ->
+                    dept.phenomenonItems.map { it to period }
+                }
+                .filter { (phenom, _) -> phenom.phenomenonMaxColorId > 1 }
+                .groupBy { (phenom, _) -> phenom.phenomenonId }
+                .mapNotNull { (id, pairs) ->
+                    // On traite chaque paire (PhenomenonItem, VigilancePeriod)
+                    val steps = pairs.flatMap { (phenom, period) ->
+                        if (phenom.timelapsItems.isEmpty()) {
+                            // Si pas de timelaps détaillés (ex : Crues), on crée un step couvrant toute la période
+                            listOf(AlertStep(period.beginValidityTime, period.endValidityTime, phenom.phenomenonMaxColorId))
+                        } else {
+                            phenom.timelapsItems.map { AlertStep(it.beginTime, it.endTime, it.colorId) }
+                        }
+                    }
+
+                    // Filtrer les steps qui sont terminés
+                    val filteredSteps = steps.filter {
+                        try {
+                            OffsetDateTime.parse(it.endTime).isAfter(now)
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            true
+                        }
+                    }.sortedBy { it.beginTime }
+
+                    if (filteredSteps.isEmpty()) return@mapNotNull null
+
+                    PhenomenonAlert(
+                        phenomenonId = id,
+                        maxColorId = filteredSteps.maxOf { it.colorId },
+                        steps = filteredSteps
+                    )
+                }
+
+            // 3. Déterminer le maxColorId global sur les alertes restantes (1 par défaut si vide)
+            val globalMaxColor = mergedAlerts.maxOfOrNull { it.maxColorId } ?: 1
+
+            VigilanceInfos(
+                departmentCode = departmentCode,
+                maxColorId = globalMaxColor,
+                alerts = mergedAlerts
+            )
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Exception lors du traitement de la carte vigilance", e)
             telemetryManager?.logException(e)
             null
         }
@@ -757,6 +887,12 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
      * Récupère les prévisions de pluie dans l'heure de Météo-France.
      */
     suspend fun getRainWithinHour(lat: Double, lon: Double): MeteoFranceRainResponse? {
+        val key = Pair(roundCoord3(lat), roundCoord3(lon))
+        val now = System.currentTimeMillis()
+        rainWithinHourCache[key]?.takeIf { now - it.timestampMs < RAIN_WITHIN_HOUR_TTL_MS }?.let {
+            return it.value
+        }
+
         val url = "https://webservice.meteofrance.com/v3/rain"
         val token = "__Wj7dVSTjV9YGu1guveLyDq0g7S7TfTjaHBTPTpO0kj8__"
 
@@ -768,7 +904,9 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             }
 
             if (response.status.value == 200) {
-                response.body<MeteoFranceRainResponse>()
+                val result = response.body<MeteoFranceRainResponse>()
+                rainWithinHourCache[key] = TimedEntry(result, now)
+                result
             } else {
                 val errorBody = response.body<String>()
                 Log.e("WeatherService", "Erreur API Rain Within Hour : ${response.status} - $errorBody")
@@ -786,10 +924,16 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
      * Utilise l'intersection spatiale avec le GeoJSON officiel de Météo-France (avec enclaves fusionnées).
      */
     private suspend fun getDepartmentCodeFromLocation(lat: Double, lon: Double): String? {
+        val key = Pair(roundCoord3(lat), roundCoord3(lon))
+        departmentCodeCache[key]?.let { cached ->
+            return if (cached == NO_DEPT_SENTINEL) null else cached
+        }
+
         try {
             val domainCode = vigilanceDomainProvider.getVigilanceDomain(lat, lon)
             if (!domainCode.isNullOrBlank()) {
                 val formatted = formatDeptCode(domainCode)
+                departmentCodeCache[key] = formatted
                 Log.d("WeatherService", "Département trouvé via GeoJSON Météo-France : $formatted")
                 return formatted
             }
@@ -798,18 +942,21 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             Log.e("WeatherService", "Erreur lors de la recherche spatiale du domaine de vigilance", e)
         }
 
-        // Fallback secours : API Pluie Météo-France (/v3/rain)
-        try {
-            val rainData = getRainWithinHour(lat, lon)
-            val deptFromRain = rainData?.properties?.frenchDepartment
-            if (!deptFromRain.isNullOrBlank()) {
-                val formatted = formatDeptCode(deptFromRain)
-                Log.d("WeatherService", "Département trouvé via Météo-France Rain API : $formatted")
-                return formatted
+        // Fallback secours : API Pluie Météo-France (/v3/rain), limité à la France métropolitaine / Corse
+        if (lat in 41.0..51.5 && lon in -5.5..10.0) {
+            try {
+                val rainData = getRainWithinHour(lat, lon)
+                val deptFromRain = rainData?.properties?.frenchDepartment
+                if (!deptFromRain.isNullOrBlank()) {
+                    val formatted = formatDeptCode(deptFromRain)
+                    departmentCodeCache[key] = formatted
+                    Log.d("WeatherService", "Département trouvé via Météo-France Rain API : $formatted")
+                    return formatted
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e("WeatherService", "Erreur Météo-France Rain API", e)
             }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e("WeatherService", "Erreur Météo-France Rain API", e)
         }
 
         return null
@@ -824,7 +971,7 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
-    suspend fun getCurrentWeather(positions: List<Pair<Double, Double>>) : Map<Pair<Double, Double>, CurrentWeatherReading>? {
+    suspend fun getCurrentWeather(positions: List<Pair<Double, Double>>): Map<Pair<Double, Double>, CurrentWeatherReading>? {
         val apiUrl = "https://api.open-meteo.com/v1/forecast"
 
         try {
@@ -916,12 +1063,17 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         return abs(lon - 2.0) <= halfWidth
     }
 
-    suspend fun getAromeMetadata(): CDNMeteoMetadata? {
+    suspend fun getAromeMetadata(): CDNMeteoMetadata? = metadataMutex.withLock {
+        val now = System.currentTimeMillis()
+        cachedAromeMeta?.takeIf { now - it.timestampMs < METADATA_TTL_MS }?.let { return@withLock it.value }
+
         val url = "https://weatherdata.19374629.xyz/arome_short_term_metadata.json"
-        return try {
+        try {
             val response = client.get(url)
             if (response.status.value / 100 == 2) {
-                response.body<CDNMeteoMetadata>()
+                val meta = response.body<CDNMeteoMetadata>()
+                cachedAromeMeta = TimedEntry(meta, now)
+                meta
             } else {
                 Log.e("WeatherService", "Error fetching AROME metadata: ${response.status}")
                 throw Exception("Error fetching AROME metadata: ${response.status}")
@@ -934,12 +1086,43 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
-    suspend fun getIfsMetadata(): CDNMeteoMetadata? {
+    /**
+     * Vérifie si les coordonnées fournies sont situées dans le domaine de France
+     * défini par les métadonnées AROME (bounds : latMin <= lat <= latMax && lonMin <= lon <= lonMax).
+     */
+    suspend fun isPointInFranceDomain(lat: Double, lon: Double): Boolean {
+        val meta = getAromeMetadata()
+        val bounds = meta?.bounds
+        return if (bounds != null) {
+            bounds.contains(lat, lon)
+        } else {
+            isPointInFranceDomainSync(lat, lon)
+        }
+    }
+
+    /**
+     * Vérification synchrone utilisant les métadonnées en cache ou les bornes par défaut du domaine France.
+     */
+    fun isPointInFranceDomainSync(lat: Double, lon: Double): Boolean {
+        val bounds = cachedAromeMeta?.value?.bounds
+        return if (bounds != null) {
+            bounds.contains(lat, lon)
+        } else {
+            lat in 37.5..55.4 && lon in -12.0..16.0
+        }
+    }
+
+    suspend fun getIfsMetadata(): CDNMeteoMetadata? = metadataMutex.withLock {
+        val now = System.currentTimeMillis()
+        cachedIfsMeta?.takeIf { now - it.timestampMs < METADATA_TTL_MS }?.let { return@withLock it.value }
+
         val url = "https://weatherdata.19374629.xyz/ifs_short_term_metadata.json"
-        return try {
+        try {
             val response = client.get(url)
             if (response.status.value / 100 == 2) {
-                response.body<CDNMeteoMetadata>()
+                val meta = response.body<CDNMeteoMetadata>()
+                cachedIfsMeta = TimedEntry(meta, now)
+                meta
             } else {
                 Log.e("WeatherService", "Error fetching IFS metadata: ${response.status}")
                 throw Exception("Error fetching IFS metadata: ${response.status}")
@@ -952,12 +1135,17 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
         }
     }
 
-    suspend fun getExtendedMetadata(): CDNMeteoMetadata? {
+    suspend fun getExtendedMetadata(): CDNMeteoMetadata? = metadataMutex.withLock {
+        val now = System.currentTimeMillis()
+        cachedExtendedMeta?.takeIf { now - it.timestampMs < METADATA_TTL_MS }?.let { return@withLock it.value }
+
         val url = "https://weatherdata.19374629.xyz/global_extended_forecast_metadata.json"
-        return try {
+        try {
             val response = client.get(url)
             if (response.status.value / 100 == 2) {
-                response.body<CDNMeteoMetadata>()
+                val meta = response.body<CDNMeteoMetadata>()
+                cachedExtendedMeta = TimedEntry(meta, now)
+                meta
             } else {
                 Log.e("WeatherService", "Error fetching Extended metadata: ${response.status}")
                 throw Exception("Error fetching Extended metadata: ${response.status}")
@@ -972,73 +1160,79 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
 
     suspend fun downloadShortTermMeta(lon: Double, lat: Double): CDNMeteoMetadata? {
         val useAROME = shouldUseAROME(lon, lat)
-        val meta = if (useAROME) getAromeMetadata() else getIfsMetadata()
-        return meta
+        return if (useAROME) getAromeMetadata() else getIfsMetadata()
     }
 
     suspend fun downloadExtendedMeta(): CDNMeteoMetadata? {
         return getExtendedMetadata()
     }
 
-    suspend fun getShortTermForecast(lon: Double, lat: Double, context: Context, metadata: CDNMeteoMetadata? = null): Pair<ShortTermPointPayload, LocalDateTime>? {
-        try {
-            val useAROME = shouldUseAROME(lon, lat)
-            if (useAROME) {
-                val meta = metadata ?: getAromeMetadata() ?: throw Exception("Failed to get metadata from AROME")
-                val range = getRangeForLocation(lon, lat, meta.pointByteSize)
+    /**
+     * Télécharge une tranche binaire stricte (HTTP 206 Partial Content uniquement) en streaming,
+     * afin d'interdire tout téléchargement accidentel du fichier complet (1,7 à 6 Go) si un proxy/CDN répond 200 OK.
+     */
+    private suspend fun fetchRangeBytes(url: String, range: Pair<Long, Long>): ByteArray {
+        val expectedLength = (range.second - range.first + 1L)
+        val maxAllowedLength = max(expectedLength * 2L, 65_536L)
 
-                val responseBuf = client.get("https://weatherdata.19374629.xyz/arome_short_term.bin") {
-                    header("Range", "bytes=${range.first}-${range.second}")
-                    header("Accept-Encoding", "identity")
-                }
-
-                if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
-
-                val bytes = responseBuf.readRawBytes()
-                val response = ShortTermPointPayload.parseFrom(bytes)
-
-                val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context) ?: throw Exception("Unable to get LocalDateTime from the metadata")
-
-                return Pair(response, runUTC)
-            } else {
-                val meta = metadata ?: getIfsMetadata() ?: throw Exception("Failed to get metadata from IFS")
-                val range = getRangeForLocation(lon, lat, meta.pointByteSize)
-
-                val responseBuf = client.get("https://weatherdata.19374629.xyz/ifs_short_term.bin") {
-                    header("Range", "bytes=${range.first}-${range.second}")
-                    header("Accept-Encoding", "identity")
-                }
-
-                if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
-
-                val bytes = responseBuf.readRawBytes()
-                val response = ShortTermPointPayload.parseFrom(bytes)
-
-                val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context)
-                    ?: throw Exception("Unable to get LocalDateTime from the metadata")
-
-                return Pair(response, runUTC)
+        return client.prepareGet(url) {
+            header(HttpHeaders.Range, "bytes=${range.first}-${range.second}")
+            header(HttpHeaders.AcceptEncoding, "identity")
+        }.execute { response ->
+            if (response.status != HttpStatusCode.PartialContent) {
+                throw IllegalStateException("Expected 206 Partial Content for $url, got ${response.status}")
             }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e("WeatherService", "Error during dummy call to abc.xyz: ${e.message}")
-            return null
+            val contentLength = response.contentLength()
+            if (contentLength != null && (contentLength <= 0L || contentLength > maxAllowedLength)) {
+                throw IllegalStateException("Refusing oversized range payload ($contentLength bytes) from $url")
+            }
+            val bytesToRead = (contentLength ?: expectedLength).toInt()
+            response.readBytes(bytesToRead)
         }
     }
 
-    suspend fun getExtendedForecast(lon: Double, lat: Double, context: Context, metadata: CDNMeteoMetadata? = null): Pair<ExtendedForecastPointPayload, LocalDateTime>? {
+    suspend fun getShortTermForecast(
+        lon: Double,
+        lat: Double,
+        context: Context,
+        metadata: CDNMeteoMetadata? = null
+    ): Pair<ShortTermPointPayload, LocalDateTime>? {
+        return try {
+            val useAROME = shouldUseAROME(lon, lat)
+            val meta = metadata
+                ?: (if (useAROME) getAromeMetadata() else getIfsMetadata())
+                ?: throw Exception("Failed to get short-term metadata")
+            val range = getRangeForLocation(lon, lat, meta.pointByteSize)
+            val binUrl = if (useAROME) {
+                "https://weatherdata.19374629.xyz/arome_short_term.bin"
+            } else {
+                "https://weatherdata.19374629.xyz/ifs_short_term.bin"
+            }
+
+            val bytes = fetchRangeBytes(binUrl, range)
+            val response = ShortTermPointPayload.parseFrom(bytes)
+            val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context)
+                ?: throw Exception("Unable to get LocalDateTime from the metadata")
+
+            Pair(response, runUTC)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("WeatherService", "Error in getShortTermForecast: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun getExtendedForecast(
+        lon: Double,
+        lat: Double,
+        context: Context,
+        metadata: CDNMeteoMetadata? = null
+    ): Pair<ExtendedForecastPointPayload, LocalDateTime>? {
         return try {
             val meta = metadata ?: getExtendedMetadata() ?: throw Exception("Failed to get metadata from extended forecast")
             val range = getRangeForLocation(lon, lat, meta.pointByteSize, true)
 
-            val responseBuf = client.get("https://weatherdata.19374629.xyz/global_extended_forecast.bin") {
-                header("Range", "bytes=${range.first}-${range.second}")
-                header("Accept-Encoding", "identity")
-            }
-
-            if (responseBuf.status.value / 100 != 2) throw Exception("Return code != 2xx")
-
-            val bytes = responseBuf.readRawBytes()
+            val bytes = fetchRangeBytes("https://weatherdata.19374629.xyz/global_extended_forecast.bin", range)
             val response = ExtendedForecastPointPayload.parseFrom(bytes)
 
             val runUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(context)
@@ -1050,14 +1244,6 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             Log.e("WeatherService", "Error in getExtendedForecast: ${e.message}")
             null
         }
-    }
-
-    private fun getModelPrefixedName(variableName: String, model: String, isMultiModel: Boolean): String {
-        return if (isMultiModel) "${variableName}_$model" else variableName
-    }
-
-    private fun Double?.safeToInt(): Int? {
-        return if (this == null || this.isNaN()) null else this.toInt()
     }
 
     fun parseCurrentWeatherData(response: List<WeatherApiResponse>): List<CurrentWeatherReading>? {
@@ -1081,22 +1267,25 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
     }
 
     fun close() {
-        client.close()
+        if (!isSharedInstance) {
+            client.close()
+        }
     }
 
-    suspend fun getPolicyUpdateInfo(): PolicyUpdateInfo? {
-        return try {
-            val responseText = try {
-                client.get("https://themeteodocs.19374629.xyz/last-updates.json").bodyAsText()
-            } catch (e: Exception) {
-                throw e
-            }
-            jsonParser.decodeFromString<PolicyUpdateInfo>(responseText)
+    suspend fun getPolicyUpdateInfo(): PolicyUpdateInfo? = policyMutex.withLock {
+        val now = System.currentTimeMillis()
+        cachedPolicyInfo?.takeIf { now - it.timestampMs < POLICY_TTL_MS }?.let { return@withLock it.value }
+
+        try {
+            val responseText = client.get("https://themeteodocs.19374629.xyz/last-updates.json").bodyAsText()
+            val decoded = jsonParser.decodeFromString<PolicyUpdateInfo>(responseText)
+            cachedPolicyInfo = TimedEntry(decoded, now)
+            decoded
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("WeatherService", "Error fetching policy updates: ${e.message}")
             telemetryManager?.logException(e)
-            null
+            cachedPolicyInfo?.value
         }
     }
 
@@ -1110,6 +1299,4 @@ class WeatherService(private val telemetryManager: TelemetryManager? = null) {
             null
         }
     }
-
-
 }
