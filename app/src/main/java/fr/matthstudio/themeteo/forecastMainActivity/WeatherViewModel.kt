@@ -263,9 +263,13 @@ class WeatherViewModel(
         AppStateManager.currentGpsPosition,
         refreshCounter
     ) { loc, gps, counter ->
-        Triple(loc, resolveCoords(loc, gps), counter)
-    }.distinctUntilChanged().flatMapLatest { (loc, _, _) ->
-        weatherParser.getShortTerm(LocalDateTime.now().withMinute(0).withSecond(0).withNano(0), 24, loc)
+        Pair(resolveCoords(loc, gps), counter)
+    }.distinctUntilChanged().flatMapLatest { (coords, _) ->
+        if (coords != null) {
+            weatherParser.getShortTerm(LocalDateTime.now().withMinute(0).withSecond(0).withNano(0), 24, coords.latitude, coords.longitude)
+        } else {
+            flowOf(WeatherDataState.Loading)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -283,9 +287,13 @@ class WeatherViewModel(
         AppStateManager.currentGpsPosition,
         refreshCounter
     ) { loc, gps, counter ->
-        Triple(loc, resolveCoords(loc, gps), counter)
-    }.distinctUntilChanged().flatMapLatest { (loc, _, _) ->
-        weatherParser.getDaily(LocalDate.now(), 14, loc)
+        Pair(resolveCoords(loc, gps), counter)
+    }.distinctUntilChanged().flatMapLatest { (coords, _) ->
+        if (coords != null) {
+            weatherParser.getDaily(LocalDate.now(), 8, coords.latitude, coords.longitude)
+        } else {
+            flowOf(WeatherDataState.Loading)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -299,9 +307,13 @@ class WeatherViewModel(
         refreshCounter
     ) { loc, gps, counter ->
         Pair(resolveCoords(loc, gps), counter)
-    }.distinctUntilChanged().flatMapLatest {
+    }.distinctUntilChanged().flatMapLatest { (coords, _) ->
         flow {
-            emit(weatherParser.getTechnicalInfo())
+            if (coords != null) {
+                emit(weatherParser.getTechnicalInfo(coords.latitude, coords.longitude))
+            } else {
+                emit(null)
+            }
         }
     }.stateIn(
         viewModelScope,
@@ -488,6 +500,7 @@ class WeatherViewModel(
         viewModelScope.launch {
             checkPolicyUpdates()
         }
+        refreshLocation()
     }
 
     private suspend fun checkPolicyUpdates() {
@@ -662,18 +675,24 @@ class WeatherViewModel(
             AppStateManager.currentGpsPosition,
             refreshCounter
         ) { loc, gps, counter ->
-            Triple(loc, resolveCoords(loc, gps), counter)
-        }.distinctUntilChanged().flatMapLatest { (loc, _, _) ->
-            val durationInHours = Duration.between(startDateTime, endDateTime).toHours().coerceAtLeast(1)
-            weatherParser.getShortTerm(startDateTime, durationInHours.toInt(), loc).flatMapLatest { shortState ->
-                if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
-                    flowOf(shortState)
-                } else {
-                    weatherParser.getMediumTerm(startDateTime, endDateTime, loc).flatMapLatest { medState ->
-                        if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= 8) {
-                            flowOf(medState)
-                        } else {
-                            weatherParser.getLongTerm(reqDate, reqDate, loc)
+            Pair(resolveCoords(loc, gps), counter)
+        }.distinctUntilChanged().flatMapLatest { (coords, _) ->
+            if (coords == null) {
+                flowOf(WeatherDataState.Loading)
+            } else {
+                val durationInHours = Duration.between(startDateTime, endDateTime).toHours().coerceAtLeast(1)
+                val lat = coords.latitude
+                val lon = coords.longitude
+                weatherParser.getShortTerm(startDateTime, durationInHours.toInt(), lat, lon).flatMapLatest { shortState ->
+                    if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
+                        flowOf(shortState)
+                    } else {
+                        weatherParser.getMediumTerm(startDateTime, endDateTime, lat, lon).flatMapLatest { medState ->
+                            if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= 8) {
+                                flowOf(medState)
+                            } else {
+                                weatherParser.getLongTerm(reqDate, reqDate, lat, lon)
+                            }
                         }
                     }
                 }

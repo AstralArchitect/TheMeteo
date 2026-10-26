@@ -208,14 +208,43 @@ class NewWeatherCache(
 
     private fun isShortTermUsable(cached: CachedShortTermForecast): Boolean {
         val nowUTC = LocalDateTime.now(ZoneOffset.UTC)
-        val lastStepTime = cached.data.steps.lastOrNull()?.time ?: return false
-        return lastStepTime.isAfter(nowUTC)
+        return cached.data.steps.any { !it.time.isBefore(nowUTC) }
     }
 
     private fun isExtendedUsable(cached: CachedExtendedTermForecast): Boolean {
         val todayUTC = LocalDate.now(ZoneOffset.UTC)
-        val lastDay = cached.data.longTermDays.lastOrNull()?.date ?: return false
-        return !lastDay.isBefore(todayUTC)
+        return cached.data.longTermDays.any { !it.date.isBefore(todayUTC) } ||
+               cached.data.mediumTermSteps.any { !it.time.toLocalDate().isBefore(todayUTC) }
+    }
+
+    /**
+     * Retourne immédiatement les données court terme en cache si elles sont encore utilisables,
+     * sans appel réseau ni vérification de métadonnées.
+     */
+    fun getCachedShortIfUsable(index: Long): ShortTermForecastUI? {
+        var cachedPoint = getShortInRam(index)
+        if (cachedPoint == null) {
+            cachedPoint = loadShortFromDisk(index)
+            if (cachedPoint != null) {
+                keepShortInRam(index, cachedPoint)
+            }
+        }
+        return if (cachedPoint != null && isShortTermUsable(cachedPoint)) cachedPoint.data else null
+    }
+
+    /**
+     * Retourne immédiatement les données long terme en cache si elles sont encore utilisables,
+     * sans appel réseau ni vérification de métadonnées.
+     */
+    fun getCachedExtendedIfUsable(index: Long): ExtendedForecastUI? {
+        var cachedPoint = getExtendedInRam(index)
+        if (cachedPoint == null) {
+            cachedPoint = loadExtendedFromDisk(index)
+            if (cachedPoint != null) {
+                keepExtendedInRam(index, cachedPoint)
+            }
+        }
+        return if (cachedPoint != null && isExtendedUsable(cachedPoint)) cachedPoint.data else null
     }
 
     suspend fun getShortFromIndex(
@@ -241,23 +270,24 @@ class NewWeatherCache(
         }
 
         val meta = fetchMetadata()
-        if (meta != null) {
-            lastShortFetchTimes[index] = now
-        } else {
-            return Pair(if (isUsable && cachedPoint != null) cachedPoint.data else null, null)
+        if (meta == null) {
+            return Pair(if (isUsable) cachedPoint.data else null, null)
         }
 
         val serverRunUTC = meta.latestRunDatetimeUtc.toEventLocalDateTime(applicationContext)
-            ?: return Pair(if (isUsable && cachedPoint != null) cachedPoint.data else null, meta)
+            ?: return Pair(if (isUsable) cachedPoint.data else null, meta)
 
         val point = cachedPoint ?: return Pair(null, meta)
 
         return if (!forceRefresh && isUsable && !point.runHourUTC.isBefore(serverRunUTC)) {
+            lastShortFetchTimes[index] = now
             val refreshedPoint = point.copy(fetchTimestamp = now)
             keepShortInRam(index, refreshedPoint)
             saveShortToDisk(index, refreshedPoint)
             Pair(refreshedPoint.data, meta)
         } else {
+            // Un run plus récent est disponible sur le serveur.
+            // On ne met PAS à jour lastShortFetchTimes ici pour ne pas prétendre que la donnée a été revalidée si le téléchargement échoue.
             Pair(null, meta)
         }
     }
@@ -302,9 +332,7 @@ class NewWeatherCache(
         }
 
         val meta = fetchMetadata()
-        if (meta != null) {
-            lastExtendedFetchTimes[index] = now
-        } else {
+        if (meta == null) {
             return Pair(if (isUsable && cachedPoint != null) cachedPoint.data else null, null)
         }
 
@@ -314,11 +342,14 @@ class NewWeatherCache(
         val point = cachedPoint ?: return Pair(null, meta)
 
         return if (!forceRefresh && isUsable && !point.runHourUTC.isBefore(serverRunUTC)) {
+            lastExtendedFetchTimes[index] = now
             val refreshedPoint = point.copy(fetchTimestamp = now)
             keepExtendedInRam(index, refreshedPoint)
             saveExtendedToDisk(index, refreshedPoint)
             Pair(refreshedPoint.data, meta)
         } else {
+            // Un run plus récent est disponible sur le serveur.
+            // On ne met PAS à jour lastExtendedFetchTimes ici si le téléchargement échoue ultérieurement.
             Pair(null, meta)
         }
     }

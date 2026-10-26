@@ -28,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
@@ -124,26 +126,62 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
             }
         }
 
-        // Ne maintient l'écoute GPS continue que lorsque l'application est au premier plan (STARTED),
-        // afin d'éviter les réveils GPS et recalculs réseau continus en arrière-plan.
+        // Ne maintient l'écoute GPS continue que lorsque l'application est au premier plan (STARTED)
+        // ET que "Position Actuelle" est sélectionnée, afin d'économiser la batterie et le réseau.
         applicationScope.launch {
             ProcessLifecycleOwner.get().lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                AppStateManager.isLocationPermissionGranted
-                    .flatMapLatest { granted ->
-                        if (granted) {
-                            container.locationProvider.locationFlow.onStart {
-                                val coords = container.locationProvider.getCurrentLocation()
-                                if (coords != null) {
-                                    emit(coords)
-                                }
+                combine(
+                    AppStateManager.isLocationPermissionGranted,
+                    AppStateManager.selectedLocation
+                ) { granted, selectedLoc ->
+                    Pair(granted, selectedLoc is LocationIdentifier.CurrentUserLocation)
+                }
+                .distinctUntilChanged()
+                .flatMapLatest { (granted, isCurrentSelected) ->
+                    if (!granted) {
+                        flowOf(null)
+                    } else if (isCurrentSelected) {
+                        container.locationProvider.locationFlow.onStart {
+                            val coords = container.locationProvider.getCurrentLocation()
+                            if (coords != null) {
+                                emit(coords)
                             }
-                        } else {
-                            flowOf(null)
+                        }
+                    } else {
+                        emptyFlow()
+                    }
+                }
+                .collect { coords ->
+                    AppStateManager.updateGpsPosition(coords)
+                    if (coords != null) {
+                        applicationScope.launch {
+                            try {
+                                val name = container.weatherParser.getCityName(coords.latitude, coords.longitude)
+                                if (name != null) {
+                                    AppStateManager.updateCityName(name)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("TheMeteo", "Error updating city name for GPS", e)
+                            }
                         }
                     }
-                    .collect { coords ->
-                        AppStateManager.updateGpsPosition(coords)
-                    }
+                }
+            }
+        }
+
+        applicationScope.launch {
+            combine(
+                AppStateManager.selectedLocation,
+                AppStateManager.currentGpsPosition
+            ) { loc, gps ->
+                when (loc) {
+                    is LocationIdentifier.Saved -> fr.matthstudio.themeteo.data.GpsCoordinates(loc.location.latitude, loc.location.longitude)
+                    is LocationIdentifier.CurrentUserLocation -> gps
+                }
+            }.collect { coords ->
+                if (coords != null) {
+                    container.weatherParser.updateCurrentWmoAndNight(coords.latitude, coords.longitude)
+                }
             }
         }
 

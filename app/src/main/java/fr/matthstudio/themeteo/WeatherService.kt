@@ -4,13 +4,10 @@ Copyright (C) 2026  AstralArchitect
  */
 package fr.matthstudio.themeteo
 
-// Commenter lorsqu'on utilise pas le logging
-
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Parcelable
 import android.util.Log
+import fr.matthstudio.themeteo.data.CityNameDiskCache
 import fr.matthstudio.themeteo.data.LocalDateSerializer
 import fr.matthstudio.themeteo.data.LocalDateTimeSerializer
 import fr.matthstudio.themeteo.data.VigilanceDomainProvider
@@ -52,7 +49,6 @@ import io.ktor.http.contentLength
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import java.io.File
-import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -75,7 +71,6 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
@@ -90,6 +85,8 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Cache
+
+private const val MAPS_GATEWAY_URL = "gateway.19374629.xyz"
 
 // --- DATA CLASSES ---
 @Serializable
@@ -478,11 +475,20 @@ class WeatherService(
             }
         }
 
-    @Volatile
-    private var cachedSigningSha1: String? = null
+
+
 
     private val cityNameCache = ConcurrentHashMap<Pair<Double, Double>, String>()
     private val cityNameMutex = Mutex()
+    private var cityNameDiskCache: CityNameDiskCache? = null
+
+    private fun getOrCreateCityDiskCache(context: Context): CityNameDiskCache {
+        return cityNameDiskCache ?: synchronized(this) {
+            cityNameDiskCache ?: CityNameDiskCache(context.applicationContext).also {
+                cityNameDiskCache = it
+            }
+        }
+    }
 
     private val departmentCodeCache = ConcurrentHashMap<Pair<Double, Double>, String>()
 
@@ -533,63 +539,21 @@ class WeatherService(
             null
         }
     }
-
-    // Fonction pour récupérer l'empreinte SHA-1 de ton app dynamiquement
-    fun getSigningSha1(context: Context): String? {
-        cachedSigningSha1?.let { return it }
-        try {
-            val packageName = context.packageName
-            val packageManager = context.packageManager
-
-            // PackageManager.GET_SIGNATURES est déprécié, mais nécessaire pour les API < 28
-            @Suppress("DEPRECATION")
-            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-            } else {
-                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-            }
-
-            val signature = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                packageInfo.signingInfo?.apkContentsSigners?.firstOrNull()
-                    ?: packageInfo.signingInfo?.signingCertificateHistory?.firstOrNull()
-            } else {
-                // Pour les anciennes versions, on utilise la méthode dépréciée
-                @Suppress("DEPRECATION")
-                (packageInfo.signatures?.firstOrNull())
-            }
-
-            if (signature == null) {
-                Log.e("SigningInfo", "Impossible de trouver la signature du certificat.")
-                return null
-            }
-
-            val md = MessageDigest.getInstance("SHA-1")
-            val digest = md.digest(signature.toByteArray())
-            // On transforme le tableau de bytes en une chaîne hexadécimale SANS les ":"
-            val sha1 = digest.joinToString("") { "%02X".format(it) }
-            cachedSigningSha1 = sha1
-            return sha1
-        } catch (e: Exception) {
-            telemetryManager?.logException(e)
-            Log.e("SigningInfo", "Erreur lors de la récupération du SHA-1", e)
-            return null
-        }
-    }
-
+    
     suspend fun getAirQuality(latitude: Double, longitude: Double, context: Context): AirQualityInfo? {
         val key = Pair(roundCoord2(latitude), roundCoord2(longitude))
         val now = System.currentTimeMillis()
         airQualityCache[key]?.takeIf { now - it.timestampMs < AIR_QUALITY_TTL_MS }?.let { return it.value }
 
-        val url = "https://airquality.googleapis.com/v1/currentConditions:lookup"
-        val sha1 = getSigningSha1(context) ?: return null
-        val packageName = context.packageName
+        val url = "https://$MAPS_GATEWAY_URL/airquality/v1/currentConditions:lookup"
+
+
 
         return try {
             val response = client.post(url) {
-                parameter("key", BuildConfig.MAPS_API_KEY)
-                header("X-Android-Package", packageName)
-                header("X-Android-Cert", sha1) // Envoie l'empreinte automatiquement
+
+
+
                 // On envoie la position dans le corps de la requête (POST)
                 setBody(
                     AirQualityRequest(
@@ -630,15 +594,19 @@ class WeatherService(
         val now = System.currentTimeMillis()
         airQualityForecastCache[key]?.takeIf { now - it.timestampMs < ENV_FORECAST_TTL_MS }?.let { return it.value }
 
-        val url = "https://airquality.googleapis.com/v1/forecast:lookup"
-        val sha1 = getSigningSha1(context) ?: return null
-        val packageName = context.packageName
+        val url = "https://$MAPS_GATEWAY_URL/airquality/v1/forecast:lookup"
+        val nowUtc = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).withMinute(0).withSecond(0).withNano(0)
+        // Google Air Quality Forecast requiert strictement que startTime soit dans le futur (prochaine heure UTC)
+        val startTimeStr = nowUtc.plusHours(1).format(java.time.format.DateTimeFormatter.ISO_INSTANT)
+        val endTimeStr = nowUtc.plusHours(72).format(java.time.format.DateTimeFormatter.ISO_INSTANT)
+
+
 
         return try {
             val response = client.post(url) {
-                parameter("key", BuildConfig.MAPS_API_KEY)
-                header("X-Android-Package", packageName)
-                header("X-Android-Cert", sha1)
+
+
+
                 setBody(
                     AirQualityRequest(
                         location = AirQualityLocation(latitude, longitude),
@@ -649,8 +617,8 @@ class WeatherService(
                             "POLLUTANT_CONCENTRATION"
                         ),
                         period = AirQualityPeriod(
-                            startTime = LocalDateTime.now().toString() + "Z",
-                            endTime = LocalDateTime.now().plusDays(3).toString() + "Z"
+                            startTime = startTimeStr,
+                            endTime = endTimeStr
                         ),
                         pageSize = 72,
                         languageCode = java.util.Locale.getDefault().language
@@ -682,16 +650,23 @@ class WeatherService(
         return cityNameMutex.withLock {
             cityNameCache[key]?.let { return@withLock it }
 
-            val url = "https://maps.googleapis.com/maps/api/geocode/json"
-            val sha1 = getSigningSha1(context) ?: return@withLock null
+            val diskCache = getOrCreateCityDiskCache(context)
+            val diskCached = diskCache.get(latitude, longitude)
+            if (diskCached != null) {
+                cityNameCache[key] = diskCached
+                return@withLock diskCached
+            }
+
+            val url = "https://$MAPS_GATEWAY_URL/maps/api/geocode/json"
+
             try {
                 val response = client.get(url) {
                     parameter("latlng", "$latitude,$longitude")
-                    parameter("key", BuildConfig.MAPS_API_KEY)
+    
                     parameter("language", java.util.Locale.getDefault().language)
                     parameter("result_type", "locality|sublocality|administrative_area_level_1|administrative_area_level_2")
-                    header("X-Android-Package", context.packageName)
-                    header("X-Android-Cert", sha1)
+
+    
                 }
                 if (response.status.value == 200) {
                     val geocodingResponse = response.body<GoogleGeocodingResponse>()
@@ -703,6 +678,7 @@ class WeatherService(
                             ?: components.find { "administrative_area_level_1" in it.types }?.longName
                         if (name != null) {
                             cityNameCache[key] = name
+                            diskCache.put(latitude, longitude, name)
                         }
                         name
                     } else null
@@ -724,16 +700,16 @@ class WeatherService(
         pollenCache[key]?.takeIf { now - it.timestampMs < ENV_FORECAST_TTL_MS }?.let { return it.value }
 
         // L'endpoint pour les prévisions (forecast)
-        val url = "https://pollen.googleapis.com/v1/forecast:lookup"
+        val url = "https://$MAPS_GATEWAY_URL/pollen/v1/forecast:lookup"
 
         // Réutilisation de la sécurité SHA-1 et package name comme pour l'Air Quality
-        val sha1 = getSigningSha1(context) ?: return null
-        val packageName = context.packageName
+
+
 
         return try {
             val response = client.get(url) {
                 // Paramètres de l'API Google
-                parameter("key", BuildConfig.MAPS_API_KEY)
+
                 parameter("location.latitude", latitude)
                 parameter("location.longitude", longitude)
                 parameter("days", 3) // Nombre de jours de prévisions (1 à 5)
@@ -741,8 +717,8 @@ class WeatherService(
                 parameter("plantsDescription", "true")
 
                 // Headers de sécurité pour restreindre l'usage de la clé API à votre app
-                header("X-Android-Package", packageName)
-                header("X-Android-Cert", sha1)
+
+
             }
 
             if (response.status.value == 200) {

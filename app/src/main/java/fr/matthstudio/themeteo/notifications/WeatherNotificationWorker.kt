@@ -214,7 +214,7 @@ class WeatherNotificationWorker(
 
             // 2. Check short term forecast (AROME / IFS) for the next 6 hours via le cache partagé (uniquement si NON en mode 15mn)
             if (!is15MinMode) {
-                val shortForecast = weatherParser.getCachedOrFetchShortTerm(location)
+                val shortForecast = weatherParser.getCachedOrFetchShortTerm(coords.latitude, coords.longitude)
                 if (shortForecast != null) {
                     val currentTime = LocalDateTime.now(ZoneOffset.UTC)
 

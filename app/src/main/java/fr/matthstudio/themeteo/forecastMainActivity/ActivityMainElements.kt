@@ -758,7 +758,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
             .fillMaxWidth()
             .padding(bottom = 16.dp)
     ) {
-        val nDays = 7
+        val nDays = 8
         if (dailyForecast is WeatherDataState.Loading && dailyData == null) {
             Box(
                 modifier = Modifier.padding(32.dp).fillMaxWidth(),
@@ -831,7 +831,7 @@ fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
                     maxTemp = maxTempOverDays.toDouble()
                 ) {
                     if (expandedDayIndex == index) {
-                        // Expanded Content: Graph and Details (remembered to avoid recomposition loops)
+                        // Expanded Content: Graph and Details
                         val rangeFlow = remember(dayReading.date) {
                             viewModel.getForecastForRange(
                                 dayReading.date.atTime(0, 0),

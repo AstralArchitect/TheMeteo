@@ -18,6 +18,7 @@ import fr.matthstudio.themeteo.ShortTermStepUI
 import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.data.DailyForecastUI
+import fr.matthstudio.themeteo.data.GpsCoordinates
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -81,17 +82,25 @@ class WidgetCacheManager(private val context: Context) {
             val app = context.applicationContext as TheMeteo
             var detectedCityName: String? = current?.cityName
 
-            // Si la localisation est la position GPS, on la rafraîchit en arrière-plan via LocationProvider
-            if (location is LocationIdentifier.CurrentUserLocation) {
-                val coords = app.container.locationProvider.getCurrentLocation()
-                if (coords != null) {
-                    AppStateManager.updateGpsPosition(coords)
-                    val name = app.container.weatherParser.getCityName(coords.latitude, coords.longitude)
-                    if (name != null) {
-                        detectedCityName = name
-                        AppStateManager.updateCityName(name)
+            val coords: GpsCoordinates? = when (location) {
+                is LocationIdentifier.CurrentUserLocation -> {
+                    val directCoords = app.container.locationProvider.getCurrentLocation()
+                        ?: AppStateManager.currentGpsPosition.value
+                    if (directCoords != null) {
+                        AppStateManager.updateGpsPosition(directCoords)
+                        val name = app.container.weatherParser.getCityName(directCoords.latitude, directCoords.longitude)
+                        if (name != null) {
+                            detectedCityName = name
+                            AppStateManager.updateCityName(name)
+                        }
                     }
+                    directCoords
                 }
+                is LocationIdentifier.Saved -> GpsCoordinates(location.location.latitude, location.location.longitude)
+            }
+
+            if (coords == null) {
+                return current
             }
 
             val weatherParser = app.container.weatherParser
@@ -99,14 +108,14 @@ class WidgetCacheManager(private val context: Context) {
 
             var hourly: List<ShortTermStepUI>? = null
             if (!includeMultiDay || current?.hourly == null || forceRefresh || (now - (current.lastUpdatedEpochSeconds)) >= CACHE_EXPIRATION_MINUTES * 60) {
-                weatherParser.getShortTerm(startTime, 24, location).collect { state ->
+                weatherParser.getShortTerm(startTime, 24, coords.latitude, coords.longitude).collect { state ->
                     if (state is WeatherDataState.SuccessShortTermHourly) hourly = state.data
                 }
             }
 
             var daily: List<DailyForecastUI>? = null
             val daysToFetch = if (includeMultiDay) 7L else 0L
-            weatherParser.getDaily(startTime.toLocalDate(), daysToFetch, location).collect { state ->
+            weatherParser.getDaily(startTime.toLocalDate(), daysToFetch, coords.latitude, coords.longitude).collect { state ->
                 if (state is WeatherDataState.SuccessDaily) daily = state.data
             }
 

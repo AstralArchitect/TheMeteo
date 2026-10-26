@@ -76,25 +76,31 @@ class WeatherViewModel(
         } else {
             startDate.withMinute(0).withSecond(0).withNano(0)
         }
-        Triple(normalizedStart, loc, resolveCoords(loc, gps))
-    }.distinctUntilChanged().flatMapLatest { (start, loc, _) ->
-        val durationHours = if (fullPeriod) 48L else 24L
-        val reqDate = start.toLocalDate()
+        Pair(normalizedStart, resolveCoords(loc, gps))
+    }.distinctUntilChanged().flatMapLatest { (start, coords) ->
+        if (coords == null) {
+            flowOf(WeatherDataState.Loading)
+        } else {
+            val durationHours = if (fullPeriod) 48L else 24L
+            val reqDate = start.toLocalDate()
+            val lat = coords.latitude
+            val lon = coords.longitude
 
-        val minMedSteps = 6
-        weatherParser.getShortTerm(start, durationHours.toInt(), loc).flatMapLatest { shortState ->
-            if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
-                flowOf(shortState)
-            } else {
-                weatherParser.getMediumTerm(start, start.plusHours(durationHours), loc).flatMapLatest { medState ->
-                    if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= minMedSteps) {
-                        flowOf(medState)
-                    } else {
-                        weatherParser.getLongTerm(reqDate, reqDate, loc).map { longState ->
-                            if (longState is WeatherDataState.Error && medState is WeatherDataState.SuccessMediumTermHourly && medState.data.isNotEmpty()) {
-                                medState
-                            } else {
-                                longState
+            val minMedSteps = 6
+            weatherParser.getShortTerm(start, durationHours.toInt(), lat, lon).flatMapLatest { shortState ->
+                if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
+                    flowOf(shortState)
+                } else {
+                    weatherParser.getMediumTerm(start, start.plusHours(durationHours), lat, lon).flatMapLatest { medState ->
+                        if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= minMedSteps) {
+                            flowOf(medState)
+                        } else {
+                            weatherParser.getLongTerm(reqDate, reqDate, lat, lon).map { longState ->
+                                if (longState is WeatherDataState.Error && medState is WeatherDataState.SuccessMediumTermHourly && medState.data.isNotEmpty()) {
+                                    medState
+                                } else {
+                                    longState
+                                }
                             }
                         }
                     }
@@ -111,9 +117,13 @@ class WeatherViewModel(
         AppStateManager.selectedLocation,
         AppStateManager.currentGpsPosition
     ) { loc, gps ->
-        Pair(loc, resolveCoords(loc, gps))
-    }.distinctUntilChanged().flatMapLatest { (loc, _) ->
-        weatherParser.getDaily(LocalDate.now(), 14, loc)
+        resolveCoords(loc, gps)
+    }.distinctUntilChanged().flatMapLatest { coords ->
+        if (coords != null) {
+            weatherParser.getDaily(LocalDate.now(), 14, coords.latitude, coords.longitude)
+        } else {
+            flowOf(WeatherDataState.Loading)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeatherDataState.Loading)
 
     fun updateStartDate(dateTime: LocalDateTime) {

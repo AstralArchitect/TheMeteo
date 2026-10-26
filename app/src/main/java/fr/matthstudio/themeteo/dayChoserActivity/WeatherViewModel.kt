@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -133,9 +134,13 @@ class WeatherViewModel(
         selectedLocation,
         AppStateManager.currentGpsPosition
     ) { loc, gps ->
-        Pair(loc, resolveCoords(loc, gps))
-    }.distinctUntilChanged().flatMapLatest { (loc, _) ->
-        weatherParser.getDaily(LocalDate.now(), 14, loc)
+        resolveCoords(loc, gps)
+    }.distinctUntilChanged().flatMapLatest { coords ->
+        if (coords != null) {
+            weatherParser.getDaily(LocalDate.now(), 14, coords.latitude, coords.longitude)
+        } else {
+            flowOf(WeatherDataState.Loading)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
