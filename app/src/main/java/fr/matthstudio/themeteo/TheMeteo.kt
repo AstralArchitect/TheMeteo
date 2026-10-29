@@ -6,6 +6,11 @@ Copyright (C) 2026  AstralArchitect
 package fr.matthstudio.themeteo
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.PowerManager
 import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -55,6 +60,29 @@ class TheMeteo : Application(), ImageLoaderFactory, Configuration.Provider {
 
         setupWorkManager()
         setupAppStateManager()
+        setupPowerSaveModeListener()
+    }
+
+    private fun setupPowerSaveModeListener() {
+        val powerManager = getSystemService(POWER_SERVICE) as? PowerManager
+        fun updateState() {
+            val active = powerManager?.isPowerSaveMode == true
+            AppStateManager.updateBatterySaver(active)
+        }
+        updateState()
+
+        val filter = IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+        registerReceiver(object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                updateState()
+            }
+        }, filter)
+
+        applicationScope.launch {
+            ProcessLifecycleOwner.get().lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                updateState()
+            }
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

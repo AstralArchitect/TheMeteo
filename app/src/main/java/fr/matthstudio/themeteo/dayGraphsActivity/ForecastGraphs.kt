@@ -148,6 +148,9 @@ fun GenericGraphGlobal(
 
     val density = LocalDensity.current
 
+    val userSettingsState by AppStateManager.userSettings.collectAsState()
+    val isExpertMode = userSettingsState?.expertMode == true
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -168,7 +171,9 @@ fun GenericGraphGlobal(
                 }
                 GraphType.PRECIPITATION_PROB -> shortTermData.map { it.precipitationProbability ?: 0 }
                 GraphType.PRECIPITATION -> {
-                    maxForecast = shortTermData.map { it.maxPossiblePrecipitation }
+                    if (isExpertMode) {
+                        maxForecast = shortTermData.map { it.maxPossiblePrecipitation }
+                    }
                     shortTermData.map { it.precipitation }
                 }
                 GraphType.RAIN -> shortTermData.map { (it.precipitation - it.snowfall).coerceAtLeast(0f) }

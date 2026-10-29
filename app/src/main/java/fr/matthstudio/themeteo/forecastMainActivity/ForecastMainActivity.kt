@@ -161,6 +161,7 @@ fun BentoCardContent(
     cardType: BentoCardType,
     viewModel: WeatherViewModel,
     hourlyForecast: WeatherDataState,
+    dailyForecast: WeatherDataState,
     context: android.content.Context,
     isLauncherActivity: Boolean,
     onShowSunMoonDetails: () -> Unit,
@@ -171,7 +172,7 @@ fun BentoCardContent(
         BentoCardType.VIGILANCE -> VigilanceCard(viewModel, onCardClick = onShowVigilance)
         BentoCardType.HOURLY_FORECAST -> HourlyForecastCard(hourlyForecast, context = context, viewModel = viewModel)
         BentoCardType.SUN_DETAILS -> Sun(viewModel, onShowSunMoonDetails = onShowSunMoonDetails)
-        BentoCardType.DAILY_FORECAST -> if (isLauncherActivity) DailyForecastCard(viewModel, context)
+        BentoCardType.DAILY_FORECAST -> if (isLauncherActivity) DailyForecastCard(dailyForecast, viewModel, context)
         BentoCardType.AIR_QUALITY -> {
             val environmentalData by viewModel.environmentalData.collectAsState()
             environmentalData?.let { env ->
@@ -229,9 +230,12 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val hourlyForecast by viewModel.next24hForecast.collectAsState()
+    val dailyForecast by viewModel.dailyForecast.collectAsState()
     val isNight by viewModel.isNight.collectAsState()
     val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
     val isRadarAvailable by viewModel.isRainRadarAvailable.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val userSettings by viewModel.userSettings.collectAsState()
 
     LaunchedEffect(Unit) {
         AppStateManager.inAppUpdateEvent.collect {
@@ -269,7 +273,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshLocation()
+                viewModel.onResume()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -351,7 +355,6 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
-    val isRefreshing = false
 
 
     // --- AFFICHAGE CONDITIONNEL DES PANNEAUX ---
@@ -441,7 +444,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
 
         PullToRefreshBox(
             modifier = Modifier.fillMaxSize(),
-            onRefresh = { viewModel.refresh() },
+            onRefresh = { viewModel.refresh(force = true) },
             isRefreshing = isRefreshing
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -638,7 +641,6 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 if (hourlyForecast !is WeatherDataState.SuccessShortTermHourly)
                                     return@Row
 
-                                val userSettings by viewModel.userSettings.collectAsState()
                                 val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
 
                                 LottieWeatherIcon(
@@ -692,9 +694,8 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 style = MaterialTheme.typography.titleLarge,
                                 color = Color.White.copy(alpha = 0.9f)
                             )
-                            val userSettings by viewModel.userSettings.collectAsState()
-                            val max = (viewModel.next24hForecast.collectAsState().value as? WeatherDataState.SuccessShortTermHourly)?.data?.maxOfOrNull { it.temperature }
-                            val min = (viewModel.next24hForecast.collectAsState().value as? WeatherDataState.SuccessShortTermHourly)?.data?.minOfOrNull { it.temperature }
+                            val max = (hourlyForecast as? WeatherDataState.SuccessShortTermHourly)?.data?.maxOfOrNull { it.temperature }
+                            val min = (hourlyForecast as? WeatherDataState.SuccessShortTermHourly)?.data?.minOfOrNull { it.temperature }
                             max?.let { max ->
                                 val tempUnit = userSettings?.temperatureUnit ?: TemperatureUnit.CELSIUS
                                 val roundToInt = userSettings?.roundToInt ?: true
@@ -806,6 +807,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
                                 cardType,
                                 viewModel,
                                 hourlyForecast,
+                                dailyForecast,
                                 context,
                                 isLauncherActivity,
                                 { showSunMoonDialog = true },

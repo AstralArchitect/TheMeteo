@@ -86,10 +86,6 @@ data class SynopticStepUI(
     val windGustP50: Float,
     val windGustP90: Float,
     val precipitation: Float,
-    val visibility: Float,
-    val humidityP10: Int,
-    val humidityP50: Int,
-    val humidityP90: Int,
     val precipitationProbability: Int,
     val cloudCoverTotal: Int = 0
 )
@@ -102,7 +98,8 @@ data class SynopticStepUI(
 data class SynopticScenarioUI(
     val probability: Float,
     val wmoCode: Int, // Code WMO représentatif / dominant du scénario sur la journée
-    val steps: List<SynopticStepUI> // Série temporelle de 7 pas de 6h (chacun avec son propre wmoCode)
+    val steps: List<SynopticStepUI>, // Série temporelle de 4 pas de 6h (chacun avec son propre wmoCode)
+    val precipitationSum: Float = 0f
 )
 
 /**
@@ -126,5 +123,6 @@ data class ExtendedForecastUI(
     @Serializable(with = LocalDateTimeSerializer::class)
     val runHour: LocalDateTime,
     val mediumTermSteps: List<MediumTermStepUI>,
-    val longTermDays: List<DailySynopticForecastUI>
+    val longTermDays: List<DailySynopticForecastUI>,
+    val mediumTermDailyPrecipitation: List<Float> = emptyList()
 )

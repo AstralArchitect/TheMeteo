@@ -62,6 +62,17 @@ class WeatherParser(
         weatherService.clearVolatileCaches()
     }
 
+    suspend fun forceRefreshAll(latitude: Double, longitude: Double) {
+        val lat = roundTo3Decimals(latitude)
+        val lon = roundTo3Decimals(longitude)
+        coroutineScope {
+            val shortDeferred = async { fetchShortTermForecast(lat, lon, forceRefresh = true) }
+            val extendedDeferred = async { fetchExtendedTermForecast(lat, lon, forceRefresh = true) }
+            shortDeferred.await()
+            extendedDeferred.await()
+        }
+    }
+
     private fun startHourlyTicker() {
         scope.launch {
             while (isActive) {
@@ -163,7 +174,8 @@ class WeatherParser(
         startHour: LocalDateTime,
         numHours: Int,
         latitude: Double,
-        longitude: Double
+        longitude: Double,
+        forceRefresh: Boolean = false
     ): Flow<WeatherDataState> = flow {
         val lat = roundTo3Decimals(latitude)
         val lon = roundTo3Decimals(longitude)
@@ -173,13 +185,15 @@ class WeatherParser(
 
         // 1. Émission immédiate du cache utilisable si présent (Stale-While-Revalidate)
         var hasEmittedData = false
-        val initialCached = weatherCache.getCachedShortIfUsable(pointIndex)
-        if (initialCached != null) {
-            val cachedFiltered = filterShortTermSteps(initialCached.steps, startHour, endHour, zoneId)
-            if (cachedFiltered.isNotEmpty()) {
-                updateCurrentWmoFromSteps(initialCached.steps, zoneId)
-                emit(WeatherDataState.SuccessShortTermHourly(cachedFiltered))
-                hasEmittedData = true
+        if (!forceRefresh) {
+            val initialCached = weatherCache.getCachedShortIfUsable(pointIndex)
+            if (initialCached != null) {
+                val cachedFiltered = filterShortTermSteps(initialCached.steps, startHour, endHour, zoneId)
+                if (cachedFiltered.isNotEmpty()) {
+                    updateCurrentWmoFromSteps(initialCached.steps, zoneId)
+                    emit(WeatherDataState.SuccessShortTermHourly(cachedFiltered))
+                    hasEmittedData = true
+                }
             }
         }
 
@@ -188,7 +202,7 @@ class WeatherParser(
         }
 
         // 2. Revalidation réseau
-        val forecast = fetchShortTermForecast(lat, lon)
+        val forecast = fetchShortTermForecast(lat, lon, forceRefresh)
         if (forecast == null) {
             if (!hasEmittedData) {
                 emit(WeatherDataState.Error("Unable to get short term forecast"))
@@ -210,7 +224,8 @@ class WeatherParser(
         startHour: LocalDateTime,
         endHour: LocalDateTime,
         latitude: Double,
-        longitude: Double
+        longitude: Double,
+        forceRefresh: Boolean = false
     ): Flow<WeatherDataState> = flow {
         val lat = roundTo3Decimals(latitude)
         val lon = roundTo3Decimals(longitude)
@@ -218,22 +233,24 @@ class WeatherParser(
         val pointIndex = weatherService.getPointIndex(lon, lat, true)
 
         var hasEmittedData = false
-        val initialCached = weatherCache.getCachedExtendedIfUsable(pointIndex)
-        if (initialCached != null) {
-            val cachedFiltered = initialCached.mediumTermSteps.mapNotNull { step ->
-                val localTime = step.time.atZone(ZoneId.of("UTC"))
-                    .withZoneSameInstant(zoneId)
-                    .toLocalDateTime()
+        if (!forceRefresh) {
+            val initialCached = weatherCache.getCachedExtendedIfUsable(pointIndex)
+            if (initialCached != null) {
+                val cachedFiltered = initialCached.mediumTermSteps.mapNotNull { step ->
+                    val localTime = step.time.atZone(ZoneId.of("UTC"))
+                        .withZoneSameInstant(zoneId)
+                        .toLocalDateTime()
 
-                if (!localTime.isBefore(startHour) && localTime.isBefore(endHour)) {
-                    step.copy(time = localTime)
-                } else {
-                    null
+                    if (!localTime.isBefore(startHour) && localTime.isBefore(endHour)) {
+                        step.copy(time = localTime)
+                    } else {
+                        null
+                    }
                 }
-            }
-            if (cachedFiltered.isNotEmpty()) {
-                emit(WeatherDataState.SuccessMediumTermHourly(cachedFiltered))
-                hasEmittedData = true
+                if (cachedFiltered.isNotEmpty()) {
+                    emit(WeatherDataState.SuccessMediumTermHourly(cachedFiltered))
+                    hasEmittedData = true
+                }
             }
         }
 
@@ -241,7 +258,7 @@ class WeatherParser(
             emit(WeatherDataState.Loading)
         }
 
-        val extendedForecast = fetchExtendedTermForecast(lat, lon)
+        val extendedForecast = fetchExtendedTermForecast(lat, lon, forceRefresh)
         if (extendedForecast == null) {
             if (!hasEmittedData) {
                 emit(WeatherDataState.Error("Unable to get extended forecast"))
@@ -273,14 +290,15 @@ class WeatherParser(
         startDate: LocalDate,
         endDate: LocalDate,
         latitude: Double,
-        longitude: Double
+        longitude: Double,
+        forceRefresh: Boolean = false
     ): Flow<WeatherDataState> = flow {
         emit(WeatherDataState.Loading)
 
         val lat = roundTo3Decimals(latitude)
         val lon = roundTo3Decimals(longitude)
         val zoneId = ZoneId.systemDefault()
-        val extendedForecast = fetchExtendedTermForecast(lat, lon)
+        val extendedForecast = fetchExtendedTermForecast(lat, lon, forceRefresh)
         if (extendedForecast == null) {
             emit(WeatherDataState.Error("Unable to get extended forecast"))
             return@flow
@@ -370,8 +388,9 @@ class WeatherParser(
         date: LocalDate,
         nDays: Long,
         latitude: Double,
-        longitude: Double
-    ): Flow<WeatherDataState> = getDaily(date, date.plusDays(nDays), latitude, longitude)
+        longitude: Double,
+        forceRefresh: Boolean = false
+    ): Flow<WeatherDataState> = getDaily(date, date.plusDays(nDays), latitude, longitude, forceRefresh)
 
     private fun buildDailyForecastList(
         shortForecast: ShortTermForecastUI?,
@@ -395,11 +414,13 @@ class WeatherParser(
             }
 
             val synopticDay = extendedForecast?.longTermDays?.find { day ->
-                day.date == currentDate || day.dayNumber == daysDiff.toInt() || day.scenarios.any { scenario ->
+                day.date == currentDate || day.scenarios.any { scenario ->
                     scenario.steps.any { step ->
                         step.time.toLocalDate() == currentDate
                     }
                 }
+            } ?: extendedForecast?.longTermDays?.find { day ->
+                day.dayNumber == daysDiff.toInt()
             }
 
             val dailyUI: DailyForecastUI? = when {
@@ -431,7 +452,14 @@ class WeatherParser(
                 daysDiff < 7 && !mediumSteps.isNullOrEmpty() -> {
                     val minTemp = mediumSteps.minOf { it.tempP50.toDouble() }.toFloat()
                     val maxTemp = mediumSteps.maxOf { it.tempP50.toDouble() }.toFloat()
-                    val precipSum = 0f
+                    val baseDate = extendedForecast.runHour.toLocalDate()
+                    val dayNum = ChronoUnit.DAYS.between(baseDate, currentDate).toInt()
+                    val precipIdx = dayNum - 2
+                    val precipSum = if (precipIdx in 0 until extendedForecast.mediumTermDailyPrecipitation.size) {
+                        extendedForecast.mediumTermDailyPrecipitation[precipIdx]
+                    } else {
+                        0f
+                    }
                     val precipProb = mediumSteps.maxOf { it.precipitationProbability }
                     val maxWind = mediumSteps.maxOf { it.windSpeedP50 }
                     val maxGust = mediumSteps.maxOfOrNull { it.windGustP50 } ?: maxWind
@@ -475,14 +503,15 @@ class WeatherParser(
                             maxTemperature = maxTemp,
                             precipitationProbability = precipProb,
                             maxWindSpeed = maxWind,
-                            dominantWindDirection = windDir
+                            dominantWindDirection = windDir,
+                            precipitationSum = scenarioItem.precipitationSum
                         )
                     }
 
                     val mainScenario = allScenarios.first()
                     val mainSteps = synopticDay.scenarios.first().steps
                     val maxGust = mainSteps.maxOfOrNull { it.windGustP50 } ?: mainScenario.maxWindSpeed
-                    val precipSumMain = 0f
+                    val precipSumMain = mainScenario.precipitationSum
 
                     DailyForecastUI(
                         date = currentDate,
@@ -504,7 +533,14 @@ class WeatherParser(
                 !mediumSteps.isNullOrEmpty() -> {
                     val minTemp = mediumSteps.minOf { it.tempP50.toDouble() }.toFloat()
                     val maxTemp = mediumSteps.maxOf { it.tempP50.toDouble() }.toFloat()
-                    val precipSum = 0f
+                    val baseDate = extendedForecast.runHour.toLocalDate()
+                    val dayNum = ChronoUnit.DAYS.between(baseDate, currentDate).toInt()
+                    val precipIdx = dayNum - 2
+                    val precipSum = if (precipIdx in 0 until extendedForecast.mediumTermDailyPrecipitation.size) {
+                        extendedForecast.mediumTermDailyPrecipitation[precipIdx]
+                    } else {
+                        0f
+                    }
                     val precipProb = mediumSteps.maxOf { it.precipitationProbability }
                     val maxWind = mediumSteps.maxOf { it.windSpeedP50 }
                     val maxGust = mediumSteps.maxOfOrNull { it.windGustP50 } ?: maxWind
@@ -567,7 +603,8 @@ class WeatherParser(
         startDate: LocalDate,
         endDate: LocalDate,
         latitude: Double,
-        longitude: Double
+        longitude: Double,
+        forceRefresh: Boolean = false
     ): Flow<WeatherDataState> = flow {
         val lat = roundTo3Decimals(latitude)
         val lon = roundTo3Decimals(longitude)
@@ -577,13 +614,15 @@ class WeatherParser(
 
         // 1. Émission immédiate du cache utilisable si disponible (Stale-While-Revalidate)
         var hasEmittedData = false
-        val cachedShort = weatherCache.getCachedShortIfUsable(shortPointIndex)
-        val cachedExt = weatherCache.getCachedExtendedIfUsable(extPointIndex)
-        if (cachedShort != null || cachedExt != null) {
-            val cachedList = buildDailyForecastList(cachedShort, cachedExt, startDate, endDate, zoneId)
-            if (cachedList.isNotEmpty()) {
-                emit(WeatherDataState.SuccessDaily(cachedList))
-                hasEmittedData = true
+        if (!forceRefresh) {
+            val cachedShort = weatherCache.getCachedShortIfUsable(shortPointIndex)
+            val cachedExt = weatherCache.getCachedExtendedIfUsable(extPointIndex)
+            if (cachedShort != null || cachedExt != null) {
+                val cachedList = buildDailyForecastList(cachedShort, cachedExt, startDate, endDate, zoneId)
+                if (cachedList.isNotEmpty()) {
+                    emit(WeatherDataState.SuccessDaily(cachedList))
+                    hasEmittedData = true
+                }
             }
         }
 
@@ -597,15 +636,15 @@ class WeatherParser(
         val time = LocalDateTime.now()
         val (shortForecast, extendedForecast) = coroutineScope {
             if (requiresExtended) {
-                val shortDeferred = async { fetchShortTermForecast(lat, lon) }
-                val extendedDeferred = async { fetchExtendedTermForecast(lat, lon) }
+                val shortDeferred = async { fetchShortTermForecast(lat, lon, forceRefresh) }
+                val extendedDeferred = async { fetchExtendedTermForecast(lat, lon, forceRefresh) }
                 Pair(shortDeferred.await(), extendedDeferred.await())
             } else {
-                val shortOnly = fetchShortTermForecast(lat, lon)
+                val shortOnly = fetchShortTermForecast(lat, lon, forceRefresh)
                 val hasShortForStart = shortOnly?.steps?.any { step ->
                     step.time.atZone(ZoneId.of("UTC")).withZoneSameInstant(zoneId).toLocalDate() == startDate
                 } == true
-                val extFallback = if (hasShortForStart) null else fetchExtendedTermForecast(lat, lon)
+                val extFallback = if (hasShortForStart) null else fetchExtendedTermForecast(lat, lon, forceRefresh)
                 Pair(shortOnly, extFallback)
             }
         }
@@ -684,19 +723,19 @@ class WeatherParser(
             }
             return@withLock null
         }
-        val forecast = BinaryDecoder.parseFullExtendedTerm(rawData.first, rawData.second)
+        val forecast = BinaryDecoder.parseFullExtendedTerm(rawData.first, rawData.second, meta?.version ?: 2)
 
         weatherCache.setExtendedFromIndex(pointIndex, forecast.runHour, forecast)
         return@withLock forecast
     }
 
-    suspend fun getTechnicalInfo(latitude: Double, longitude: Double): ForecastTechnicalInfo? {
+    suspend fun getTechnicalInfo(latitude: Double, longitude: Double, forceRefresh: Boolean = false): ForecastTechnicalInfo? {
         val lat = roundTo3Decimals(latitude)
         val lon = roundTo3Decimals(longitude)
 
         val (shortTerm, extendedTerm) = coroutineScope {
-            val shortDeferred = async { fetchShortTermForecast(lat, lon) }
-            val extendedDeferred = async { fetchExtendedTermForecast(lat, lon) }
+            val shortDeferred = async { fetchShortTermForecast(lat, lon, forceRefresh) }
+            val extendedDeferred = async { fetchExtendedTermForecast(lat, lon, forceRefresh) }
             Pair(shortDeferred.await(), extendedDeferred.await())
         }
         if (shortTerm == null) return null

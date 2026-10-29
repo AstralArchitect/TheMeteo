@@ -92,6 +92,7 @@ class DayGraphsActivity : ComponentActivity() {
         }
 
         val fullPeriod = intent.getBooleanExtra("FULL_PERIOD", false)
+        val initialScenarioIndex = intent.getIntExtra("SCENARIO_INDEX", 0)
 
         if (startDateTime == null) {
             Log.e("DayGraphsActivity", "start date time is null. Defaulting to now.")
@@ -122,7 +123,7 @@ class DayGraphsActivity : ComponentActivity() {
                             .windowInsetsPadding(WindowInsets.safeDrawing),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        GraphsScreen(weatherViewModel, fullPeriod)
+                        GraphsScreen(weatherViewModel, fullPeriod, initialScenarioIndex)
                     }
                 }
             }
@@ -131,9 +132,10 @@ class DayGraphsActivity : ComponentActivity() {
 }
 
 @Composable
-fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
+fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false, initialScenarioIndex: Int = 0) {
 
     val forecast by viewModel.hourlyForecast.collectAsState()
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
     val scrollState = rememberScrollState()
     val userSettings by viewModel.userSettings.collectAsState()
     val settings = userSettings ?: return
@@ -527,9 +529,9 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                             )
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // 4. Total Precipitation (mm)
+                            // 4. Total Precipitation (mm/3h)
                             if (mediumData.any { it.totalPrecipitation > 0.05f }) {
-                                Text(text = stringResource(R.string.precipitation), modifier = titleModifier)
+                                Text(text = stringResource(R.string.precipitation_medium), modifier = titleModifier)
                                 GenericGraphGlobal(
                                     fullForecast = forecast,
                                     roundToInt = false,
@@ -696,7 +698,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false) {
                         } else if (forecast is WeatherDataState.SuccessLongTermDaily && (forecast as WeatherDataState.SuccessLongTermDaily).data.isNotEmpty()) {
                             val currentDay = (forecast as WeatherDataState.SuccessLongTermDaily).data.firstOrNull()
                             if (currentDay != null) {
-                                LongTermDayPreview(dayForecast = currentDay)
+                                LongTermDayPreview(dayForecast = currentDay, initialScenarioIndex = initialScenarioIndex)
                             }
                         } else {
                             Text(stringResource(R.string.no_data_available_for_day))

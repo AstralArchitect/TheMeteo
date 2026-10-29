@@ -212,12 +212,14 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
         }
     }
 
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenHeightPx = constraints.maxHeight.toFloat()
         val dynamicBlur by remember {
             derivedStateOf {
-                if (showLocationSheet) {
+                if (isBatterySaverActive) 0.dp
+                else if (showLocationSheet) {
                     // requireOffset() renvoie la position Y du haut de la sheet
                     // Si caché = screenHeightPx, Si ouvert = 0 (ou proche de 0)
                     val offset = try {
@@ -442,6 +444,7 @@ fun SingleDailyForecastCard(
 ) {
     val context = LocalContext.current
     val userSettings by viewModel.userSettings.collectAsState()
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
     val settings = userSettings ?: return
     val isDark = isSystemInDarkTheme()
 
@@ -484,17 +487,18 @@ fun SingleDailyForecastCard(
                         .padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
                     val animated = settings.enableAnimatedIcons && !isBatterySaverActive
+                    val maxPercentage = scenariosList.maxOfOrNull { it.percentage } ?: 0
 
                     scenariosList.forEachIndexed { index, scenario ->
+                        val isMainScenario = (index == 0 || scenario.percentage == maxPercentage)
                         val scenarioWord = weatherCodeToSimpleWord(scenario.wmo) ?: SimpleWeatherWord.SUNNY
 
                         val scenarioTempText = buildAnnotatedString {
                             withStyle(
                                 style = SpanStyle(
                                     fontWeight = FontWeight.Bold,
-                                    color = if (scenario.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
+                                    color = if (isMainScenario && scenario.maxTemperature == maxOfAll) Color.Red else Color.Unspecified
                                 )
                             ) {
                                 append(UnitConverter.formatTemperature(scenario.maxTemperature, settings.temperatureUnit, true, showUnitSymbol = false))
@@ -503,7 +507,7 @@ fun SingleDailyForecastCard(
                             withStyle(
                                 style = SpanStyle(
                                     fontWeight = FontWeight.Bold,
-                                    color = if (scenario.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
+                                    color = if (isMainScenario && scenario.minTemperature == minOfAll) Color(0xFF2196F3) else Color.Unspecified
                                 )
                             ) {
                                 append(UnitConverter.formatTemperature(scenario.minTemperature, settings.temperatureUnit, true, showUnitSymbol = false))
@@ -513,6 +517,13 @@ fun SingleDailyForecastCard(
                         Column(
                             modifier = Modifier
                                 .weight(1f)
+                                .clickable {
+                                    val intent = Intent(context, DayGraphsActivity::class.java).apply {
+                                        putExtra("START_DATE_TIME", dayReading.date.atTime(0, 0).toString())
+                                        putExtra("SCENARIO_INDEX", index)
+                                    }
+                                    context.startActivity(intent)
+                                }
                                 .background(
                                     color = if (!isDark)
                                         MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)

@@ -139,12 +139,13 @@ fun getWeatherWordDescription(word: SimpleWeatherWord): String {
 @Composable
 fun LongTermDayPreview(
     dayForecast: DailySynopticForecastUI,
+    initialScenarioIndex: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val scenarios = dayForecast.scenarios
     if (scenarios.isEmpty()) return
 
-    var activeScenarioIndex by rememberSaveable { mutableIntStateOf(0) }
+    var activeScenarioIndex by rememberSaveable(initialScenarioIndex) { mutableIntStateOf(initialScenarioIndex.coerceIn(0, (scenarios.size - 1).coerceAtLeast(0))) }
     val scenario = scenarios.getOrNull(activeScenarioIndex) ?: scenarios.first()
 
     val userSettingsState by AppStateManager.userSettings.collectAsState()
@@ -153,6 +154,8 @@ fun LongTermDayPreview(
     val isExpertMode = userSettingsState?.expertMode == true
 
     val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
+    val settings by AppStateManager.userSettings.collectAsState()
+    val animate = settings?.enableAnimatedIcons == true && !isBatterySaverActive
     val isDark = isSystemInDarkTheme()
 
     Column(
@@ -268,7 +271,7 @@ fun LongTermDayPreview(
                             ) {
                                 LottieWeatherIcon(
                                     iconPath = getLottieIconPath(weatherWord, isNight, isDark),
-                                    animate = !isBatterySaverActive,
+                                    animate = animate,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
@@ -334,7 +337,7 @@ fun LongTermDayPreview(
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
-                                text = if (mm > 0.05f) String.format(Locale.US, "%.1f mm/h", mm) else "0 mm/h",
+                                text = if (mm > 0.05f) String.format(Locale.US, "%.1f mm/6h", mm) else "0 mm/6h",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = if (mm > 0.05f) Color(0xFF64B5F6) else MaterialTheme.colorScheme.onSurface
@@ -353,23 +356,28 @@ fun LongTermDayPreview(
                         scenario.steps.forEach { step ->
                             val cloudCover = step.cloudCoverTotal
 
-                            Row(
+                            Column(
                                 modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Cloud,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
-                                    tint = Color(0xFF8E9AAF)
-                                )
-                                Text(
-                                    text = "$cloudCover%",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Cloud,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = Color(0xFF8E9AAF)
+                                    )
+                                    Text(
+                                        text = "$cloudCover%",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
                             }
                         }
                     }
@@ -460,48 +468,6 @@ fun LongTermDayPreview(
                         }
                     }
                 }
-
-                // --- LIGNE 6 : HUMIDITÉ ---
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-
-                DashboardRowSection(title = "Humidité", icon = Icons.Rounded.Opacity) {
-                    scenario.steps.forEach { step ->
-                        val humP50 = step.humidityP50
-                        val humP10 = step.humidityP10
-                        val humP90 = step.humidityP90
-
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Opacity,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
-                                    tint = Color(0xFF4DD0E1)
-                                )
-                                Text(
-                                    text = "$humP50%",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF4DD0E1)
-                                )
-                            }
-                            if (isExpertMode) {
-                                Text(
-                                    text = "$humP10–$humP90%",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -539,12 +505,14 @@ fun DashboardDaySummaryCard(
 
     val mainWord = weatherCodeToSimpleWord(scenario.wmoCode) ?: SimpleWeatherWord.SUNNY
     val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
+    val settings by AppStateManager.userSettings.collectAsState()
+    val animate = settings?.enableAnimatedIcons == true && !isBatterySaverActive
 
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         )
     ) {
         Column(
@@ -568,7 +536,7 @@ fun DashboardDaySummaryCard(
                     ) {
                         LottieWeatherIcon(
                             iconPath = getLottieIconPath(mainWord, false, isSystemInDarkTheme()),
-                            animate = !isBatterySaverActive,
+                            animate = animate,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -707,10 +675,6 @@ fun generateMockDailySynopticForecast(): DailySynopticForecastUI {
             windGustP50 = 35f,
             windGustP90 = 50f,
             precipitation = precipMm,
-            visibility = 10000f,
-            humidityP10 = 60,
-            humidityP50 = 75,
-            humidityP90 = 85,
             precipitationProbability = precipProb,
             cloudCoverTotal = 65
         )

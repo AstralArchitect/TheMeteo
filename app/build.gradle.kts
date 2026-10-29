@@ -2,6 +2,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
 import com.google.protobuf.gradle.*
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     alias(libs.plugins.android.application)
@@ -30,7 +31,7 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 804
+        versionCode = 809
         versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -97,13 +98,16 @@ android {
     }
 
     sourceSets {
-        getByName("main") {
-            // Force l'affichage du dossier proto dans l'IDE
-            java.directories.add("src/main/proto")
-        }
         getByName("foss") {
             java.directories.add("src/releaseNoFirebase/java")
         }
+    }
+
+    applicationVariants.all {
+        val protoJavaDir = layout.buildDirectory.dir("generated/source/proto/$name/java")
+        val protoKotlinDir = layout.buildDirectory.dir("generated/source/proto/$name/kotlin")
+        addJavaSourceFoldersToModel(protoJavaDir.get().asFile)
+        addJavaSourceFoldersToModel(protoKotlinDir.get().asFile)
     }
 }
 
@@ -222,5 +226,15 @@ afterEvaluate {
         (taskName.contains("debug") || taskName.contains("releasenofirebase") || taskName.contains("foss"))
     }.configureEach {
         enabled = false
+    }
+}
+
+// Ensure Kotlin compilation tasks depend on their corresponding Protobuf generation tasks
+tasks.withType<KotlinCompile>().configureEach {
+    val compileTaskName = name
+    if (compileTaskName.startsWith("compile") && compileTaskName.endsWith("Kotlin")) {
+        val variantName = compileTaskName.removePrefix("compile").removeSuffix("Kotlin")
+        val protoTaskName = "generate${variantName}Proto"
+        dependsOn(tasks.matching { it.name == protoTaskName })
     }
 }

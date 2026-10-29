@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.WbCloudy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -21,6 +22,7 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
+import fr.matthstudio.themeteo.AppStateManager
 import fr.matthstudio.themeteo.TheMeteo
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -81,6 +83,9 @@ fun LottieWeatherIcon(
         asyncComp
     }
 
+    val isBatterySaverActive by AppStateManager.isBatterySaverActive.collectAsState()
+    val shouldAnimate = animate && !isBatterySaverActive
+
     if (isPreview) {
         if (composition != null) {
             LottieAnimation(
@@ -97,7 +102,7 @@ fun LottieWeatherIcon(
             )
         }
     } else {
-        if (animate) {
+        if (shouldAnimate) {
             val progress by animateLottieCompositionAsState(
                 composition = composition,
                 isPlaying = true,

@@ -16,3 +16,4 @@ local.properties
 *.apk
 app/foss
 gradle/wrapper/*
+/app/src/release/google-services.json

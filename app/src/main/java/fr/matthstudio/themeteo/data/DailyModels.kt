@@ -16,6 +16,7 @@ data class DailyScenario(
     val precipitationProbability: Int,
     val maxWindSpeed: Float,
     val dominantWindDirection: Float,
+    val precipitationSum: Float = 0f,
 )
 
 @Serializable

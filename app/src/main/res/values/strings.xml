@@ -41,6 +41,7 @@
     <string name="unknown_error">Unknown error</string>
     <string name="chose_model">Chose the weather forecasting model.</string>
     <string name="precipitation">Precipitation (mm)</string>
+    <string name="precipitation_medium">Precipitation (mm/3h)</string>
     <string name="hourly_forecast">Hourly forecast</string>
     <string name="a_temperature_unit">Feel like</string>
     <string name="precipitation_unit">Precip. mm/h</string>
@@ -214,9 +215,9 @@
     <string name="unknown_phenomenon">UNKNOWN PHENOMENON</string>
     <string name="weather_model_title">Weather Model</string>
     <string name="round_values_title">Round Values</string>
-    <string name="round_values_desc">Round the values on the graphics, the precipitaion graphic cannot be rounded</string>
+    <string name="round_values_desc">Round the values on the graphics, the precipitation graphic cannot be rounded</string>
     <string name="animated_icons_title">Animated Icons</string>
-    <string name="animated_icons_desc">Animate the weather icon, this setting will be disabled when battery saver is on</string>
+    <string name="animated_icons_desc">Animate the weather icons, this setting will be disabled when battery saver is on</string>
     <string name="fill_missing_vars_title">Fill Missing Variables</string>
     <string name="fill_missing_vars_desc">Fill the missing variables due to model selection with the default models (ECMWF/GFS)</string>
     <string name="extend_duration_title">Extend Forecast Duration</string>

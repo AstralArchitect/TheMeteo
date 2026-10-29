@@ -751,6 +751,15 @@ fun SunriseSunsetCard(modifier: Modifier, event1: NextSunEvent, event2: NextSunE
 @Composable
 fun DailyForecastCard(viewModel: WeatherViewModel, context: Context) {
     val dailyForecast by viewModel.dailyForecast.collectAsState()
+    DailyForecastCard(dailyForecast = dailyForecast, viewModel = viewModel, context = context)
+}
+
+@Composable
+fun DailyForecastCard(
+    dailyForecast: WeatherDataState,
+    viewModel: WeatherViewModel,
+    context: Context
+) {
     val dailyData = (dailyForecast as? WeatherDataState.SuccessDaily)?.data
 
     BentoCard(
@@ -1819,7 +1828,7 @@ private fun LongTermScenariosPreview(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        color = if (isBatterySaverActive) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                         shape = RoundedCornerShape(12.dp)
                     )
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1894,7 +1903,7 @@ private fun SingleScenarioFallbackPreview(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    color = if (isBatterySaverActive) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(12.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 6.dp),

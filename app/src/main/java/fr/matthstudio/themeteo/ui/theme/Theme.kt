@@ -303,7 +303,13 @@ private val cloudyLightScheme = lightScheme.copy(
     tertiaryContainer = tertiaryContainerCloudyLight,
     onTertiaryContainer = onTertiaryContainerCloudyLight,
     background = backgroundCloudyLight,
-    surface = backgroundCloudyLight
+    onBackground = onBackgroundCloudyLight,
+    surface = backgroundCloudyLight,
+    onSurface = onSurfaceCloudyLight,
+    surfaceVariant = surfaceVariantCloudyLight,
+    onSurfaceVariant = onSurfaceVariantCloudyLight,
+    outline = outlineCloudyLight,
+    outlineVariant = outlineVariantCloudyLight
 )
 private val cloudyDarkScheme = darkScheme.copy(
     primary = primaryCloudyDark,

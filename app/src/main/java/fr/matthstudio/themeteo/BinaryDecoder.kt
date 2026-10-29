@@ -20,6 +20,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 class ProtobufVersionIncompatibleException(val targetVersion: Int) : Exception("Protobuf payload version $targetVersion is incompatible with this client app version.")
 
@@ -284,7 +285,7 @@ object BinaryDecoder {
         } else {
             intArrayOf(-6, 0, 6, 12, 18, 24, 30)
         }
-        val localOffsetHours = Math.round(long / 15.0f).toInt().coerceIn(-12, 14)
+        val localOffsetHours = (long / 15.0f).roundToInt().coerceIn(-12, 14)
 
         val rawSteps = (0 until nSteps).map { i ->
             val utcTime = zeroZeroZulu.plusHours(dayNumber * 24L + offsets[i])
@@ -313,10 +314,6 @@ object BinaryDecoder {
                 windGustP50 = decodeFloat16(floats, 5 * nSteps + i),
                 windGustP90 = decodeFloat16(floats, 6 * nSteps + i),
                 precipitation = decodeFloat16(floats, 7 * nSteps + i),
-                visibility = decodeFloat16(floats, 8 * nSteps + i),
-                humidityP10 = decodeInt8(bytes, 10 * nSteps + i),
-                humidityP50 = decodeInt8(bytes, 11 * nSteps + i),
-                humidityP90 = decodeInt8(bytes, 12 * nSteps + i),
                 precipitationProbability = decodeInt8(bytes, 13 * nSteps + i),
                 cloudCoverTotal = decodeInt8(bytes, 14 * nSteps + i)
             )
@@ -330,10 +327,77 @@ object BinaryDecoder {
         val maxWmo = steps.maxOfOrNull { it.wmoCode } ?: 0
         val scenarioWmo = if (maxWmo > 4) maxWmo else steps.groupingBy { it.wmoCode }.eachCount().maxByOrNull { it.value }?.key ?: maxWmo
 
-        return SynopticScenarioUI(probability = senario.probability, wmoCode = scenarioWmo, steps = steps)
+        return SynopticScenarioUI(
+            probability = senario.probability,
+            wmoCode = scenarioWmo,
+            steps = steps,
+            precipitationSum = senario.precipitationSum
+        )
     }
 
     fun decodeScenarioV2(
+        senario: LongTermScenario,
+        zeroZeroZulu: LocalDateTime,
+        dayNumber: Int,
+        long: Float
+    ): SynopticScenarioUI? {
+        if (!senario.isValid) return null
+        val floats = senario.packedFloatsF16
+        val bytes = senario.packedBytesI8
+        val nSteps = 4
+        val shift = (long / 90.0f).roundToInt().coerceIn(-2, 2)
+        val offsets = intArrayOf(
+            0 - 6 * shift,
+            6 - 6 * shift,
+            12 - 6 * shift,
+            18 - 6 * shift
+        )
+        val localOffsetHours = (long / 15.0f).roundToInt().coerceIn(-12, 14)
+
+        val steps = (0 until nSteps).map { i ->
+            val utcTime = zeroZeroZulu.plusHours(dayNumber * 24L + offsets[i])
+            val stepTime = utcTime.plusHours(localOffsetHours.toLong())
+
+            val wmoRaw = decodeUint8(bytes, 0 * nSteps + i)
+            val stepWmo = if (wmoRaw == 255) -1 else wmoRaw
+
+            SynopticStepUI(
+                time = stepTime,
+                wmoCode = stepWmo,
+                tempP10 = decodeInt8(bytes, 1 * nSteps + i).toFloat(),
+                tempP50 = decodeInt8(bytes, 2 * nSteps + i).toFloat(),
+                tempP90 = decodeInt8(bytes, 3 * nSteps + i).toFloat(),
+                apparentTempP10 = decodeInt8(bytes, 4 * nSteps + i).toFloat(),
+                apparentTempP50 = decodeInt8(bytes, 5 * nSteps + i).toFloat(),
+                apparentTempP90 = decodeInt8(bytes, 6 * nSteps + i).toFloat(),
+                pressureP10 = 850.0f + decodeUint8(bytes, 7 * nSteps + i).toFloat(),
+                pressureP50 = 850.0f + decodeUint8(bytes, 8 * nSteps + i).toFloat(),
+                pressureP90 = 850.0f + decodeUint8(bytes, 9 * nSteps + i).toFloat(),
+                windSpeedP10 = decodeFloat16(floats, 0 * nSteps + i),
+                windSpeedP50 = decodeFloat16(floats, 1 * nSteps + i),
+                windSpeedP90 = decodeFloat16(floats, 2 * nSteps + i),
+                windDirection = decodeFloat16(floats, 3 * nSteps + i),
+                windGustP10 = decodeFloat16(floats, 4 * nSteps + i),
+                windGustP50 = decodeFloat16(floats, 5 * nSteps + i),
+                windGustP90 = decodeFloat16(floats, 6 * nSteps + i),
+                precipitation = decodeFloat16(floats, 7 * nSteps + i),
+                precipitationProbability = decodeInt8(bytes, 13 * nSteps + i),
+                cloudCoverTotal = decodeInt8(bytes, 14 * nSteps + i)
+            )
+        }
+
+        val maxWmo = steps.maxOfOrNull { it.wmoCode } ?: 0
+        val scenarioWmo = if (maxWmo > 4) maxWmo else steps.groupingBy { it.wmoCode }.eachCount().maxByOrNull { it.value }?.key ?: maxWmo
+
+        return SynopticScenarioUI(
+            probability = senario.probability,
+            wmoCode = scenarioWmo,
+            steps = steps,
+            precipitationSum = senario.precipitationSum
+        )
+    }
+
+    fun decodeScenarioV3(
         senario: LongTermScenario,
         zeroZeroZulu: LocalDateTime,
         dayNumber: Int,
@@ -379,45 +443,41 @@ object BinaryDecoder {
                 windGustP50 = decodeFloat16(floats, 5 * nSteps + i),
                 windGustP90 = decodeFloat16(floats, 6 * nSteps + i),
                 precipitation = decodeFloat16(floats, 7 * nSteps + i),
-                visibility = decodeFloat16(floats, 8 * nSteps + i),
-                humidityP10 = decodeInt8(bytes, 10 * nSteps + i),
-                humidityP50 = decodeInt8(bytes, 11 * nSteps + i),
-                humidityP90 = decodeInt8(bytes, 12 * nSteps + i),
-                precipitationProbability = decodeInt8(bytes, 13 * nSteps + i),
-                cloudCoverTotal = decodeInt8(bytes, 14 * nSteps + i)
+                precipitationProbability = decodeInt8(bytes, 10 * nSteps + i),
+                cloudCoverTotal = decodeInt8(bytes, 11 * nSteps + i)
             )
         }
 
         val maxWmo = steps.maxOfOrNull { it.wmoCode } ?: 0
         val scenarioWmo = if (maxWmo > 4) maxWmo else steps.groupingBy { it.wmoCode }.eachCount().maxByOrNull { it.value }?.key ?: maxWmo
 
-        return SynopticScenarioUI(probability = senario.probability, wmoCode = scenarioWmo, steps = steps)
+        return SynopticScenarioUI(
+            probability = senario.probability,
+            wmoCode = scenarioWmo,
+            steps = steps,
+            precipitationSum = senario.precipitationSum
+        )
     }
 
     /**
      * Bibliothèque de fonctions de décodage selon la version du schéma Protobuf.
-     * Sélectionne automatiquement le décodeur approprié (v1, v2, etc.).
+     * Sélectionne automatiquement le décodeur approprié (v1, v2, v3, etc.).
      */
     fun decodeSenario(
         senario: LongTermScenario,
         zeroZeroZulu: LocalDateTime,
         dayNumber: Int,
         long: Float,
-        version: Int = 2
+        version: Int
     ): SynopticScenarioUI? {
-        val detectedVersion = when {
-            version >= 2 || senario.packedFloatsF16.size() == 72 || senario.packedBytesI8.size() == 60 -> 2
-            version == 1 || senario.packedFloatsF16.size() == 126 || senario.packedBytesI8.size() == 105 -> 1
-            else -> version
-        }
-
-        return when (detectedVersion) {
+        return when (version) {
             1 -> decodeScenarioV1(senario, zeroZeroZulu, dayNumber, long)
             2 -> decodeScenarioV2(senario, zeroZeroZulu, dayNumber, long)
+            3 -> decodeScenarioV3(senario, zeroZeroZulu, dayNumber, long)
             else -> {
-                Log.e("BinaryDecoder", "Incompatible Protobuf version: $detectedVersion")
+                Log.e("BinaryDecoder", "Incompatible Protobuf version: $version")
                 AppStateManager.triggerInAppUpdate()
-                throw ProtobufVersionIncompatibleException(detectedVersion)
+                throw ProtobufVersionIncompatibleException(version)
             }
         }
     }
@@ -426,7 +486,7 @@ object BinaryDecoder {
         day: LongTermForecast,
         zeroZeroZulu: LocalDateTime,
         lon: Float,
-        version: Int = 2
+        version: Int
     ): DailySynopticForecastUI? {
         val senarios = mutableListOf<SynopticScenarioUI>()
         for (i in day.scenariosList) {
@@ -436,7 +496,7 @@ object BinaryDecoder {
 
         if (senarios.isEmpty()) return null
 
-        val localOffsetHours = Math.round(lon / 15.0f).toInt().coerceIn(-12, 14)
+        val localOffsetHours = (lon / 15.0f).roundToInt().coerceIn(-12, 14)
         val dayDate = senarios.firstOrNull()?.steps?.getOrNull(1)?.time?.toLocalDate()
             ?: senarios.firstOrNull()?.steps?.firstOrNull()?.time?.toLocalDate()
             ?: zeroZeroZulu.plusHours((day.dayNumber * 24).toLong()).plusHours(localOffsetHours.toLong()).toLocalDate()
@@ -460,11 +520,10 @@ object BinaryDecoder {
 
         val zoneId = ZoneId.systemDefault()
         val midnightLocal = LocalDateTime.now(zoneId).toLocalDate().atStartOfDay()
-        val endWindowLocal = midnightLocal.plusHours(48)
 
         val filteredSteps = allSteps.filter { step ->
             val stepLocal = step.time.atZone(ZoneId.of("UTC")).withZoneSameInstant(zoneId).toLocalDateTime()
-            !stepLocal.isBefore(midnightLocal) && stepLocal.isBefore(endWindowLocal)
+            !stepLocal.isBefore(midnightLocal)
         }
 
         return ShortTermForecastUI(
@@ -478,10 +537,8 @@ object BinaryDecoder {
     fun parseFullExtendedTerm(
         payload: ExtendedForecastPointPayload,
         runUTC: LocalDateTime,
-        metadata: CDNMeteoMetadata? = null,
-        version: Int = 2
+        version: Int
     ): ExtendedForecastUI {
-        val ver = metadata?.nSteps ?: version
         val midnightUTC = LocalDateTime.ofInstant(
             Instant.ofEpochSecond(payload.reference00ZTimestampUtc),
             ZoneId.of("UTC")
@@ -490,16 +547,15 @@ object BinaryDecoder {
         val medSteps = payload.mediumTermStepsList.map { parseMediumTermStep(it, midnightUTC) }
         val zoneId = ZoneId.systemDefault()
         val midnightLocal = LocalDateTime.now(zoneId).toLocalDate().atStartOfDay()
-        val startWindowLocal = midnightLocal.plusHours(48)
 
         val filteredMedSteps = medSteps.filter { step ->
             val stepLocal = step.time.atZone(ZoneId.of("UTC")).withZoneSameInstant(zoneId).toLocalDateTime()
-            !stepLocal.isBefore(startWindowLocal)
+            !stepLocal.isBefore(midnightLocal)
         }
 
         val longTermDays = mutableListOf<DailySynopticForecastUI>()
         for (i in payload.longTermDaysList) {
-            val parsedDay = parseLongTermDay(i, midnightUTC, payload.longitude, ver) ?: continue
+            val parsedDay = parseLongTermDay(i, midnightUTC, payload.longitude, version) ?: continue
             longTermDays.add(parsedDay)
         }
 
@@ -508,7 +564,8 @@ object BinaryDecoder {
             longitude = payload.longitude,
             runHour = runUTC,
             mediumTermSteps = filteredMedSteps,
-            longTermDays = longTermDays
+            longTermDays = longTermDays,
+            mediumTermDailyPrecipitation = payload.mediumTermDailyPrecipitationList
         )
     }
 }

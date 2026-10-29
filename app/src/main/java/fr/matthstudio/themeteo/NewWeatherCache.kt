@@ -113,6 +113,8 @@ class NewWeatherCache(
 
     private val lastShortFetchTimes = java.util.concurrent.ConcurrentHashMap<Long, Long>()
     private val lastExtendedFetchTimes = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+    @Volatile
+    private var forceRecheckMetadata = false
 
     init {
         // Supprime l'ancien fichier de cache monolithique s'il existe
@@ -204,17 +206,20 @@ class NewWeatherCache(
     fun clearFetchTimes() {
         lastShortFetchTimes.clear()
         lastExtendedFetchTimes.clear()
+        forceRecheckMetadata = true
     }
 
     private fun isShortTermUsable(cached: CachedShortTermForecast): Boolean {
         val nowUTC = LocalDateTime.now(ZoneOffset.UTC)
-        return cached.data.steps.any { !it.time.isBefore(nowUTC) }
+        val futureSteps = cached.data.steps.count { !it.time.isBefore(nowUTC) }
+        return futureSteps >= 6
     }
 
     private fun isExtendedUsable(cached: CachedExtendedTermForecast): Boolean {
         val todayUTC = LocalDate.now(ZoneOffset.UTC)
-        return cached.data.longTermDays.any { !it.date.isBefore(todayUTC) } ||
-               cached.data.mediumTermSteps.any { !it.time.toLocalDate().isBefore(todayUTC) }
+        val futureDays = cached.data.longTermDays.count { !it.date.isBefore(todayUTC) }
+        val futureMedSteps = cached.data.mediumTermSteps.count { !it.time.toLocalDate().isBefore(todayUTC) }
+        return futureDays >= 2 || futureMedSteps >= 4
     }
 
     /**
@@ -265,7 +270,7 @@ class NewWeatherCache(
 
         val isUsable = cachedPoint != null && isShortTermUsable(cachedPoint)
 
-        if (cachedPoint != null && isUsable && !forceRefresh && (now - lastFetchTime < METADATA_RECHECK_INTERVAL_MS)) {
+        if (cachedPoint != null && isUsable && !forceRefresh && !forceRecheckMetadata && (now - lastFetchTime < METADATA_RECHECK_INTERVAL_MS)) {
             return Pair(cachedPoint.data, null)
         }
 
@@ -297,6 +302,7 @@ class NewWeatherCache(
         runHourUTC: LocalDateTime,
         data: ShortTermForecastUI
     ) {
+        forceRecheckMetadata = false
         val now = System.currentTimeMillis()
         lastShortFetchTimes[index] = now
         val item = CachedShortTermForecast(
@@ -327,7 +333,7 @@ class NewWeatherCache(
 
         val isUsable = cachedPoint != null && isExtendedUsable(cachedPoint)
 
-        if (cachedPoint != null && isUsable && !forceRefresh && (now - lastFetchTime < METADATA_RECHECK_INTERVAL_MS)) {
+        if (cachedPoint != null && isUsable && !forceRefresh && !forceRecheckMetadata && (now - lastFetchTime < METADATA_RECHECK_INTERVAL_MS)) {
             return Pair(cachedPoint.data, null)
         }
 
@@ -359,6 +365,7 @@ class NewWeatherCache(
         runHourUTC: LocalDateTime,
         data: ExtendedForecastUI
     ) {
+        forceRecheckMetadata = false
         val now = System.currentTimeMillis()
         lastExtendedFetchTimes[index] = now
         val item = CachedExtendedTermForecast(

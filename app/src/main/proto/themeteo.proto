@@ -63,8 +63,8 @@ message MediumTermStep {
     //  4: wind_gust_speed_p10 (m/s)
     //  5: wind_gust_speed (m/s Médiane P50)
     //  6: wind_gust_speed_p90 (m/s)
-    //  7: total_precipitation (mm)
-    //  8: snow_precipitation (mm)
+    //  7: total_precipitation (mm/3h)
+    //  8: snow_precipitation (mm/3h)
     bytes packed_floats_f16 = 2;
 
     // Tampon de 18 variables entières (18 octets) :
@@ -106,8 +106,7 @@ message LongTermScenario {
     //  4: wind_gust_speed_p10 (4 floats)
     //  5: wind_gust_speed (4 floats Médiane P50)
     //  6: wind_gust_speed_p90 (4 floats)
-    //  7: precipitation (4 floats)
-    //  8: visibility (4 floats)
+    //  7: precipitation (4 floats en mm/6h)
     bytes packed_floats_f16 = 3;
 
     // Tampon de 15 variables x 4 pas temporels (60 octets) :
@@ -121,12 +120,11 @@ message LongTermScenario {
     //  7: pressure_p10 (4 octets uint8 non signé : P = 850 + val hPa [850..1105 hPa])
     //  8: pressure (4 octets uint8 non signé : P = 850 + val hPa Médiane P50)
     //  9: pressure_p90 (4 octets uint8 non signé : P = 850 + val hPa)
-    // 10: relative_humidity_p10 (4 octets int8 : 0-100%)
-    // 11: relative_humidity (4 octets int8 : 0-100% Médiane P50)
-    // 12: relative_humidity_p90 (4 octets int8 : 0-100%)
-    // 13: precipitation_probability (4 octets int8 : 0-100%)
-    // 14: total_cloud_cover (4 octets int8 : 0-100% Médiane P50)
+    // 10: precipitation_probability (4 octets int8 : 0-100%)
+    // 11: total_cloud_cover (4 octets int8 : 0-100% Médiane P50)
     bytes packed_bytes_i8 = 4;
+
+    float precipitation_sum = 5;            // Somme médiane des précipitations sur la journée (mm)
 }
 
 message LongTermForecast {
@@ -148,4 +146,5 @@ message ExtendedForecastPointPayload {
     int64 reference_00z_timestamp_utc = 3;          // Timestamp Unix UTC de 00:00:00 UTC du jour J0
     repeated MediumTermStep medium_term_steps = 4;  // J+2 à J+8 (Centiles P10/P50/P90, H+36 à H+204)
     repeated LongTermForecast long_term_days = 5;      // J+8 à J+14 (3 Scénarios par jour)
+    repeated float medium_term_daily_precipitation = 6; // Cumuls quotidiens médians conditionnels (PoP >= 30%, en mm) pour J+2 à J+8 (7 jours)
 }

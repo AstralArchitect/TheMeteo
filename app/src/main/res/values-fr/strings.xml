@@ -36,6 +36,7 @@
     <string name="settings">Paramètres</string>
     <string name="chose_model">Choisissez le modèle pour les prévisions.</string>
     <string name="precipitation">Précipitations (mm)</string>
+    <string name="precipitation_medium">Précipitations (mm/3h)</string>
     <string name="hourly_forecast">Prévisions heure par heure</string>
     <string name="a_temperature_unit">Temp. ress.</string>
     <string name="precipitation_unit">Précip. mm/h</string>
