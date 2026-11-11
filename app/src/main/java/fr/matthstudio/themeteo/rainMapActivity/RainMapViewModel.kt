@@ -62,7 +62,7 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
 
     companion object {
         private const val TAG = "RainMapViewModel"
-        private const val TARGET_IMAGE_COUNT = 8
+        private const val TARGET_IMAGE_COUNT = 16
         private const val CANDIDATE_IMAGE_COUNT = 16
         private const val FETCH_BATCH_SIZE = 4
 
@@ -297,7 +297,7 @@ class RainMapViewModel(private val applicationContext: Application) : ViewModel(
         val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
         val baseUrl = "https://radar-images.19374629.xyz/"
 
-        var latestTime = currentTime.minusMinutes(15)
+        var latestTime = currentTime.minusMinutes(4)
         val roundedMinute = (latestTime.minute / 15) * 15
         latestTime = latestTime.withMinute(roundedMinute).withSecond(0).withNano(0)
 

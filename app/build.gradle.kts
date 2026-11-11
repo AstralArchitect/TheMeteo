@@ -31,10 +31,16 @@ android {
         applicationId = "fr.matthstudio.themeteo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 809
-        versionName = "3.0.0"
+        versionCode = 813
+        versionName = "3.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
     }
 
     buildTypes {
@@ -219,12 +225,10 @@ dependencies {
 
 // Disable Google Services and Crashlytics tasks for debug builds
 // and releaseNoFirebase / foss builds
-afterEvaluate {
-    tasks.matching {
-        val taskName = it.name.lowercase()
-        (taskName.contains("googleservices") || taskName.contains("crashlytics")) && 
-        (taskName.contains("debug") || taskName.contains("releasenofirebase") || taskName.contains("foss"))
-    }.configureEach {
+tasks.configureEach {
+    val taskName = name.lowercase()
+    if ((taskName.contains("googleservices") || taskName.contains("crashlytics")) && 
+        (taskName.contains("debug") || taskName.contains("releasenofirebase") || taskName.contains("foss"))) {
         enabled = false
     }
 }
@@ -235,6 +239,6 @@ tasks.withType<KotlinCompile>().configureEach {
     if (compileTaskName.startsWith("compile") && compileTaskName.endsWith("Kotlin")) {
         val variantName = compileTaskName.removePrefix("compile").removeSuffix("Kotlin")
         val protoTaskName = "generate${variantName}Proto"
-        dependsOn(tasks.matching { it.name == protoTaskName })
+        dependsOn(tasks.withType<GenerateProtoTask>().matching { it.name == protoTaskName })
     }
 }

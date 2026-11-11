@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
@@ -702,16 +703,35 @@ class WeatherViewModel(
                 val durationInHours = Duration.between(startDateTime, endDateTime).toHours().coerceAtLeast(1)
                 val lat = coords.latitude
                 val lon = coords.longitude
-                weatherParser.getShortTerm(startDateTime, durationInHours.toInt(), lat, lon).flatMapLatest { shortState ->
-                    if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
-                        flowOf(shortState)
-                    } else {
-                        weatherParser.getMediumTerm(startDateTime, endDateTime, lat, lon).flatMapLatest { medState ->
-                            if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= 8) {
-                                flowOf(medState)
-                            } else {
-                                weatherParser.getLongTerm(reqDate, reqDate, lat, lon)
+                val today = LocalDate.now()
+                val daysDiff = ChronoUnit.DAYS.between(today, reqDate)
+
+                if (daysDiff < 2) {
+                    weatherParser.getShortTerm(startDateTime, durationInHours.toInt(), lat, lon).flatMapLatest { shortState ->
+                        val isFromYesterday = (shortState as? WeatherDataState.SuccessShortTermHourly)?.runHour?.toLocalDate()?.isBefore(today) ?: false
+                        val canUseShort = if (daysDiff == 0L) {
+                            shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12
+                        } else {
+                            shortState is WeatherDataState.SuccessShortTermHourly && !isFromYesterday && shortState.data.size >= 20
+                        }
+                        if (canUseShort) {
+                            flowOf(shortState)
+                        } else {
+                            weatherParser.getMediumTerm(startDateTime, endDateTime, lat, lon).flatMapLatest { medState ->
+                                if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= 8) {
+                                    flowOf(medState)
+                                } else {
+                                    weatherParser.getLongTerm(reqDate, reqDate, lat, lon)
+                                }
                             }
+                        }
+                    }
+                } else {
+                    weatherParser.getMediumTerm(startDateTime, endDateTime, lat, lon).flatMapLatest { medState ->
+                        if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= 8) {
+                            flowOf(medState)
+                        } else {
+                            weatherParser.getLongTerm(reqDate, reqDate, lat, lon)
                         }
                     }
                 }

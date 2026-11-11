@@ -15,6 +15,7 @@ import fr.matthstudio.themeteo.data.GpsCoordinates
 import fr.matthstudio.themeteo.telemetry.TelemetryManager
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -87,20 +88,45 @@ class WeatherViewModel(
             val lon = coords.longitude
 
             val minMedSteps = 6
-            weatherParser.getShortTerm(start, durationHours.toInt(), lat, lon).flatMapLatest { shortState ->
-                if (shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12) {
-                    flowOf(shortState)
-                } else {
-                    weatherParser.getMediumTerm(start, start.plusHours(durationHours), lat, lon).flatMapLatest { medState ->
-                        if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= minMedSteps) {
-                            flowOf(medState)
-                        } else {
-                            weatherParser.getLongTerm(reqDate, reqDate, lat, lon).map { longState ->
-                                if (longState is WeatherDataState.Error && medState is WeatherDataState.SuccessMediumTermHourly && medState.data.isNotEmpty()) {
-                                    medState
-                                } else {
-                                    longState
+            val today = LocalDate.now()
+            val daysDiff = ChronoUnit.DAYS.between(today, reqDate)
+
+            if (daysDiff < 2) {
+                weatherParser.getShortTerm(start, durationHours.toInt(), lat, lon).flatMapLatest { shortState ->
+                    val isFromYesterday = (shortState as? WeatherDataState.SuccessShortTermHourly)?.runHour?.toLocalDate()?.isBefore(today) ?: false
+                    val canUseShort = if (daysDiff == 0L) {
+                        shortState is WeatherDataState.SuccessShortTermHourly && shortState.data.size >= 12
+                    } else {
+                        shortState is WeatherDataState.SuccessShortTermHourly && !isFromYesterday && shortState.data.size >= 20
+                    }
+                    if (canUseShort) {
+                        flowOf(shortState)
+                    } else {
+                        weatherParser.getMediumTerm(start, start.plusHours(durationHours), lat, lon).flatMapLatest { medState ->
+                            if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= minMedSteps) {
+                                flowOf(medState)
+                            } else {
+                                weatherParser.getLongTerm(reqDate, reqDate, lat, lon).map { longState ->
+                                    if (longState is WeatherDataState.Error && medState is WeatherDataState.SuccessMediumTermHourly && medState.data.isNotEmpty()) {
+                                        medState
+                                    } else {
+                                        longState
+                                    }
                                 }
+                            }
+                        }
+                    }
+                }
+            } else {
+                weatherParser.getMediumTerm(start, start.plusHours(durationHours), lat, lon).flatMapLatest { medState ->
+                    if (medState is WeatherDataState.SuccessMediumTermHourly && medState.data.size >= minMedSteps) {
+                        flowOf(medState)
+                    } else {
+                        weatherParser.getLongTerm(reqDate, reqDate, lat, lon).map { longState ->
+                            if (longState is WeatherDataState.Error && medState is WeatherDataState.SuccessMediumTermHourly && medState.data.isNotEmpty()) {
+                                medState
+                            } else {
+                                longState
                             }
                         }
                     }

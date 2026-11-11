@@ -294,7 +294,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false, initi
                             }
 
                             // Precipitation
-                            if ((hourlyData.maxOfOrNull { it.precipitation } ?: 0f) > 0.05f) {
+                            if ((hourlyData.maxOfOrNull { maxOf(it.precipitation, it.precipitationCond, it.precipitationQ90) } ?: 0f) >= 0.02f) {
                                 Text(text = stringResource(R.string.precipitation), modifier = titleModifier)
                                 GenericGraph(
                                     viewModel = viewModel,
@@ -530,7 +530,7 @@ fun GraphsScreen(viewModel: WeatherViewModel, fullPeriod: Boolean = false, initi
                             Spacer(modifier = Modifier.height(16.dp))
 
                             // 4. Total Precipitation (mm/3h)
-                            if (mediumData.any { it.totalPrecipitation > 0.05f }) {
+                            if (mediumData.any { it.totalPrecipitation >= 0.02f }) {
                                 Text(text = stringResource(R.string.precipitation_medium), modifier = titleModifier)
                                 GenericGraphGlobal(
                                     fullForecast = forecast,

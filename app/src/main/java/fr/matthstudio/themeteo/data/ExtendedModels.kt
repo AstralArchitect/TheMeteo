@@ -124,5 +124,6 @@ data class ExtendedForecastUI(
     val runHour: LocalDateTime,
     val mediumTermSteps: List<MediumTermStepUI>,
     val longTermDays: List<DailySynopticForecastUI>,
+    @Deprecated("Deprecated since v3, ignored starting in Protobuf v4. Sum mediumTermSteps.totalPrecipitation instead.")
     val mediumTermDailyPrecipitation: List<Float> = emptyList()
 )

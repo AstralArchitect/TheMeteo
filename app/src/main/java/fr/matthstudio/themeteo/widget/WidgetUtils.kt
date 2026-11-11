@@ -24,7 +24,6 @@ import androidx.glance.appwidget.state.getAppWidgetState
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import fr.matthstudio.themeteo.TheMeteo
 import kotlinx.coroutines.flow.first
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 object WidgetUtils {
@@ -47,8 +46,7 @@ object WidgetUtils {
             SimpleWeatherWord.PARTLY_CLOUDY, SimpleWeatherWord.MOSTLY_CLEAR, SimpleWeatherWord.VEILED -> R.drawable.cloudy_3_day
             SimpleWeatherWord.CLOUDY -> R.drawable.cloudy
             SimpleWeatherWord.FOGGY -> R.drawable.fog
-            SimpleWeatherWord.HAZE -> R.drawable.fog
-            SimpleWeatherWord.DUST -> R.drawable.dust
+            SimpleWeatherWord.MIST -> R.drawable.fog
             SimpleWeatherWord.DRIZZLY -> R.drawable.rainy_1
             SimpleWeatherWord.RAINY1 -> R.drawable.rainy_2
             SimpleWeatherWord.RAINY2, SimpleWeatherWord.RAIN_SHOWER, SimpleWeatherWord.RAIN_SHOWER1, SimpleWeatherWord.RAIN_SHOWER2 -> R.drawable.rainy_3

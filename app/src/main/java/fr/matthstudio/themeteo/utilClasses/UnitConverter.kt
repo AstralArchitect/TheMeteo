@@ -151,3 +151,20 @@ object UnitConverter {
  * Extension pour simplifier l'appel depuis les types Number.
  */
 fun Number.toSmartString(): String = UnitConverter.formatValue(this)
+
+/**
+ * Formate une hauteur de précipitations :
+ * - [0.02, 0.1[ -> "<0.1" (ou "<0,1" selon la locale)
+ * - < 0.02 -> "0"
+ * - >= 0.1 -> formatage standard à 1 décimale
+ */
+fun Number.toPrecipString(): String {
+    val v = this.toDouble()
+    if (v >= 0.02 && v < 0.1) {
+        return "<${UnitConverter.formatValue(0.1)}"
+    }
+    if (v < 0.02) {
+        return "0"
+    }
+    return UnitConverter.formatValue(v)
+}

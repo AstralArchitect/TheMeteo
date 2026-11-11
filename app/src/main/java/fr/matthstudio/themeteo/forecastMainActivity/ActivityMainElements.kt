@@ -35,7 +35,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Grass
 import androidx.compose.material.icons.rounded.Info
@@ -85,19 +84,16 @@ import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.data.DailyScenario
-import fr.matthstudio.themeteo.data.DailySynopticForecastUI
-import fr.matthstudio.themeteo.data.ForecastTechnicalInfo
 import fr.matthstudio.themeteo.data.SynopticScenarioUI
-import fr.matthstudio.themeteo.data.WeatherModelRegistry
 import fr.matthstudio.themeteo.data.WindUnit
 import fr.matthstudio.themeteo.dayChoserActivity.DayChooserActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.DayGraphsActivity
 import fr.matthstudio.themeteo.dayGraphsActivity.GraphType
-import fr.matthstudio.themeteo.dayGraphsActivity.MediumTermTripleLineGraph
 import fr.matthstudio.themeteo.utilClasses.AirQualityUI
 import fr.matthstudio.themeteo.utilClasses.FullSunData
 import fr.matthstudio.themeteo.utilClasses.PollenUI
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.toPrecipString
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import java.time.Duration
 import java.time.LocalDate
@@ -149,20 +145,7 @@ fun BlurredBackground(state: SimpleWeatherWord?, isNight: Boolean = false) {
                 Color(0xFF283593).copy(alpha = 0.5f)
             )
         }
-        SimpleWeatherWord.DUST -> if (isNight) {
-            Color(0xFF2E1B15) to listOf(
-                Color(0xFF5D4037).copy(alpha = 0.7f),
-                Color(0xFF4E342E).copy(alpha = 0.6f),
-                Color(0xFF3E2723).copy(alpha = 0.4f)
-            )
-        } else {
-            Color(0xFF8D6E63) to listOf(
-                Color(0xFFBCAAA4).copy(alpha = 0.8f),
-                Color(0xFFD7CCC8).copy(alpha = 0.6f),
-                Color(0xFFA1887F).copy(alpha = 0.5f)
-            )
-        }
-        SimpleWeatherWord.HAZE -> if (isNight) {
+        SimpleWeatherWord.MIST -> if (isNight) {
             Color(0xFF1A2124) to listOf(
                 Color(0xFF37474F).copy(alpha = 0.7f),
                 Color(0xFF263238).copy(alpha = 0.6f),
@@ -448,7 +431,7 @@ fun HourlyForecastCard(hourlyForecast: WeatherDataState, context: Context, viewM
                 ChosenVar.entries.forEach { buttonVariable ->
                     val isSelected = variable == buttonVariable
 
-                    if (buttonVariable == ChosenVar.PRECIPITATION && (hourlyForecast.data.maxOfOrNull { it.precipitation }?.toDouble() ?: 0.0) < 0.05)
+                    if (buttonVariable == ChosenVar.PRECIPITATION && (hourlyForecast.data.maxOfOrNull { maxOf(it.precipitation, it.precipitationCond, it.precipitationQ90) }?.toDouble() ?: 0.0) < 0.02)
                         return@forEach
 
                     OutlinedButton(
@@ -482,7 +465,7 @@ fun HourlyRainRateRow(
     val steps = (hourlyForecast as? WeatherDataState.SuccessShortTermHourly)?.data ?: return
     if (steps.isEmpty()) return
 
-    val hasRain = steps.any { it.precipitation >= 0.05f }
+    val hasRain = steps.any { it.precipitation >= 0.02f }
     if (!hasRain) return
 
     val density = LocalDensity.current
@@ -505,9 +488,9 @@ fun HourlyRainRateRow(
 
             steps.forEachIndexed { i, step ->
                 val precip = step.precipitation
-                if (precip >= 0.05f) {
+                if (precip >= 0.02f) {
                     val x = xPaddingPx + (i * xStepPx)
-                    val text = precip.toSmartString()
+                    val text = precip.toPrecipString()
 
                     drawContext.canvas.nativeCanvas.drawText(
                         text,

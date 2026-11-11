@@ -179,20 +179,36 @@ class WeatherParser(
     ): Flow<WeatherDataState> = flow {
         val lat = roundTo3Decimals(latitude)
         val lon = roundTo3Decimals(longitude)
-        val endHour = startHour.plusHours(numHours.toLong())
         val zoneId = ZoneId.systemDefault()
+        val midnightLocal = LocalDate.now(zoneId).atStartOfDay()
+        val cutoffLocal = midnightLocal.plusHours(48)
+
+        if (!startHour.isBefore(cutoffLocal)) {
+            emit(WeatherDataState.Error("Short term forecast not available beyond H+48"))
+            return@flow
+        }
+
+        val requestedEnd = startHour.plusHours(numHours.toLong())
+        val endHour = if (requestedEnd.isAfter(cutoffLocal)) cutoffLocal else requestedEnd
         val pointIndex = weatherService.getPointIndex(lon, lat)
+
+        val today = LocalDate.now(zoneId)
+        val isDay2OrLater = startHour.toLocalDate().isAfter(today)
 
         // 1. Émission immédiate du cache utilisable si présent (Stale-While-Revalidate)
         var hasEmittedData = false
         if (!forceRefresh) {
             val initialCached = weatherCache.getCachedShortIfUsable(pointIndex)
             if (initialCached != null) {
-                val cachedFiltered = filterShortTermSteps(initialCached.steps, startHour, endHour, zoneId)
-                if (cachedFiltered.isNotEmpty()) {
-                    updateCurrentWmoFromSteps(initialCached.steps, zoneId)
-                    emit(WeatherDataState.SuccessShortTermHourly(cachedFiltered))
-                    hasEmittedData = true
+                val isCachedFromYesterday = initialCached.runHour.toLocalDate().isBefore(today)
+                if (!isDay2OrLater || !isCachedFromYesterday) {
+                    val cachedFiltered = filterShortTermSteps(initialCached.steps, startHour, endHour, zoneId)
+                    val minSteps = if (isDay2OrLater) 20 else 1
+                    if (cachedFiltered.size >= minSteps) {
+                        updateCurrentWmoFromSteps(initialCached.steps, zoneId)
+                        emit(WeatherDataState.SuccessShortTermHourly(cachedFiltered, initialCached.runHour))
+                        hasEmittedData = true
+                    }
                 }
             }
         }
@@ -210,11 +226,20 @@ class WeatherParser(
             return@flow
         }
 
+        val isForecastFromYesterday = forecast.runHour.toLocalDate().isBefore(today)
+        if (isDay2OrLater && isForecastFromYesterday) {
+            if (!hasEmittedData) {
+                emit(WeatherDataState.Error("Short term forecast is from yesterday, not available for day 2+"))
+            }
+            return@flow
+        }
+
         val finalValue = filterShortTermSteps(forecast.steps, startHour, endHour, zoneId)
         updateCurrentWmoFromSteps(forecast.steps, zoneId)
 
-        if (finalValue.isNotEmpty()) {
-            emit(WeatherDataState.SuccessShortTermHourly(finalValue))
+        val minSteps = if (isDay2OrLater) 20 else 1
+        if (finalValue.size >= minSteps) {
+            emit(WeatherDataState.SuccessShortTermHourly(finalValue, forecast.runHour))
         } else if (!hasEmittedData) {
             emit(WeatherDataState.Error("Unable to get short term forecast"))
         }
@@ -423,8 +448,21 @@ class WeatherParser(
                 day.dayNumber == daysDiff.toInt()
             }
 
+            val isShortFromYesterday = shortForecast?.runHour?.toLocalDate()?.isBefore(today) ?: false
+
+            val hasCompleteDay2ShortSteps = (shortSteps?.size ?: 0) >= 20 && (shortSteps?.any {
+                val localH = it.time.atZone(ZoneId.of("UTC")).withZoneSameInstant(zoneId).hour
+                localH >= 20
+            } ?: false)
+
+            val canUseShortTerm = when (daysDiff) {
+                0L -> !shortSteps.isNullOrEmpty()
+                1L -> !isShortFromYesterday && hasCompleteDay2ShortSteps
+                else -> false
+            }
+
             val dailyUI: DailyForecastUI? = when {
-                daysDiff < 7 && !shortSteps.isNullOrEmpty() -> {
+                canUseShortTerm && !shortSteps.isNullOrEmpty() -> {
                     val minTemp = shortSteps.minOf { it.temperature }
                     val maxTemp = shortSteps.maxOf { it.temperature }
                     val precipSum = shortSteps.sumOf { it.precipitation.toDouble() }.toFloat()
@@ -452,14 +490,7 @@ class WeatherParser(
                 daysDiff < 7 && !mediumSteps.isNullOrEmpty() -> {
                     val minTemp = mediumSteps.minOf { it.tempP50.toDouble() }.toFloat()
                     val maxTemp = mediumSteps.maxOf { it.tempP50.toDouble() }.toFloat()
-                    val baseDate = extendedForecast.runHour.toLocalDate()
-                    val dayNum = ChronoUnit.DAYS.between(baseDate, currentDate).toInt()
-                    val precipIdx = dayNum - 2
-                    val precipSum = if (precipIdx in 0 until extendedForecast.mediumTermDailyPrecipitation.size) {
-                        extendedForecast.mediumTermDailyPrecipitation[precipIdx]
-                    } else {
-                        0f
-                    }
+                    val precipSum = mediumSteps.sumOf { it.totalPrecipitation.toDouble() }.toFloat()
                     val precipProb = mediumSteps.maxOf { it.precipitationProbability }
                     val maxWind = mediumSteps.maxOf { it.windSpeedP50 }
                     val maxGust = mediumSteps.maxOfOrNull { it.windGustP50 } ?: maxWind
@@ -533,14 +564,7 @@ class WeatherParser(
                 !mediumSteps.isNullOrEmpty() -> {
                     val minTemp = mediumSteps.minOf { it.tempP50.toDouble() }.toFloat()
                     val maxTemp = mediumSteps.maxOf { it.tempP50.toDouble() }.toFloat()
-                    val baseDate = extendedForecast.runHour.toLocalDate()
-                    val dayNum = ChronoUnit.DAYS.between(baseDate, currentDate).toInt()
-                    val precipIdx = dayNum - 2
-                    val precipSum = if (precipIdx in 0 until extendedForecast.mediumTermDailyPrecipitation.size) {
-                        extendedForecast.mediumTermDailyPrecipitation[precipIdx]
-                    } else {
-                        0f
-                    }
+                    val precipSum = mediumSteps.sumOf { it.totalPrecipitation.toDouble() }.toFloat()
                     val precipProb = mediumSteps.maxOf { it.precipitationProbability }
                     val maxWind = mediumSteps.maxOf { it.windSpeedP50 }
                     val maxGust = mediumSteps.maxOfOrNull { it.windGustP50 } ?: maxWind
@@ -562,7 +586,7 @@ class WeatherParser(
                     )
                 }
 
-                !shortSteps.isNullOrEmpty() -> {
+                canUseShortTerm && !shortSteps.isNullOrEmpty() -> {
                     val minTemp = shortSteps.minOf { it.temperature }
                     val maxTemp = shortSteps.maxOf { it.temperature }
                     val precipSum = shortSteps.sumOf { it.precipitation.toDouble() }.toFloat()
@@ -769,7 +793,10 @@ class WeatherParser(
 
 sealed class WeatherDataState {
     object Loading : WeatherDataState()
-    data class SuccessShortTermHourly(val data: List<ShortTermStepUI>): WeatherDataState()
+    data class SuccessShortTermHourly(
+        val data: List<ShortTermStepUI>,
+        val runHour: LocalDateTime? = null
+    ): WeatherDataState()
     data class SuccessMediumTermHourly(val data: List<MediumTermStepUI>): WeatherDataState()
     data class SuccessLongTermDaily(val data: List<DailySynopticForecastUI>): WeatherDataState()
     data class SuccessDaily(val data: List<DailyForecastUI>): WeatherDataState()

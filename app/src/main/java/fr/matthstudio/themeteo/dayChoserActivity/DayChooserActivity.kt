@@ -424,9 +424,10 @@ fun DayChooser(weatherViewModel: WeatherViewModel, isLauncherActivity: Boolean) 
 
 @Composable
 fun EnsembleIcon(wmo: Int, animated: Boolean, filter: ColorFilter?) {
+    val isDark = isSystemInDarkTheme()
     LottieWeatherIcon(
         // Since WMO is never null, we can safely use the !! operator
-        iconPath = getLottieIconPath(weatherCodeToSimpleWord(wmo)!!),
+        iconPath = getLottieIconPath(weatherCodeToSimpleWord(wmo)!!, darkTheme = isDark),
         animate = animated,
         modifier = Modifier.size(55.dp)
     )

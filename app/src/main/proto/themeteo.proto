@@ -15,13 +15,14 @@ option swift_prefix = "TM";
 message ShortTermStep {
     sint32 hour_offset_from_00z = 1;        // Décalage en heures par rapport à 00:00 UTC du jour J0 (ex: -12..+59)
 
-    // Tampon de 6 variables Float16 (12 octets, IEEE 754 half-precision little-endian) :
+    // Tampon de 7 variables Float16 (14 octets, IEEE 754 half-precision little-endian) :
     //  0: wind_speed (m/s)
     //  1: wind_direction (0-360°)
     //  2: wind_gust_speed (m/s)
     //  3: total_precipitation (mm/h)
     //  4: snow_precipitation (mm/h)
-    //  5: max_possible_precipitation (mm/h - pire cumul 5x5 parmi tous les membres)
+    //  5: precipitation_q90 (mm/h - 90e centile de l'ensemble sur le point p)
+    //  6: precipitation_cond (mm/h - médiane conditionnelle des membres pluvieux sur le point p)
     bytes packed_floats_f16 = 2;
 
     // Tampon de 11 variables entières (11 octets) :
@@ -146,5 +147,5 @@ message ExtendedForecastPointPayload {
     int64 reference_00z_timestamp_utc = 3;          // Timestamp Unix UTC de 00:00:00 UTC du jour J0
     repeated MediumTermStep medium_term_steps = 4;  // J+2 à J+8 (Centiles P10/P50/P90, H+36 à H+204)
     repeated LongTermForecast long_term_days = 5;      // J+8 à J+14 (3 Scénarios par jour)
-    repeated float medium_term_daily_precipitation = 6; // Cumuls quotidiens médians conditionnels (PoP >= 30%, en mm) pour J+2 à J+8 (7 jours)
+    repeated float medium_term_daily_precipitation = 6 [deprecated = true]; // [DEPRECATED - ignoré dès v4] Cumuls quotidiens médians conditionnels pour J+2 à J+8 (7 jours)
 }

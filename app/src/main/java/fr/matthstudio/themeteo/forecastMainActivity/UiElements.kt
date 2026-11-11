@@ -126,12 +126,10 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.rememberCameraPositionState
 import fr.matthstudio.themeteo.AppStateManager
-import fr.matthstudio.themeteo.CurrentWeatherReading
 import fr.matthstudio.themeteo.SearchState
 import fr.matthstudio.themeteo.LocationIdentifier
 import fr.matthstudio.themeteo.R
 import fr.matthstudio.themeteo.ShortTermStepUI
-import fr.matthstudio.themeteo.TheMeteo
 import fr.matthstudio.themeteo.UserSettings
 import fr.matthstudio.themeteo.WeatherDataState
 import fr.matthstudio.themeteo.WeatherService
@@ -182,8 +180,7 @@ enum class SimpleWeatherWord {
     RAINY2,       // Pluvieux
     RAINY1,       // Pluvieux
     DRIZZLY,      // Bruine
-    DUST,         // Dust storm
-    HAZE,         // Brume
+    MIST,         // Brume
     FOGGY,        // Brouillard
     CLOUDY,       // Nuageux
     VEILED,       // Ciel voilé
@@ -228,11 +225,9 @@ fun weatherCodeToSimpleWord(code: Int?): SimpleWeatherWord? {
         2 -> SimpleWeatherWord.PARTLY_CLOUDY
         3 -> SimpleWeatherWord.CLOUDY                 // Overcast
         4 -> SimpleWeatherWord.VEILED                 // Ciel voilé
-        5 -> SimpleWeatherWord.HAZE                   // Haze
-        6, 7, 8, 9 -> SimpleWeatherWord.DUST          // Dust
+        5 -> SimpleWeatherWord.MIST                   // Mist
         in 10..12 -> SimpleWeatherWord.FOGGY     // Mist/Shallow fog
         in 13..19 -> SimpleWeatherWord.CLOUDY    // Lightning, Squalls, etc.
-        in 30..39 -> SimpleWeatherWord.DUST      // Duststorms, sandstorms
         in 40..49 -> SimpleWeatherWord.FOGGY     // Fog
         in 50..59 -> SimpleWeatherWord.DRIZZLY   // Drizzle
         60, 61 -> SimpleWeatherWord.RAINY1       // Pluie faible continue
@@ -478,7 +473,7 @@ fun DailyForecastRow(
                 val gustValue = if (dayReading.maxWindGust > 0f) dayReading.maxWindGust else dayReading.maxWindSpeed
                 val maxGustKph = UnitConverter.convertWind(gustValue, WindUnit.KPH)
                 val maxWind = UnitConverter.convertWind(dayReading.maxWindSpeed, WindUnit.KPH)
-                if (maxGustKph >= 40f || maxWind >= 30f) {
+                if (maxGustKph >= 45f || maxWind >= 30f) {
                     Icon(
                         Icons.Rounded.Air,
                         contentDescription = null,

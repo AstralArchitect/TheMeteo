@@ -40,7 +40,8 @@ data class ShortTermStepUI(
     val windGust: Float,
     val precipitation: Float,
     val snowfall: Float,
-    val maxPossiblePrecipitation: Float,
+    val precipitationQ90: Float = 0f,
+    val precipitationCond: Float = 0f,
     val precipitationProbability: Int?,
     val thunderstormProbability: Int?,
     val humidity: Int?,
@@ -127,7 +128,7 @@ object BinaryDecoder {
 
     /**
      * Décode un ShortTermStep compacté selon le protocole quantisé :
-     * - packedFloatsF16 (5 floats : vent, direction, rafales, pluie, neige)
+     * - packedFloatsF16 (7 floats : vent, direction, rafales, pluie, neige, pluie Q90, pluie conditionnelle)
      * - packedBytesI8 (11 octets : wmo, temp, appTemp, press, 7 pourcentages)
      */
     fun parseShortTermStep(
@@ -151,15 +152,29 @@ object BinaryDecoder {
         // 3. Pression MSL (Octet 3 : uint8 non signé, offset de 850 hPa)
         val pressure = 850.0f + decodeUint8(bytes, 3).toFloat()
 
-        // 4. Variables Float16 (6 variables compactées)
+        // 4. Variables Float16 (7 variables compactées)
         val windSpeed = decodeFloat16(floats, 0)
         val windDirection = decodeFloat16(floats, 1)
         val windGust = decodeFloat16(floats, 2)
         val precipitation = decodeFloat16(floats, 3)
         val snowfall = decodeFloat16(floats, 4)
-        var maxPossiblePrecipitation = decodeFloat16(floats, 5).let { if (it.isNaN()) null else it }
-        if (((maxPossiblePrecipitation ?: precipitation) - precipitation) < 3 && precipitation != 0f) {
-            maxPossiblePrecipitation = precipitation
+
+        var precipitationQ90 = decodeFloat16(floats, 5).let { if (it.isNaN()) null else it }
+        var precipitationCond = decodeFloat16(floats, 6).let { if (it.isNaN()) null else it }
+
+        if (precipitationCond != null && precipitationCond < precipitation) {
+            precipitationCond = precipitation
+        }
+        if (((precipitationCond ?: precipitation) - precipitation) < 0.1f && precipitation > 0f) {
+            precipitationCond = precipitation
+        }
+
+        val resolvedCond = precipitationCond ?: precipitation
+        if (precipitationQ90 != null && precipitationQ90 < resolvedCond) {
+            precipitationQ90 = resolvedCond
+        }
+        if (((precipitationQ90 ?: resolvedCond) - resolvedCond) < 0.1f && resolvedCond > 0f) {
+            precipitationQ90 = resolvedCond
         }
 
         // 5. Pourcentages (Octets 4 à 10 : int8 signé, -1 si NaN / indisponible)
@@ -179,7 +194,8 @@ object BinaryDecoder {
             windGust = windGust,
             precipitation = precipitation,
             snowfall = snowfall,
-            maxPossiblePrecipitation = maxPossiblePrecipitation ?: precipitation,
+            precipitationQ90 = precipitationQ90 ?: resolvedCond,
+            precipitationCond = resolvedCond,
             precipitationProbability = decodePct(4),
             thunderstormProbability = decodePct(5),
             humidity = decodePct(6),
@@ -473,7 +489,7 @@ object BinaryDecoder {
         return when (version) {
             1 -> decodeScenarioV1(senario, zeroZeroZulu, dayNumber, long)
             2 -> decodeScenarioV2(senario, zeroZeroZulu, dayNumber, long)
-            3 -> decodeScenarioV3(senario, zeroZeroZulu, dayNumber, long)
+            3, 4 -> decodeScenarioV3(senario, zeroZeroZulu, dayNumber, long)
             else -> {
                 Log.e("BinaryDecoder", "Incompatible Protobuf version: $version")
                 AppStateManager.triggerInAppUpdate()
@@ -520,10 +536,11 @@ object BinaryDecoder {
 
         val zoneId = ZoneId.systemDefault()
         val midnightLocal = LocalDateTime.now(zoneId).toLocalDate().atStartOfDay()
+        val endWindowLocal = midnightLocal.plusHours(48)
 
         val filteredSteps = allSteps.filter { step ->
             val stepLocal = step.time.atZone(ZoneId.of("UTC")).withZoneSameInstant(zoneId).toLocalDateTime()
-            !stepLocal.isBefore(midnightLocal)
+            !stepLocal.isBefore(midnightLocal) && stepLocal.isBefore(endWindowLocal)
         }
 
         return ShortTermForecastUI(
@@ -559,13 +576,14 @@ object BinaryDecoder {
             longTermDays.add(parsedDay)
         }
 
+        @Suppress("DEPRECATION")
         return ExtendedForecastUI(
             latitude = payload.latitude,
             longitude = payload.longitude,
             runHour = runUTC,
             mediumTermSteps = filteredMedSteps,
             longTermDays = longTermDays,
-            mediumTermDailyPrecipitation = payload.mediumTermDailyPrecipitationList
+            mediumTermDailyPrecipitation = if (version >= 4) emptyList() else payload.mediumTermDailyPrecipitationList
         )
     }
 }

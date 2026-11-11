@@ -42,7 +42,6 @@ import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Umbrella
-import fr.matthstudio.themeteo.data.ThemeMode
 import fr.matthstudio.themeteo.data.TemperatureUnit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -331,8 +330,7 @@ fun ForecastMainActivityScreen(viewModel: WeatherViewModel, isLauncherActivity: 
         SimpleWeatherWord.SNOWY_MIX -> stringResource(R.string.mixed_rain_snow)
         SimpleWeatherWord.RAINY1, SimpleWeatherWord.RAINY2, SimpleWeatherWord.RAIN_SHOWER, SimpleWeatherWord.RAIN_SHOWER1, SimpleWeatherWord.RAIN_SHOWER2 -> stringResource(R.string.rainy)
         SimpleWeatherWord.DRIZZLY -> stringResource(R.string.drizzle)
-        SimpleWeatherWord.DUST -> stringResource(R.string.dust_storm)
-        SimpleWeatherWord.HAZE -> stringResource(R.string.haze)
+        SimpleWeatherWord.MIST -> stringResource(R.string.haze)
         SimpleWeatherWord.FOGGY -> stringResource(R.string.foggy)
         SimpleWeatherWord.CLOUDY -> stringResource(R.string.cloudy)
         SimpleWeatherWord.VEILED -> stringResource(R.string.sky_veiled)

@@ -35,7 +35,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -62,12 +64,11 @@ import fr.matthstudio.themeteo.forecastMainActivity.SimpleWeatherWord
 import fr.matthstudio.themeteo.forecastMainActivity.getLottieIconPath
 import fr.matthstudio.themeteo.forecastMainActivity.weatherCodeToSimpleWord
 import fr.matthstudio.themeteo.utilClasses.UnitConverter
+import fr.matthstudio.themeteo.utilClasses.toPrecipString
 import fr.matthstudio.themeteo.utilClasses.toSmartString
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import kotlin.math.ln
-import kotlin.math.max
-import kotlin.math.roundToInt
+import kotlin.math.*
 
 enum class GraphType {
     TEMP, A_TEMP,
@@ -147,9 +148,8 @@ fun GenericGraphGlobal(
     if (totalSteps == 0) return
 
     val density = LocalDensity.current
-
     val userSettingsState by AppStateManager.userSettings.collectAsState()
-    val isExpertMode = userSettingsState?.expertMode == true
+    val isExpertMode = userSettingsState?.expertMode ?: false
 
     Box(
         modifier = Modifier
@@ -157,7 +157,8 @@ fun GenericGraphGlobal(
             .horizontalScroll(scrollState),
     ) {
         var forecast: List<Number>
-        var maxForecast: List<Number>? = null
+        var condForecast: List<Number>? = null
+        var q90Forecast: List<Number>? = null
         val times: List<String>
 
         if (shortTermData != null) {
@@ -171,8 +172,9 @@ fun GenericGraphGlobal(
                 }
                 GraphType.PRECIPITATION_PROB -> shortTermData.map { it.precipitationProbability ?: 0 }
                 GraphType.PRECIPITATION -> {
+                    condForecast = shortTermData.map { it.precipitationCond }
                     if (isExpertMode) {
-                        maxForecast = shortTermData.map { it.maxPossiblePrecipitation }
+                        q90Forecast = shortTermData.map { it.precipitationQ90 }
                     }
                     shortTermData.map { it.precipitation }
                 }
@@ -216,8 +218,12 @@ fun GenericGraphGlobal(
 
         if (forecast.isEmpty()) return@Box
 
-        val hasMaxPrecip = maxForecast != null && maxForecast.indices.any { i ->
-            maxForecast[i].toFloat() > forecast[i].toFloat() + 0.01f
+        val hasCondPrecip = condForecast != null && condForecast.indices.any { i ->
+            condForecast[i].toFloat() > forecast[i].toFloat() + 0.01f
+        }
+        val hasQ90Precip = isExpertMode && q90Forecast != null && q90Forecast.indices.any { i ->
+            val baseVal = maxOf(forecast[i].toFloat(), condForecast?.getOrNull(i)?.toFloat() ?: 0f)
+            q90Forecast[i].toFloat() >= 0.02f && (q90Forecast[i].toFloat() > baseVal + 0.01f || baseVal >= 0.02f)
         }
 
         val textColor: Int = AndroidColor.rgb(
@@ -232,10 +238,14 @@ fun GenericGraphGlobal(
                 .height(contentHeight)
         ) {
             val xPadding = with(density) { 20.dp.toPx() }
-            val yPadding = 80f
+            val yPaddingBottom = 80f
+            val yPaddingTop = 50f
             var maxValue = forecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
-            if (hasMaxPrecip && maxForecast != null) {
-                maxValue = maxOf(maxValue, maxForecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() })
+            if (hasCondPrecip) {
+                maxValue = maxOf(maxValue, condForecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() })
+            }
+            if (hasQ90Precip) {
+                maxValue = maxOf(maxValue, q90Forecast.maxOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() })
             }
             var minValue = forecast.minOf { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
 
@@ -246,114 +256,244 @@ fun GenericGraphGlobal(
 
             val canvasWidth = size.width
             val xStep = (canvasWidth - 2 * xPadding) / (totalSteps - 1).coerceAtLeast(1)
-            val yScale = (size.height - 2 * yPadding) / (maxValue - minValue).coerceAtLeast(1.0)
+            val yScale = (size.height - (yPaddingBottom + yPaddingTop)) / (maxValue - minValue).coerceAtLeast(1.0)
 
-            val linePath = Path()
-            val gradientPath = Path()
+            val isBarChart = graphType == GraphType.PRECIPITATION || graphType == GraphType.RAIN || graphType == GraphType.SNOWFALL
 
-            val firstX = xPadding
-            val firstY = size.height - yPadding - (((if(roundToInt) forecast.first().toDouble().roundToInt().toDouble() else forecast.first().toDouble()) - minValue) * yScale)
-            linePath.moveTo(firstX, firstY.toFloat())
-            gradientPath.moveTo(firstX, size.height)
-            gradientPath.lineTo(firstX, firstY.toFloat())
+            if (isBarChart) {
+                val yZero = (size.height - yPaddingBottom - ((0.0 - minValue) * yScale)).toFloat()
+                val barWidth = (xStep * .75f).coerceIn(14f, 100f)
+                val barRadius = CornerRadius(barWidth * 0.15f, barWidth * 0.15f)
+                val zeroStubHeight = 4f
 
-            forecast.forEachIndexed { i, point ->
-                val x = xPadding + (i * xStep)
-                val y = size.height - yPadding - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
-                linePath.lineTo(x, y.toFloat())
-                gradientPath.lineTo(x, y.toFloat())
-            }
-
-            val lastX = xPadding + ((forecast.size - 1) * xStep)
-            gradientPath.lineTo(lastX, size.height)
-            gradientPath.close()
-
-            drawPath(
-                path = gradientPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        graphColor.copy(alpha = 0.35f),
-                        graphColor.copy(alpha = 0.0f)
-                    ),
-                    startY = 0f,
-                    endY = size.height
+                // Ligne de base horizontale positionnée selon l'intervalle (yZero)
+                drawLine(
+                    color = graphColor.copy(alpha = 0.25f),
+                    start = Offset(xPadding - barWidth / 2f, yZero),
+                    end = Offset(xPadding + (forecast.size - 1) * xStep + barWidth / 2f, yZero),
+                    strokeWidth = 2f
                 )
-            )
 
-            // Courbe principale (ligne continue)
-            drawPath(linePath, graphColor, style = Stroke(width = 8f))
-
-            // Courbe max possible precipitation (ligne en pointillé)
-            if (hasMaxPrecip && maxForecast != null) {
-                val mf = maxForecast
-                val maxLinePath = Path()
-                val maxFirstX = xPadding
-                val maxFirstY = size.height - yPadding - (((if (roundToInt) mf[0].toDouble().roundToInt().toDouble() else mf[0].toDouble()) - minValue) * yScale)
-                maxLinePath.moveTo(maxFirstX, maxFirstY.toFloat())
-
-                mf.forEachIndexed { i, point ->
-                    val x = xPadding + (i * xStep)
-                    val y = size.height - yPadding - (((if (roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
-                    maxLinePath.lineTo(x, y.toFloat())
+                // Courbe pointillée Q90 (Mode Expert)
+                if (hasQ90Precip) {
+                    val q90Path = Path()
+                    val q90Color = graphColor.copy(alpha = 0.90f)
+                    var inSegment = false
+                    q90Forecast.forEachIndexed { i, q90Pt ->
+                        val q90Val = q90Pt.toFloat()
+                        if (q90Val >= 0.02f) {
+                            val x = xPadding + (i * xStep)
+                            val q90ValDouble = if (roundToInt) q90Pt.toDouble().roundToInt().toDouble() else q90Pt.toDouble()
+                            val yQ90 = (size.height - yPaddingBottom - ((q90ValDouble - minValue) * yScale)).toFloat()
+                            if (!inSegment) {
+                                q90Path.moveTo(x, yQ90)
+                                inSegment = true
+                            } else {
+                                q90Path.lineTo(x, yQ90)
+                            }
+                        } else {
+                            inSegment = false
+                        }
+                    }
+                    drawPath(
+                        path = q90Path,
+                        color = q90Color,
+                        style = Stroke(
+                            width = 3.5f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                        )
+                    )
+                    q90Forecast.forEachIndexed { i, q90Pt ->
+                        val q90Val = q90Pt.toFloat()
+                        if (q90Val >= 0.02f) {
+                            val x = xPadding + (i * xStep)
+                            val q90ValDouble = if (roundToInt) q90Pt.toDouble().roundToInt().toDouble() else q90Pt.toDouble()
+                            val yQ90 = (size.height - yPaddingBottom - ((q90ValDouble - minValue) * yScale)).toFloat()
+                            drawCircle(q90Color, radius = 4.5f, center = Offset(x, yQ90))
+                        }
+                    }
                 }
 
-                drawPath(
-                    path = maxLinePath,
-                    color = graphColor.copy(alpha = 0.85f),
-                    style = Stroke(
-                        width = 5f,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
-                    )
-                )
-            }
+                forecast.forEachIndexed { i, mainPoint ->
+                    val x = xPadding + (i * xStep)
+                    val mainVal = mainPoint.toFloat()
+                    val mainValDouble = if (roundToInt) mainPoint.toDouble().roundToInt().toDouble() else mainPoint.toDouble()
+                    val yMain = (size.height - yPaddingBottom - ((mainValDouble - minValue) * yScale)).toFloat()
 
-            forecast.forEachIndexed { i, mainPoint ->
-                val x = xPadding + (i * xStep)
-                val mainValDouble = if (roundToInt) mainPoint.toDouble().roundToInt().toDouble() else mainPoint.toDouble()
-                val yMain = size.height - yPadding - ((mainValDouble - minValue) * yScale)
+                    val condPoint = condForecast?.getOrNull(i)
+                    val condVal = condPoint?.toFloat() ?: mainVal
+                    val condValDouble = condPoint?.let { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() } ?: mainValDouble
+                    val yCond = (size.height - yPaddingBottom - ((condValDouble - minValue) * yScale)).toFloat()
 
-                val maxPoint = maxForecast?.getOrNull(i)
-                val maxValDouble = maxPoint?.let { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() }
-                val isMaxHigher = hasMaxPrecip && maxValDouble != null && (maxPoint.toFloat() > mainPoint.toFloat() + 0.05f)
+                    val q90Point = q90Forecast?.getOrNull(i)
+                    val q90Val = q90Point?.toFloat() ?: 0f
+                    val q90ValDouble = q90Point?.let { if (roundToInt) it.toDouble().roundToInt().toDouble() else it.toDouble() } ?: 0.0
+                    val yQ90 = (size.height - yPaddingBottom - ((q90ValDouble - minValue) * yScale)).toFloat()
 
-                if (isMaxHigher && maxValDouble != null && maxPoint != null) {
-                    val yMax = size.height - yPadding - ((maxValDouble - minValue) * yScale)
-                    val deltaY = (yMain - yMax).toFloat()
+                    val hasMainBar = mainVal >= 0.02f
+                    val hasCondBar = hasCondPrecip && condVal > mainVal + 0.02f && condVal >= 0.02f
+                    val hasQ90Label = hasQ90Precip && q90Point != null && q90Val >= 0.02f && q90Val > maxOf(mainVal, condVal) + 0.02f
 
-                    // Point sur la courbe max
-                    drawCircle(graphColor.copy(alpha = 0.85f), radius = 5f, center = Offset(x, yMax.toFloat()))
+                    // 1. Barre translucide (médiane conditionnelle / potentiel d'averse sur le point p)
+                    if (hasCondBar) {
+                        val condBarHeight = (yZero - yCond).coerceAtLeast(6f)
+                        val condBarTop = yZero - condBarHeight
+                        drawRoundRect(
+                            color = graphColor.copy(alpha = 0.28f),
+                            topLeft = Offset(x - barWidth / 2f, condBarTop),
+                            size = Size(barWidth, condBarHeight),
+                            cornerRadius = barRadius
+                        )
+                        drawRoundRect(
+                            color = graphColor.copy(alpha = 0.75f),
+                            topLeft = Offset(x - barWidth / 2f, condBarTop),
+                            size = Size(barWidth, condBarHeight),
+                            cornerRadius = barRadius,
+                            style = Stroke(
+                                width = 3f,
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+                            )
+                        )
+                    }
 
-                    // Texte pour la valeur max (au-dessus du point max)
+                    // 2. Barre pleine (pluie nominale recalibrée par épisode Wet Spells, ou barre plate de hauteur 0 au socle)
+                    if (hasMainBar) {
+                        val mainBarHeight = (yZero - yMain).coerceAtLeast(6f)
+                        val mainBarTop = yZero - mainBarHeight
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    graphColor,
+                                    graphColor.copy(alpha = 0.80f)
+                                ),
+                                startY = mainBarTop,
+                                endY = yZero
+                            ),
+                            topLeft = Offset(x - barWidth / 2f, mainBarTop),
+                            size = Size(barWidth, mainBarHeight),
+                            cornerRadius = barRadius
+                        )
+                    } else {
+                        // Barre de hauteur 0 sur la ligne de base
+                        drawRoundRect(
+                            color = graphColor.copy(alpha = 0.65f),
+                            topLeft = Offset(x - barWidth / 2f, yZero - zeroStubHeight / 2f),
+                            size = Size(barWidth, zeroStubHeight),
+                            cornerRadius = CornerRadius(zeroStubHeight / 2f, zeroStubHeight / 2f)
+                        )
+                    }
+
+                    // 3. Étiquettes de valeurs (Nominale principale, Cond secondaire, et Q90 expert secondaire)
+                    // Le label principal est fixe : toujours au-dessus de la barre nominale (ou sur le socle si 0)
+                    val mainBarTop = if (hasMainBar) yZero - (yZero - yMain).coerceAtLeast(6f) else yZero
+                    val mainTextY = if (hasMainBar) mainBarTop - 12f else yZero - 12f
+
                     drawContext.canvas.nativeCanvas.drawText(
-                        if (roundToInt) maxPoint.toDouble().roundToInt().toString() else maxPoint.toSmartString(),
+                        if (hasMainBar) {
+                            if (roundToInt) mainPoint.toDouble().roundToInt().toString() else mainPoint.toPrecipString()
+                        } else {
+                            "0"
+                        },
                         x,
-                        yMax.toFloat() - 18f,
+                        mainTextY,
                         Paint().apply {
                             textAlign = Paint.Align.CENTER
-                            textSize = 34f
+                            textSize = 38f
                             color = textColor
-                            alpha = (255 * 0.85f).toInt()
-                            isFakeBoldText = true
+                            if (hasMainBar) isFakeBoldText = true
                         }
                     )
 
-                    // Point sur la courbe principale
-                    drawCircle(Color.White, radius = 6f, center = Offset(x, yMain.toFloat()))
+                    // Les labels des graphes secondaires s'adaptent au label principal et ne le déplacent jamais
+                    var condTextY: Float? = null
+                    if (hasCondBar && condPoint != null) {
+                        val condBarTop = yZero - (yZero - yCond).coerceAtLeast(6f)
+                        val naturalCondY = condBarTop - 12f
+                        val adaptedCondY = naturalCondY.coerceAtMost(mainTextY - 38f).coerceAtLeast(20f)
+                        condTextY = adaptedCondY
+                        drawContext.canvas.nativeCanvas.drawText(
+                            if (roundToInt) condPoint.toDouble().roundToInt().toString() else condPoint.toPrecipString(),
+                            x,
+                            adaptedCondY,
+                            Paint().apply {
+                                textAlign = Paint.Align.CENTER
+                                textSize = 34f
+                                color = textColor
+                                alpha = (255 * 0.80f).toInt()
+                            }
+                        )
+                    }
 
-                    // Texte pour la valeur principale (en-dessous du point principal si conflit vertical, sinon au-dessus)
-                    val mainTextY = if (deltaY < 50f) yMain.toFloat() + 36f else yMain.toFloat() - 20f
+                    if (hasQ90Label) {
+                        val naturalQ90Y = yQ90 - 12f
+                        val lowerBoundY = condTextY ?: mainTextY
+                        val adaptedQ90Y = naturalQ90Y.coerceAtMost(lowerBoundY - 34f).coerceAtLeast(20f)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            if (roundToInt) q90Point.toDouble().roundToInt().toString() else q90Point.toPrecipString(),
+                            x,
+                            adaptedQ90Y,
+                            Paint().apply {
+                                textAlign = Paint.Align.CENTER
+                                textSize = 28f
+                                color = textColor
+                                alpha = (255 * 0.75f).toInt()
+                            }
+                        )
+                    }
+
+                    // 4. Heure en bas
                     drawContext.canvas.nativeCanvas.drawText(
-                        if (roundToInt) mainPoint.toDouble().roundToInt().toString() else mainPoint.toSmartString(),
+                        times[i],
                         x,
-                        mainTextY,
+                        size.height - 20f,
                         Paint().apply {
                             textAlign = Paint.Align.CENTER
                             textSize = 40f
                             color = textColor
                         }
                     )
-                } else {
-                    // Pas de valeur max distincte : affichage standard au-dessus du point principal
+                }
+            } else {
+                val linePath = Path()
+                val gradientPath = Path()
+
+                val firstX = xPadding
+                val firstY = size.height - yPaddingBottom - (((if(roundToInt) forecast.first().toDouble().roundToInt().toDouble() else forecast.first().toDouble()) - minValue) * yScale)
+                linePath.moveTo(firstX, firstY.toFloat())
+                gradientPath.moveTo(firstX, size.height)
+                gradientPath.lineTo(firstX, firstY.toFloat())
+
+                forecast.forEachIndexed { i, point ->
+                    val x = xPadding + (i * xStep)
+                    val y = size.height - yPaddingBottom - (((if(roundToInt) point.toDouble().roundToInt().toDouble() else point.toDouble()) - minValue) * yScale)
+                    linePath.lineTo(x, y.toFloat())
+                    gradientPath.lineTo(x, y.toFloat())
+                }
+
+                val lastX = xPadding + ((forecast.size - 1) * xStep)
+                gradientPath.lineTo(lastX, size.height)
+                gradientPath.close()
+
+                drawPath(
+                    path = gradientPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            graphColor.copy(alpha = 0.35f),
+                            graphColor.copy(alpha = 0.0f)
+                        ),
+                        startY = 0f,
+                        endY = size.height
+                    )
+                )
+
+                // Courbe principale (ligne continue)
+                drawPath(linePath, graphColor, style = Stroke(width = 8f))
+
+                forecast.forEachIndexed { i, mainPoint ->
+                    val x = xPadding + (i * xStep)
+                    val mainValDouble = if (roundToInt) mainPoint.toDouble().roundToInt().toDouble() else mainPoint.toDouble()
+                    val yMain = size.height - yPaddingBottom - ((mainValDouble - minValue) * yScale)
+
                     drawCircle(Color.White, radius = 6f, center = Offset(x, yMain.toFloat()))
 
                     drawContext.canvas.nativeCanvas.drawText(
@@ -366,18 +506,18 @@ fun GenericGraphGlobal(
                             color = textColor
                         }
                     )
-                }
 
-                drawContext.canvas.nativeCanvas.drawText(
-                    times[i],
-                    x,
-                    size.height - 20f,
-                    Paint().apply {
-                        textAlign = Paint.Align.CENTER
-                        textSize = 40f
-                        color = textColor
-                    }
-                )
+                    drawContext.canvas.nativeCanvas.drawText(
+                        times[i],
+                        x,
+                        size.height - 20f,
+                        Paint().apply {
+                            textAlign = Paint.Align.CENTER
+                            textSize = 40f
+                            color = textColor
+                        }
+                    )
+                }
             }
         }
     }
